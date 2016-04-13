@@ -1,0 +1,53 @@
+def deconstructible(*args, **kwargs):
+#ANNOTATION: define the function deconstructible with 2 arguments: unpacked list args and unpacked dictionary kwargs.
+    """
+    Class decorator that allow the decorated class to be serialized
+    by the migrations subsystem.
+
+    Accepts an optional kwarg `path` to specify the import path.
+    """
+#ANNOTATION: docstring
+    path = kwargs.pop('path', None)
+#ANNOTATION: remove elements under the 'path' key of the kwargs dictionary, if it exists substitute it for path, if not path is None.
+
+    def decorator(klass):
+#ANNOTATION: define the function decorator with an argument klass.
+        def __new__(cls, *args, **kwargs):
+#ANNOTATION: define the method __new__ with 3 arguments: cls, unpacked list args and unpacked dictionary kwargs.
+            # We capture the arguments to make returning them trivial
+            obj = super(klass, cls).__new__(cls)
+#ANNOTATION: call the method __new__ with an argument cls from the base class of the klass function.
+            obj._constructor_args = (args, kwargs)
+#ANNOTATION: obj._constructor_args is a tuple with 2 elements: args and kwargs.
+            return obj
+#ANNOTATION: return obj.
+
+        def deconstruct(obj):
+#ANNOTATION: define the function deconstruct with an argument obj.
+            """
+            Returns a 3-tuple of class import path, positional arguments,
+            and keyword arguments.
+            """
+#ANNOTATION: docstring
+            return (
+                path or '%s.%s' % (obj.__class__.__module__, obj.__class__.__name__),
+                obj._constructor_args[0],
+                obj._constructor_args[1],
+            )
+#ANNOTATION: return a tuple with 3 elements: if path is true, path, in not, a string '%s.%s' formated with obj.__class__.__module__,
+#ANNOTATION: and obj.__class__.__name__, first element of obj._constructor_args and second element of obj._constructor_args.
+
+        klass.__new__ = staticmethod(__new__)
+#ANNOTATION: klass.__new__ is a static method of the function __new__.
+        klass.deconstruct = deconstruct
+#ANNOTATION: substitute deconstruct for klass.deconstruct.
+
+        return klass
+#ANNOTATION: return klass.
+
+    if not args:
+#ANNOTATION: if args is true,
+        return decorator
+#ANNOTATION: return decorator.
+    return decorator(*args, **kwargs)
+#ANNOTATION: call the function decorator with 2 arugments: unpacked list args and unpacked dictionary kwargs, return the result.

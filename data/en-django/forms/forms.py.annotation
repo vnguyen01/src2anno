@@ -1,0 +1,1130 @@
+"""
+Form classes
+"""
+#ANNOTATION: docstring
+
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from collections import OrderedDict
+#ANNOTATION: from collections import OrderedDict into default name space.
+import copy
+#ANNOTATION: import module copy.
+import datetime
+#ANNOTATION: import module datetime.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.core.exceptions import ValidationError, NON_FIELD_ERRORS
+#ANNOTATION: from django.core.exceptions import ValidationError and NON_FIELD_ERRORS into default name space.
+from django.forms.fields import Field, FileField
+#ANNOTATION: from django.forms.fields import Field and FileField into default name space.
+from django.forms.utils import flatatt, ErrorDict, ErrorList
+#ANNOTATION: from django.forms.utils import flatatt,  ErrorDict and ErrorList into default name space.
+from django.forms.widgets import Media, MediaDefiningClass, TextInput, Textarea
+#ANNOTATION: from django.forms.widgets import Media,  MediaDefiningClass,  TextInput and Textarea into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+from django.utils.encoding import smart_text, force_text, python_2_unicode_compatible
+#ANNOTATION: from django.utils.encoding import smart_text,  force_text and python_2_unicode_compatible into default name space.
+from django.utils.html import conditional_escape, format_html
+#ANNOTATION: from django.utils.html import conditional_escape and format_html into default name space.
+from django.utils.safestring import mark_safe
+#ANNOTATION: from django.utils.safestring import mark_safe into default name space.
+from django.utils.translation import ugettext as _
+#ANNOTATION: from django.utils.translation import ugettext as _ into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+__all__ = ('BaseForm', 'Form')
+#ANNOTATION: __all__is an tuple with 2 elements: strings 'BaseForm' and 'Form'.
+
+
+def pretty_name(name):
+#ANNOTATION: define the function pretty_name with an argument name.
+    """Converts 'first_name' to 'First name'"""
+#ANNOTATION: docstring
+    if not name:
+#ANNOTATION: if name is false,
+        return ''
+#ANNOTATION: return an empty string.
+    return name.replace('_', ' ').capitalize()
+#ANNOTATION: replace all the occurrences of character '_' in name with a whitespace, capitalize the first letter and return the result.
+
+
+def get_declared_fields(bases, attrs, with_base_fields=True):
+#ANNOTATION: define the function get_declared_fields with 3 arguments: bases, attrs and with_base_fields set to boolean True.
+    """
+    Create a list of form field instances from the passed in 'attrs', plus any
+    similar fields on the base classes (in 'bases'). This is used by both the
+    Form and ModelForm metaclasses.
+
+    If 'with_base_fields' is True, all fields from the bases are used.
+    Otherwise, only fields in the 'declared_fields' attribute on the bases are
+    used. The distinction is useful in ModelForm subclassing.
+    Also integrates any additional media definitions.
+    """
+#ANNOTATION: docstring
+
+    warnings.warn(
+        "get_declared_fields is deprecated and will be removed in Django 1.9.",
+        RemovedInDjango19Warning,
+        stacklevel=2,
+    )
+#ANNOTATION: call the function warnings.warn with 3 arguments: string "get_declared_fields is deprecated and will be removed in Django 1.9.",
+#ANNOTATION: RemovedInDjango19Warning, stacklevel set to integer 2.
+
+    fields = [(field_name, attrs.pop(field_name)) for field_name, obj in list(six.iteritems(attrs)) if isinstance(obj, Field)]
+#ANNOTATION: for field_name every obj in list created from the elements of the return value of the function six.iteritems with an argument attrs.
+#ANNOTATION: if obj is an instance of Field, append to a list a tuple with 2 elements: field_name,
+#ANNOTATION: and poped value under the field_name key of the attrs dictionary, substitute the resulting list for fields.
+    fields.sort(key=lambda x: x[1].creation_counter)
+#ANNOTATION: sort fields elements with key being a lambda function with argument x and return value creation_counter filed of first element of x.
+
+    # If this class is subclassing another Form, add that Form's fields.
+    # Note that we loop over the bases in *reverse*. This is necessary in
+    # order to preserve the correct order of fields.
+    if with_base_fields:
+#ANNOTATION: if with_base_fields is true,
+        for base in bases[::-1]:
+#ANNOTATION: for every base in reversed order of bases,
+            if hasattr(base, 'base_fields'):
+#ANNOTATION: if base has an attribute 'base_fields'.
+                fields = list(six.iteritems(base.base_fields)) + fields
+#ANNOTATION: call the method six.iteritems with an argument base.base_fields, convert it to a list and append fields to it, substitute the result for fields.
+    else:
+#ANNOTATION: if not, 
+        for base in bases[::-1]:
+#ANNOTATION: for every base in reversed order of bases,
+            if hasattr(base, 'declared_fields'):
+#ANNOTATION: if base has an 'declared_fields' attribute,
+                fields = list(six.iteritems(base.declared_fields)) + fields
+#ANNOTATION: call the method six.iteritems with an argument base.declared_fields, convert it to a list and append fields to it, substitute the result for fields.
+
+    return OrderedDict(fields)
+#ANNOTATION: return an instance of OrderedDict class, created with an argument fields.
+
+
+class DeclarativeFieldsMetaclass(MediaDefiningClass):
+#ANNOTATION: derive the class DeclarativeFieldsMetaclass from the base class MediaDefiningClass.
+    """
+    Metaclass that collects Fields declared on the base classes.
+    """
+#ANNOTATION: docstring
+    def __new__(mcs, name, bases, attrs):
+#ANNOTATION: define the method __new__ with 4 arguments: mcs, name, bases and attrs.
+        # Collect fields from current class.
+        current_fields = []
+#ANNOTATION: current_fields is an empty list.
+        for key, value in list(attrs.items()):
+#ANNOTATION: for every key and value in list created out of the elements of the result of the call to the method attrs.items,
+            if isinstance(value, Field):
+#ANNOTATION: if value is an instance of Field class,
+                current_fields.append((key, value))
+#ANNOTATION: append a tuple with elements key and value to current_fields.
+                attrs.pop(key)
+#ANNOTATION: remove entry at the key key of the attrs dictionary.
+        current_fields.sort(key=lambda x: x[1].creation_counter)
+#ANNOTATION: sort current_fields elements with key being a lambda function with argument x and return value creation_counter filed of first element of x.
+        attrs['declared_fields'] = OrderedDict(current_fields)
+#ANNOTATION: value under the 'declared_fields' key of the attrs dictionary is an instance of OrderedDict class, created with an argument current_fields.
+
+        new_class = (super(DeclarativeFieldsMetaclass, mcs)
+            .__new__(mcs, name, bases, attrs))
+#ANNOTATION: call the method __new__ from the base class of the class DeclarativeFieldsMetaclass, with 4 arguments: mcs, name, bases and attrs.
+
+        # Walk through the MRO.
+        declared_fields = OrderedDict()
+#ANNOTATION: declared_fields is an instance of OrderedDict class.
+        for base in reversed(new_class.__mro__):
+#ANNOTATION: for every base in new_class.__mro__ in reversed order,
+            # Collect fields from base class.
+            if hasattr(base, 'declared_fields'):
+#ANNOTATION: if base has an attribute 'declared_fields',
+                declared_fields.update(base.declared_fields)
+#ANNOTATION: update declared_fields dictionary with entry base.declared_fields.
+
+            # Field shadowing.
+            for attr, value in base.__dict__.items():
+#ANNOTATION: call the method base.__dict__.items, for every attr and value in the result,
+                if value is None and attr in declared_fields:
+#ANNOTATION: if value is None and attr is contained in declared_fields,
+                    declared_fields.pop(attr)
+#ANNOTATION: remove entry at the attr key of the declared_fields dictionary. 
+
+        new_class.base_fields = declared_fields
+#ANNOTATION: substitute declared_fields for new_class.base_fields.
+        new_class.declared_fields = declared_fields
+#ANNOTATION: substitute declared_fields for new_class.declared_fields.
+
+        return new_class
+#ANNOTATION: return new_class.
+
+
+@python_2_unicode_compatible
+#ANNOTATION: python_2_unicode_compatible decorator,
+class BaseForm(object):
+#ANNOTATION: derive the class BaseForm from the base class object.
+    # This is the main implementation of all the Form logic. Note that this
+    # class is different than Form. See the comments by the Form class for more
+    # information. Any improvements to the form API should be made to *this*
+    # class, not to the Form class.
+    def __init__(self, data=None, files=None, auto_id='id_%s', prefix=None,
+                 initial=None, error_class=ErrorList, label_suffix=None,
+                 empty_permitted=False):
+#ANNOTATION: define the method __init__ with 4 arguments: self, data set to None, files set to None, auto_id is an string 'id_%s', prefix is None,
+#ANNOTATION: initial set to None, error_class set to ErrorList, label_suffix set to None, empty_permitted set to boolean False.
+        self.is_bound = data is not None or files is not None
+#ANNOTATION: if data is not None or files is not None, self.is_bound is boolean True, otherwise it is boolean False.
+        self.data = data or {}
+#ANNOTATION: if data is true, substitute it for self.data, if not self.data is an empty dictionary.
+        self.files = files or {}
+#ANNOTATION: if files is true, substitute it for self.files, if not self.files is an empty dictionary.
+        self.auto_id = auto_id
+#ANNOTATION: substitute auto_id for self.auto_id.
+        self.prefix = prefix
+#ANNOTATION: substitute prefix for self.prefix.
+        self.initial = initial or {}
+#ANNOTATION: if initial is true, substitute it for self.initial, if not self.files is an empty dictionary.
+        self.error_class = error_class
+#ANNOTATION: substitute .error_class for self.error_class.
+        # Translators: This is the default suffix added to form field labels
+        self.label_suffix = label_suffix if label_suffix is not None else _(':')
+#ANNOTATION: if label_suffix is not None substitute label_suffix for self.label_suffix, 
+#ANNOTATION: otherwise substitute return value of the function _ called with an argument ':' for self.label_suffix. 
+        self.empty_permitted = empty_permitted
+#ANNOTATION: substitute empty_permitted for self.empty_permitted.
+        self._errors = None  # Stores the errors after clean() has been called.
+#ANNOTATION: self._errors is None.
+        self._changed_data = None
+#ANNOTATION: self._changed_data is None.
+
+        # The base_fields class attribute is the *class-wide* definition of
+        # fields. Because a particular *instance* of the class might want to
+        # alter self.fields, we create self.fields here by copying base_fields.
+        # Instances should always modify self.fields; they should not modify
+        # self.base_fields.
+        self.fields = copy.deepcopy(self.base_fields)
+#ANNOTATION: call the function copy.deepcopy with an argument self.base_fields, substitute the result for self.fields.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        return self.as_table()
+#ANNOTATION: call the method self.as_table, return the result.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        for name in self.fields:
+#ANNOTATION: for every name in self.fields,
+            yield self[name]
+#ANNOTATION: get the value under the name key of the self dictionary, yield it as the return value of the generator.
+
+    def __getitem__(self, name):
+#ANNOTATION: define the method __getitem__ with 2 arguments: self and name.
+        "Returns a BoundField with the given name."
+#ANNOTATION: docstring
+        try:
+#ANNOTATION: try,
+            field = self.fields[name]
+#ANNOTATION: get the value under the name key of the self.fields dictionary, substitute it for field.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            raise KeyError(
+                "Key %r not found in '%s'" % (name, self.__class__.__name__))
+#ANNOTATION: raise an KeyError with an argument string "Key %r not found in '%s'", substitute '%s' with name and self.__class__.__name__.
+        return BoundField(self, field, name)
+#ANNOTATION: return an instance of BoundField class, created with arguments self, field and name.
+
+    @property
+#ANNOTATION: property decorator,
+    def errors(self):
+#ANNOTATION: define the method errors with an argument self.
+        "Returns an ErrorDict for the data provided for the form"
+#ANNOTATION: docstring
+        if self._errors is None:
+#ANNOTATION: if self._errors is None,
+            self.full_clean()
+#ANNOTATION: call the method self.full_clean.
+        return self._errors
+#ANNOTATION: return self._errors.
+
+    def is_valid(self):
+#ANNOTATION: define the method is_valid with an argument self.
+        """
+        Returns True if the form has no errors. Otherwise, False. If errors are
+        being ignored, returns False.
+        """
+#ANNOTATION: docstring
+        return self.is_bound and not self.errors
+#ANNOTATION: if self.is_bound is true and self.errors is false, return boolean True, otherwise return boolean False.
+
+    def add_prefix(self, field_name):
+#ANNOTATION: define the method add_prefix with 2 arguments: self and field_name.
+        """
+        Returns the field name with a prefix appended, if this Form has a
+        prefix set.
+
+        Subclasses may wish to override.
+        """
+#ANNOTATION: docstring
+        return '%s-%s' % (self.prefix, field_name) if self.prefix else field_name
+#ANNOTATION: substitute '%s' in string '%s-%s' with self.prefix and field_name and return it, if self.prefix is true, if not return field_name.
+
+    def add_initial_prefix(self, field_name):
+#ANNOTATION: define the method add_initial_prefix with 2 arguments: self and field_name.
+        """
+        Add a 'initial' prefix for checking dynamic initial values
+        """
+#ANNOTATION: docstring
+        return 'initial-%s' % self.add_prefix(field_name)
+#ANNOTATION: return string 'initial-%s' where '%s' is replaced with return value of the self.add_prefix method called with an argument field_name.
+   
+    def _html_output(self, normal_row, error_row, row_ender, help_text_html, errors_on_separate_row):
+#ANNOTATION: define the method _html_output with 6 arguments: self, normal_row, error_row, row_ender, help_text_html and errors_on_separate_row.
+        "Helper function for outputting HTML. Used by as_table(), as_ul(), as_p()."
+#ANNOTATION: docstring
+        top_errors = self.non_field_errors()  # Errors that should be displayed above all fields.
+#ANNOTATION: call the method self.non_field_errors, substitute the result for top_errors.
+        output, hidden_fields = [], []
+#ANNOTATION: output and hidden_fields are both empty lists.
+
+        for name, field in self.fields.items():
+#ANNOTATION: call the method self.fields.items, for every name and field in return value, 
+            html_class_attr = ''
+#ANNOTATION: html_class_attr is an empty string.
+            bf = self[name]
+#ANNOTATION: substitute value under the name key for bf.
+            # Escape and cache in local variable.
+            bf_errors = self.error_class([conditional_escape(error) for error in bf.errors])
+#ANNOTATION: call the method self.error_class with an argument list containing results of the function conditional_escape,
+#ANNOTATION: called with an argument error, for every error in bf.errors, substitute the result for bf_errors.
+            if bf.is_hidden:
+#ANNOTATION: if bf.is_hidden is true,
+                if bf_errors:
+#ANNOTATION: if bf_errors is true,
+                    top_errors.extend(
+                        [_('(Hidden field %(name)s) %(error)s') % {'name': name, 'error': force_text(e)}
+                         for e in bf_errors])
+#ANNOTATION: call the function _ with an argument string '(Hidden field %(name)s) %(error)s', where '%(name)s' is replaced with name, 
+#ANNOTATION: and '%(error)s' is replaced with return value of the force_text function called with an argument e, 
+#ANNOTATION: extend the top_errors with the result.
+                hidden_fields.append(six.text_type(bf))
+#ANNOTATION: call the function six.text_type with an argument bf, append the result to hidden_fields.
+            else:
+#ANNOTATION: if not,
+                # Create a 'class="..."' attribute if the row should have any
+                # CSS classes applied.
+                css_classes = bf.css_classes()
+#ANNOTATION: call the method bf.css_classes, substitute the result for css_classes.
+                if css_classes:
+#ANNOTATION: if css_classes is true,
+                    html_class_attr = ' class="%s"' % css_classes
+#ANNOTATION: replace "%s" from the string ' class="%s"' with css_classes, substitute it for html_class_attr.
+
+                if errors_on_separate_row and bf_errors:
+#ANNOTATION: if errors_on_separate_row and bf_errors are both true,
+                    output.append(error_row % force_text(bf_errors))
+#ANNOTATION: call the function force_text with an argument bf_errors, format the error_row string with the result, append it to the output.
+
+                if bf.label:
+#ANNOTATION: if bf.label is true,
+                    label = conditional_escape(force_text(bf.label))
+#ANNOTATION: call the function force_text with an argument bf.label, use the result as an argument for the call to the function conditional_escape, substitute the result label.
+                    label = bf.label_tag(label) or ''
+#ANNOTATION: call the function bf.label_tag with an argument label, if the result is true substitute it for label, otherwise label is an empty string.
+                else:
+#ANNOTATION: if not,
+                    label = ''
+#ANNOTATION: label is an empty string.
+
+                if field.help_text:
+#ANNOTATION: if field.help_text is true,
+                    help_text = help_text_html % force_text(field.help_text)
+#ANNOTATION: call the function force_text with an argument field.help_text, format help_text_html with it, substitute the result for help_text.
+                else:
+#ANNOTATION: if not,
+                    help_text = ''
+#ANNOTATION: label is an empty string.
+
+                output.append(normal_row % {
+                    'errors': force_text(bf_errors),
+                    'label': force_text(label),
+                    'field': six.text_type(bf),
+                    'help_text': help_text,
+                    'html_class_attr': html_class_attr,
+                    'field_name': bf.html_name,
+                })
+#ANNOTATION: format string normal_row with an dictionary containing 6 entries: return value of the function force_text with an argument bf_errors,
+#ANNOTATION: for 'errors', return value of the function force_text with an argument label for 'label', return value of the function six.text_type,
+#ANNOTATION: with an argument bf, for 'field', help_text for help_text, html_class_attr for 'html_class_attr' and bf.html_name for 'field_name'.
+
+        if top_errors:
+#ANNOTATION:  if top_errors is true,
+            output.insert(0, error_row % force_text(top_errors))
+#ANNOTATION: call the function force_text with an argument top_errors, format error_row with it, insert it at the beginning of output.
+
+        if hidden_fields:  # Insert any hidden fields in the last row.
+#ANNOTATION: if hidden_fields is true,
+            str_hidden = ''.join(hidden_fields)
+#ANNOTATION: join hidden_fields elements into a string, without separation, substitute the result for str_hidden.
+            if output:
+#ANNOTATION: if output is true,
+                last_row = output[-1]
+#ANNOTATION: substitute last element of output for last_row.
+                # Chop off the trailing row_ender (e.g. '</td></tr>') and
+                # insert the hidden fields.
+                if not last_row.endswith(row_ender):
+#ANNOTATION: if last_row doesnt ends with row_ender,
+                    # This can happen in the as_p() case (and possibly others
+                    # that users write): if there are only top errors, we may
+                    # not be able to conscript the last row for our purposes,
+                    # so insert a new, empty row.
+                    last_row = (normal_row % {'errors': '', 'label': '',
+                                              'field': '', 'help_text': '',
+                                              'html_class_attr': html_class_attr})
+#ANNOTATION: format string normal_row with an dictionary containing 5 entries: an empty string for 'errors', empty string for 'label', 
+#ANNOTATION: empty string for 'field', empty string for 'help_text' and html_class_attr for html_class_attr.
+                    output.append(last_row)
+#ANNOTATION: append last_row to output.
+                output[-1] = last_row[:-len(row_ender)] + str_hidden + row_ender
+#ANNOTATION: create list out of last_row elements from the start to the last length of row_ender element, append str_hidden and row_ender to it,
+#ANNOTATION: substitute the result for last element of output.
+            else:
+#ANNOTATION: if not,
+                # If there aren't any rows in the output, just append the
+                # hidden fields.
+                output.append(str_hidden)
+#ANNOTATION: append str_hidden to output.
+        return mark_safe('\n'.join(output))
+#ANNOTATION: join elements of output into a string with newline as separator, use it as an argument for the call to the function mark_safe, return it.
+
+    def as_table(self):
+#ANNOTATION: define the method as_table with an argument self.
+        "Returns this form rendered as HTML <tr>s -- excluding the <table></table>."
+#ANNOTATION: docstring
+        return self._html_output(
+            normal_row='<tr%(html_class_attr)s><th>%(label)s</th><td>%(errors)s%(field)s%(help_text)s</td></tr>',
+            error_row='<tr><td colspan="2">%s</td></tr>',
+            row_ender='</td></tr>',
+            help_text_html='<br /><span class="helptext">%s</span>',
+            errors_on_separate_row=False)
+#ANNOTATION: return the result of the method self._html_output, called with 5 arguments: normal_row to a string, 
+#ANNOTATION: '<tr%(html_class_attr)s><th>%(label)s</th><td>%(errors)s%(field)s%(help_text)s</td></tr>', error_row set to a a string,
+#ANNOTATION: '<tr><td colspan="2">%s</td></tr>', row_ender set to a string '</td></tr>', help_text_html set to a string,
+#ANNOTATION: '<br /><span class="helptext">%s</span>' and errors_on_separate_row set to boolean False.
+
+    def as_ul(self):
+#ANNOTATION: define the method as_ul with an argument self.
+        "Returns this form rendered as HTML <li>s -- excluding the <ul></ul>."
+#ANNOTATION: docstring
+        return self._html_output(
+            normal_row='<li%(html_class_attr)s>%(errors)s%(label)s %(field)s%(help_text)s</li>',
+            error_row='<li>%s</li>',
+            row_ender='</li>',
+            help_text_html=' <span class="helptext">%s</span>',
+            errors_on_separate_row=False)
+#ANNOTATION: return the result of the method self._html_output, called with 5 arguments: normal_row to a string, 
+#ANNOTATION: '<li%(html_class_attr)s>%(errors)s%(label)s %(field)s%(help_text)s</li>', error_row set to a a string '<li>%s</li>',
+#ANNOTATION: row_ender set to a string '</li>', help_text_html set to a string, ' <span class="helptext">%s</span>', 
+#ANNOTATION: and errors_on_separate_row set to boolean False.
+
+    def as_p(self):
+#ANNOTATION: define the method as_p with an argument self.
+        "Returns this form rendered as HTML <p>s."
+#ANNOTATION: docstring
+        return self._html_output(
+            normal_row='<p%(html_class_attr)s>%(label)s %(field)s%(help_text)s</p>',
+            error_row='%s',
+            row_ender='</p>',
+            help_text_html=' <span class="helptext">%s</span>',
+            errors_on_separate_row=True)
+#ANNOTATION: return the result of the method self._html_output, called with 5 arguments: normal_row to a string, 
+#ANNOTATION: '<p%(html_class_attr)s>%(label)s %(field)s%(help_text)s</p>', error_row set to a a string '%s', row_ender set to a string '</p>',
+#ANNOTATION: help_text_html set to a string, <span class="helptext">%s</span>' and errors_on_separate_row set to boolean True.
+
+    def non_field_errors(self):
+#ANNOTATION: define the method non_field_errors with an argument self.
+        """
+        Returns an ErrorList of errors that aren't associated with a particular
+        field -- i.e., from Form.clean(). Returns an empty ErrorList if there
+        are none.
+        """
+#ANNOTATION: docstring
+        return self.errors.get(NON_FIELD_ERRORS, self.error_class(error_class='nonfield'))
+#ANNOTATION: return the result of the method self.errors.get called with 2 arguments: NON_FIELD_ERRORS and return value of the method,
+#ANNOTATION: self.error_class called with an argument error_class set to string 'nonfield'.
+
+    def _raw_value(self, fieldname):
+#ANNOTATION: define the method _raw_value with 2 arguments: self and fieldname.
+        """
+        Returns the raw_value for a particular field name. This is just a
+        convenient wrapper around widget.value_from_datadict.
+        """
+#ANNOTATION: docstring
+        field = self.fields[fieldname]
+#ANNOTATION: substitute the value under the fieldname key of the self.fields dictionary for field.
+        prefix = self.add_prefix(fieldname)
+#ANNOTATION: call the method self.add_prefix with an argument fieldname, substitute it for prefix.
+        return field.widget.value_from_datadict(self.data, self.files, prefix)
+#ANNOTATION: return the result of the method field.widget.value_from_datadict called with 3 arguments: self.data, self.files and prefix.
+
+    def add_error(self, field, error):
+#ANNOTATION: define the method add_error with 3 arguments: self, field and errors.
+        """
+        Update the content of `self._errors`.
+
+        The `field` argument is the name of the field to which the errors
+        should be added. If its value is None the errors will be treated as
+        NON_FIELD_ERRORS.
+
+        The `error` argument can be a single error, a list of errors, or a
+        dictionary that maps field names to lists of errors. What we define as
+        an "error" can be either a simple string or an instance of
+        ValidationError with its message attribute set and what we define as
+        list or dictionary can be an actual `list` or `dict` or an instance
+        of ValidationError with its `error_list` or `error_dict` attribute set.
+
+        If `error` is a dictionary, the `field` argument *must* be None and
+        errors will be added to the fields that correspond to the keys of the
+        dictionary.
+        """
+#ANNOTATION: docstring
+        if not isinstance(error, ValidationError):
+#ANNOTATION: if error is not an instance of ValidationError,
+            # Normalize to ValidationError and let its constructor
+            # do the hard work of making sense of the input.
+            error = ValidationError(error)
+#ANNOTATION: error is an instance of ValidationError created with an argument error.
+
+        if hasattr(error, 'error_dict'):
+#ANNOTATION: if error has an attribute 'error_dict',
+            if field is not None:
+#ANNOTATION: if field is not None,
+                raise TypeError(
+                    "The argument `field` must be `None` when the `error` "
+                    "argument contains errors for multiple fields."
+                )
+#ANNOTATION: raise an TypeError with an argument string "The argument `field` must be `None` when the `error`argument contains errors for multiple fields.".
+            else:
+#ANNOTATION: if not,
+                error = error.error_dict
+#ANNOTATION: substitute error.error_dict for error.
+        else:
+#ANNOTATION: if not,
+            error = {field or NON_FIELD_ERRORS: error.error_list}
+#ANNOTATION: error is an dictionary with an initial entry error.error_list for filed if true, or NON_FIELD_ERRORS if not.
+
+        for field, error_list in error.items():
+#ANNOTATION: call the method error.items, for every field and error_list in the result,
+            if field not in self.errors:
+#ANNOTATION: if field is not contained in self.errors,
+                if field != NON_FIELD_ERRORS and field not in self.fields:
+#ANNOTATION: if field is not equal to NON_FIELD_ERRORS and field is not contained in self.fields,
+                    raise ValueError(
+                        "'%s' has no field named '%s'." % (self.__class__.__name__, field))
+#ANNOTATION: raise an ValueError with an argument string "'%s' has no field named '%s'.", with '%s' replaced with self.__class__.__name__ and field, respectively.
+                if field == NON_FIELD_ERRORS:
+#ANNOTATION: if field equals NON_FIELD_ERRORS,
+                    self._errors[field] = self.error_class(error_class='nonfield')
+#ANNOTATION: call the method self.error_class with an argument error_class as an string 'nonfield', 
+#ANNOTATION: substitute the result for value under the field key of the self._errors dictionary.
+                else:
+#ANNOTATION: if not,
+                    self._errors[field] = self.error_class()
+#ANNOTATION: call the method self.error_class, substitute the result for value under the field key of the self._errors dictionary.
+            self._errors[field].extend(error_list)
+#ANNOTATION: extend the value under the field key of the self._errors dictionary with error_list.
+            if field in self.cleaned_data:
+#ANNOTATION: if field is contained in self.cleaned_data,
+                del self.cleaned_data[field]
+#ANNOTATION: delete the entry of self.cleaned_data dictionary under the key field.
+
+    def has_error(self, field, code=None):
+#ANNOTATION: define the method has_error with 3 arguments: self, field and code set to None.
+        if code is None:
+#ANNOTATION: if code is None,
+            return field in self.errors
+#ANNOTATION: if field is contained in self.errors return boolean True, if not, return boolean False.
+        if field in self.errors:
+#ANNOTATION: if field is contained in self.errors,
+            for error in self.errors.as_data()[field]:
+#ANNOTATION: call the method self.errors.as_data, for every error for value under the filed key of the returned dictionary,
+                if error.code == code:
+#ANNOTATION: if error.code equals code,
+                    return True
+#ANNOTATION: return boolean True.
+        return False
+#ANNOTATION: return boolean False.
+
+    def full_clean(self):
+#ANNOTATION: define the method full_clean with an argument self.
+        """
+        Cleans all of self.data and populates self._errors and
+        self.cleaned_data.
+        """
+#ANNOTATION: docstring
+        self._errors = ErrorDict()
+#ANNOTATION: self._errors is an instance of ErrorDict.
+        if not self.is_bound:  # Stop further processing.
+#ANNOTATION: if self.is_bound is false,
+            return
+#ANNOTATION: return nothing.
+        self.cleaned_data = {}
+#ANNOTATION: self.cleaned_data is an empty dictionary.
+        # If the form is permitted to be empty, and none of the form data has
+        # changed from the initial data, short circuit any validation.
+        if self.empty_permitted and not self.has_changed():
+#ANNOTATION: if self.empty_permitted is true and call to the method self.has_changed evaluates to false,
+            return
+#ANNOTATION: return nothing.
+
+        self._clean_fields()
+#ANNOTATION: call the method self._clean_fields.
+        self._clean_form()
+#ANNOTATION: call the method self._clean_form.
+        self._post_clean()
+#ANNOTATION: call the method self._post_clean.
+
+    def _clean_fields(self):
+#ANNOTATION: define the method _clean_fields with an argument self.
+        for name, field in self.fields.items():
+#ANNOTATION: call the method self.fields.items, for every name and field in result,
+            # value_from_datadict() gets the data from the data dictionaries.
+            # Each widget type knows how to retrieve its own data, because some
+            # widgets split data over several HTML fields.
+            value = field.widget.value_from_datadict(self.data, self.files, self.add_prefix(name))
+#ANNOTATION: call the method field.widget.value_from_datadict with 3 arguments: self.data, self.files and return value of the method,
+#ANNOTATION: self.add_prefix called with an argument name, substitute the result for value.
+            try:
+#ANNOTATION: try,
+                if isinstance(field, FileField):
+#ANNOTATION: if field is an instance of FileField,
+                    initial = self.initial.get(name, field.initial)
+#ANNOTATION: get the value under the name key of the self.initial dictionary, if it exists substitute it for initial, 
+#ANNOTATION: if not substitute field.initial for initial. 
+                    value = field.clean(value, initial)
+#ANNOTATION: call the method filed.clean with arguments value and initial, substitute the result for value.
+                else:
+#ANNOTATION: if not,
+                    value = field.clean(value)
+#ANNOTATION: call the method field.clean with an argument value, substitute the result for value.
+                self.cleaned_data[name] = value
+#ANNOTATION: substitute value for the value under the name key of the self.cleaned_data dictionary.
+                if hasattr(self, 'clean_%s' % name):
+#ANNOTATION: if self has an attribute 'clean_%s', where '%s' is replaced with name,
+                    value = getattr(self, 'clean_%s' % name)()
+#ANNOTATION: get 'clean_%s', where '%s' is replaced with name' attribute of the self object, call the result as an function, 
+#ANNOTATION: substitute the result for value. 
+                    self.cleaned_data[name] = value
+#ANNOTATION: substitute value for the value under the name key of the self.cleaned_data dictionary.
+            except ValidationError as e:
+#ANNOTATION: if ValidationError renamed to e, exception is caught,
+                self.add_error(name, e)
+#ANNOTATION: call the method self.add_error with 2 arguments name and e.
+
+    def _clean_form(self):
+#ANNOTATION: define the method _clean_form with an argument self.
+        try:
+#ANNOTATION: try,
+            cleaned_data = self.clean()
+#ANNOTATION: call the method self.clean, substitute the result for cleaned_data.
+        except ValidationError as e:
+#ANNOTATION: if ValidationError renamed to e, exception is caught,
+            self.add_error(None, e)
+#ANNOTATION: call the method self.add_error with 2 arguments None and e.
+        else:
+#ANNOTATION: if not,
+            if cleaned_data is not None:
+#ANNOTATION: if cleaned_data is not None,
+                self.cleaned_data = cleaned_data
+#ANNOTATION: substitute cleaned_data for self.cleaned_data.
+
+    def _post_clean(self):
+#ANNOTATION: define the method _post_clean with an argument self.
+        """
+        An internal hook for performing additional cleaning after form cleaning
+        is complete. Used for model validation in model forms.
+        """
+#ANNOTATION: docstring
+        pass
+#ANNOTATION: do nothing.
+
+    def clean(self):
+#ANNOTATION: define the method clean with an argument self.
+        """
+        Hook for doing any extra form-wide cleaning after Field.clean() been
+        called on every field. Any ValidationError raised by this method will
+        not be associated with a particular field; it will have a special-case
+        association with the field named '__all__'.
+        """
+#ANNOTATION: docstring
+        return self.cleaned_data
+#ANNOTATION: return self.cleaned_data.
+
+    def has_changed(self):
+#ANNOTATION: define the method has_changed with an argument self.
+        """
+        Returns True if data differs from initial.
+        """
+#ANNOTATION: docstring
+        return bool(self.changed_data)
+#ANNOTATION: convert self.changed_data into boolean, return it.
+
+    @property
+#ANNOTATION: property decorator,
+    def changed_data(self):
+#ANNOTATION: define the method changed_data with an argument self.
+        if self._changed_data is None:
+#ANNOTATION: if self._changed_data is None,
+            self._changed_data = []
+#ANNOTATION: self._changed_data is an empty list.
+            # XXX: For now we're asking the individual widgets whether or not the
+            # data has changed. It would probably be more efficient to hash the
+            # initial data, store it in a hidden field, and compare a hash of the
+            # submitted data, but we'd need a way to easily get the string value
+            # for a given field. Right now, that logic is embedded in the render
+            # method of each widget.
+            for name, field in self.fields.items():
+#ANNOTATION: call the method self.fields.items, for every name and field in the result,
+                prefixed_name = self.add_prefix(name)
+#ANNOTATION: call the method self.add_prefix with an argument name, substitute the result for prefixed_name.
+                data_value = field.widget.value_from_datadict(self.data, self.files, prefixed_name)
+#ANNOTATION: call the method field.widget.value_from_datadict with 3 arguments: self.data, self.files, prefixed_name, substitute the result for data_value.
+                if not field.show_hidden_initial:
+#ANNOTATION: if field.show_hidden_initial is false,
+                    initial_value = self.initial.get(name, field.initial)
+#ANNOTATION: get the value under the name key of the self.initial dictionary, if it exists substitute it for initial_value, 
+#ANNOTATION: if not substitute field.initial for initial_value. 
+                    if callable(initial_value):
+#ANNOTATION: if initial_value is an callable object,
+                        initial_value = initial_value()
+#ANNOTATION: call the function initial_value, substitute the result for initial_value.
+                else:
+#ANNOTATION: if not,
+                    initial_prefixed_name = self.add_initial_prefix(name)
+#ANNOTATION: call the method self.add_initial_prefix with an argument name, substitute the result for initial_prefixed_name.
+                    hidden_widget = field.hidden_widget()
+#ANNOTATION: call the method field.hidden_widget, substitute the result for field.hidden_widget.
+                    try:
+#ANNOTATION: try,
+                        initial_value = field.to_python(hidden_widget.value_from_datadict(
+                            self.data, self.files, initial_prefixed_name))
+#ANNOTATION: call the method (hidden_widget.value_from_datadict with 3 arguments: self.data, self.files and initial_prefixed_name, 
+#ANNOTATION: use the result as an argument for the call to the field.to_python method, substitute the result for initial_value.
+                    except ValidationError:
+#ANNOTATION: if ValidationError exception is caught,
+                        # Always assume data has changed if validation fails.
+                        self._changed_data.append(name)
+#ANNOTATION: append name to self._changed_data.
+                        continue
+#ANNOTATION: skip this loop iteration.
+                if field._has_changed(initial_value, data_value):
+#ANNOTATION: call the method field._has_changed with 2 arguments: initial_value and data_value, if it evaluates to true,
+                    self._changed_data.append(name)
+#ANNOTATION: append name to self._changed_data list.
+        return self._changed_data
+#ANNOTATION: return self._changed_data.
+
+    @property
+#ANNOTATION: property decorator,
+    def media(self):
+#ANNOTATION: define the method media with an argument self.
+        """
+        Provide a description of all media required to render the widgets on this form
+        """
+#ANNOTATION: docstring
+        media = Media()
+#ANNOTATION: media is an instance of Media class.
+        for field in self.fields.values():
+#ANNOTATION: call the method self.fields.values, for every field in result,
+            media = media + field.widget.media
+#ANNOTATION: append field.widget.media to media, substitute the result for media.
+        return media
+#ANNOTATION: return media.
+
+    def is_multipart(self):
+#ANNOTATION: define the method is_multipart with an argument self.
+        """
+        Returns True if the form needs to be multipart-encoded, i.e. it has
+        FileInput. Otherwise, False.
+        """
+#ANNOTATION: docstring
+        for field in self.fields.values():
+#ANNOTATION: call the method self.fields.values, for every field in result,
+            if field.widget.needs_multipart_form:
+#ANNOTATION:  if field.widget.needs_multipart_form is true,
+                return True
+#ANNOTATION: return boolean True.
+        return False
+#ANNOTATION: return boolean False.
+
+    def hidden_fields(self):
+#ANNOTATION: define the method hidden_fields with an argument self.
+        """
+        Returns a list of all the BoundField objects that are hidden fields.
+        Useful for manual form layout in templates.
+        """
+#ANNOTATION: docstring
+        return [field for field in self if field.is_hidden]
+#ANNOTATION: for field in self if field.is_hidden is true, append field to a list, return the resulting list.
+
+    def visible_fields(self):
+#ANNOTATION: define the method visible_fields with an argument self.
+        """
+        Returns a list of BoundField objects that aren't hidden fields.
+        The opposite of the hidden_fields() method.
+        """
+#ANNOTATION: docstring
+        return [field for field in self if not field.is_hidden]
+#ANNOTATION: for field in self if field.is_hidden is false, append field to a list, return the resulting list.
+
+
+class Form(six.with_metaclass(DeclarativeFieldsMetaclass, BaseForm)):
+#ANNOTATION: derive the class Form from the base classes DeclarativeFieldsMetaclass and BaseForm.
+    "A collection of Fields, plus their associated data."
+#ANNOTATION: docstring
+    # This is a separate class from BaseForm in order to abstract the way
+    # self.fields is specified. This class (Form) is the one that does the
+    # fancy metaclass stuff purely for the semantic sugar -- it allows one
+    # to define a form using declarative syntax.
+    # BaseForm itself has no way of designating self.fields.
+
+
+@python_2_unicode_compatible
+#ANNOTATION: decorator python_2_unicode_compatible,
+class BoundField(object):
+#ANNOTATION: derive the class BoundField from the base class object.
+    "A Field plus data"
+#ANNOTATION: docstring
+    def __init__(self, form, field, name):
+#ANNOTATION: define the method __init__ with 4 arguments: self, form, field and name.
+        self.form = form
+#ANNOTATION: substitute form for self.form.
+        self.field = field
+#ANNOTATION: substitute field for self.field.
+        self.name = name
+#ANNOTATION: substitute name for self.name.
+        self.html_name = form.add_prefix(name)
+#ANNOTATION: call the method form.add_prefix with an argument self, substitute the result for self.html_name.
+        self.html_initial_name = form.add_initial_prefix(name)
+#ANNOTATION: call the method form.add_initial_prefix with an argument name, substitute the result for self.html_initial_name.
+        self.html_initial_id = form.add_initial_prefix(self.auto_id)
+#ANNOTATION: call the method form.add_initial_prefix with an argument self.auto_id, substitute the result for self.html_initial_id. 
+        if self.field.label is None:
+#ANNOTATION: if self.field.label is None,
+            self.label = pretty_name(name)
+#ANNOTATION: call the method pretty_name with an argument name, substitute the result for self.label.
+        else:
+#ANNOTATION: if not,
+            self.label = self.field.label
+#ANNOTATION: substitute self.field.label for self.label.
+        self.help_text = field.help_text or ''
+#ANNOTATION: if field.help_text is true, substitute field.help_text for self.help_text, if not self.help_text is an empty string.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        """Renders this field as an HTML widget."""
+#ANNOTATION: docstring
+        if self.field.show_hidden_initial:
+#ANNOTATION: if self.field.show_hidden_initial is true,
+            return self.as_widget() + self.as_hidden(only_initial=True)
+#ANNOTATION: call the method self.as_hidden with an argument only_initial set to boolean True, 
+#ANNOTATION: append the result to the result of the method, self.as_widget, return the resulting string.
+        return self.as_widget()
+#ANNOTATION: call the method self.as_widget, return the result.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        """
+        Yields rendered strings that comprise all widgets in this BoundField.
+
+        This really is only useful for RadioSelect widgets, so that you can
+        iterate over individual radio buttons in a template.
+        """
+#ANNOTATION: docstring
+        id_ = self.field.widget.attrs.get('id') or self.auto_id
+#ANNOTATION: get the value under the 'id' key of the self.field.widget.attrs dictionary, if the key exists substitute it for id_,
+#ANNOTATION: if not, substitute self.auto_id for id_.
+        attrs = {'id': id_} if id_ else {}
+#ANNOTATION: if if_is true attrs is an dictionary with initial entry: id_ for 'id', if not, attrs is an empty dictionary.
+        for subwidget in self.field.widget.subwidgets(self.html_name, self.value(), attrs):
+#ANNOTATION: call the method self.field.widget.subwidgets with 3 arguments: self.html_name, return value of the method self.value and attrs, 
+#ANNOTATION: for every subwidget in the result,
+            yield subwidget
+#ANNOTATION: yield subwidget, as the result of the generator.
+
+    def __len__(self):
+#ANNOTATION: define the method __len__ with an argument self.
+        return len(list(self.__iter__()))
+#ANNOTATION: convert result of the method self.__iter__ into a list, return its length.
+
+    def __getitem__(self, idx):
+#ANNOTATION: define the method __getitem__ with 2 arguments: self and idx.
+        return list(self.__iter__())[idx]
+#ANNOTATION: convert result of the method self.__iter__ into a list, return element at the idx index. 
+
+    @property
+#ANNOTATION: property decorator,
+    def errors(self):
+#ANNOTATION: define the method errors with an argument self.
+        """
+        Returns an ErrorList for this field. Returns an empty ErrorList
+        if there are none.
+        """
+#ANNOTATION: docstring
+        return self.form.errors.get(self.name, self.form.error_class())
+#ANNOTATION: get the value under the self.name key of the self.form.errors dictionary, if the key exists, return it, 
+#ANNOTATION: if not evaluate the method self.form.error_class and return the result.
+
+    def as_widget(self, widget=None, attrs=None, only_initial=False):
+#ANNOTATION: define the method as_widget with 4 arguments: self, widget set to None, attrs set to None, only_initial set to boolean False.
+        """
+        Renders the field by rendering the passed widget, adding any HTML
+        attributes passed as attrs.  If no widget is specified, then the
+        field's default widget will be used.
+        """
+#ANNOTATION: docstring
+        if not widget:
+#ANNOTATION: if widget is false,
+            widget = self.field.widget
+#ANNOTATION: substitute self.field.widget for widget.
+
+        if self.field.localize:
+#ANNOTATION: if self.field.localize is true,
+            widget.is_localized = True
+#ANNOTATION: widget.is_localized is boolean True.
+
+        attrs = attrs or {}
+#ANNOTATION: if attrs is false, make it an empty dictionary. 
+        auto_id = self.auto_id
+#ANNOTATION: substitute self.auto_id for auto_id.
+        if auto_id and 'id' not in attrs and 'id' not in widget.attrs:
+#ANNOTATION: if auto_id is true and 'id' is not contained in attrs and 'id' is not contained in widget.attrs,
+            if not only_initial:
+#ANNOTATION: if only_initial is false,
+                attrs['id'] = auto_id
+#ANNOTATION: substitute auto_id for value under the 'id' key of the attrs dictionary.
+            else:
+#ANNOTATION: if not,
+                attrs['id'] = self.html_initial_id
+#ANNOTATION: substitute self.html_initial_id for value under the 'id' key of the attrs dictionary.
+
+        if not only_initial:
+#ANNOTATION: if only_initial is false,
+            name = self.html_name
+#ANNOTATION: substitute self.html_name for name.
+        else:
+#ANNOTATION: if not,
+            name = self.html_initial_name
+#ANNOTATION: substitute self.html_initial_name for name.
+        return force_text(widget.render(name, self.value(), attrs=attrs))
+#ANNOTATION: call the method widget.render with 3 arguments: name, return value of the method self.value, attrs set to attrs, 
+#ANNOTATION: use it as an argument for the call to the function force_text, return the result.
+
+    def as_text(self, attrs=None, **kwargs):
+#ANNOTATION: define the method as_text with 3 arguments: self, attrs set to None and unpacked dictionary kwargs.
+        """
+        Returns a string of HTML for representing this as an <input type="text">.
+        """
+#ANNOTATION: docstring
+        return self.as_widget(TextInput(), attrs, **kwargs)
+#ANNOTATION: call the method self.as_widget with 3 arguments: instance of a class TextInput, attrs and unpacked dictionary kwargs, return the result.
+
+    def as_textarea(self, attrs=None, **kwargs):
+#ANNOTATION: define the method as_textarea with 3 arguments: self, attrs set to None and unpacked dictionary kwargs.
+        "Returns a string of HTML for representing this as a <textarea>."
+#ANNOTATION: docstring
+        return self.as_widget(Textarea(), attrs, **kwargs)
+#ANNOTATION: call the method self.as_widget with 3 arguments: instance of a class Textarea, attrs and unpacked dictionary kwargs, return the result.
+
+    def as_hidden(self, attrs=None, **kwargs):
+#ANNOTATION: define the method as_hidden with 3 arguments: self, attrs set to None and unpacked dictionary kwargs.
+        """
+        Returns a string of HTML for representing this as an <input type="hidden">.
+        """
+#ANNOTATION: docstring
+        return self.as_widget(self.field.hidden_widget(), attrs, **kwargs)
+#ANNOTATION: call the method self.as_widget with 3 arguments: return value of the method self.field.hidden_widget, attrs,
+#ANNOTATION: and unpacked dictionary kwargs, return the result.
+
+    @property
+#ANNOTATION: property decorator,
+    def data(self):
+#ANNOTATION: define the method data with an argument self.
+        """
+        Returns the data for this BoundField, or None if it wasn't given.
+        """
+#ANNOTATION: docstring
+        return self.field.widget.value_from_datadict(self.form.data, self.form.files, self.html_name)
+#ANNOTATION: call the method self.field.widget.value_from_datadict with 3 arguments: self.form.data, self.form.files, self.html_name, return the result.
+
+    def value(self):
+#ANNOTATION: define the method value with an argument self.
+        """
+        Returns the value for this BoundField, using the initial value if
+        the form is not bound or the data otherwise.
+        """
+#ANNOTATION: docstring
+        if not self.form.is_bound:
+#ANNOTATION: if self.form.is_bound is false,
+            data = self.form.initial.get(self.name, self.field.initial)
+#ANNOTATION: get the value under the self.name key of the self.form.initial dictionary, if it exists, substitute it for data,
+#ANNOTATION: if not, substitute self.field.initial for data.
+            if callable(data):
+#ANNOTATION: if data is an callable object,
+                data = data()
+#ANNOTATION: call the method data, substitute the result for data.
+                # If this is an auto-generated default date, nix the
+                # microseconds for standardized handling. See #22502.
+                if (isinstance(data, (datetime.datetime, datetime.time)) and
+                        not getattr(self.field.widget, 'supports_microseconds', True)):
+#ANNOTATION: if data is an instance of datetime.datetime or datetime.time classes, and supports_microseconds field of self.field.widget is false,
+                    data = data.replace(microsecond=0)
+#ANNOTATION: call the method data.replace with an argument microsecond set to integer 0, substitute the result for data.
+        else:
+#ANNOTATION: if not,
+            data = self.field.bound_data(
+                self.data, self.form.initial.get(self.name, self.field.initial)
+            )
+#ANNOTATION: call the method self.field.bound_data with 2 arguments: self.data and value under the self.name key of the dictionary,
+#ANNOTATION: self.form.initial, if it exists, or self.field.initial if not, substitute the result for data.
+        return self.field.prepare_value(data)
+#ANNOTATION: call the method self.field.prepare_value with an argument data, return the result.
+
+    def label_tag(self, contents=None, attrs=None, label_suffix=None):
+#ANNOTATION: define the method label_tag with 4 arguments: self, contents set to None, attrs set to None and label_suffix set to None.
+        """
+        Wraps the given contents in a <label>, if the field has an ID attribute.
+        contents should be 'mark_safe'd to avoid HTML escaping. If contents
+        aren't given, uses the field's HTML-escaped label.
+
+        If attrs are given, they're used as HTML attributes on the <label> tag.
+
+        label_suffix allows overriding the form's label_suffix.
+        """
+#ANNOTATION: docstring
+        contents = contents or self.label
+#ANNOTATION: if contents is false, substitute self.label for contents.
+        if label_suffix is None:
+#ANNOTATION: if label_suffix is None,
+            label_suffix = (self.field.label_suffix if self.field.label_suffix is not None
+                            else self.form.label_suffix)
+#ANNOTATION: if self.field.label_suffix is not None, substitute self.field.label_suffix for label_suffix,
+#ANNOTATION: otherwise substitute self.form.label_suffix for label_suffix.
+        # Only add the suffix if the label does not end in punctuation.
+        # Translators: If found as last label character, these punctuation
+        # characters will prevent the default label_suffix to be appended to the label
+        if label_suffix and contents and contents[-1] not in _(':?.!'):
+#ANNOTATION: if label_suffix and contents are both true and last element of contents is not contained in the result of the function _,
+#ANNOTATION: called with an argument string ':?.!'.
+            contents = format_html('{0}{1}', contents, label_suffix)
+#ANNOTATION: call the method format_html with 3 arguments: string '{0}{1}', contents and label_suffix, substitute the result for contents.
+        widget = self.field.widget
+#ANNOTATION: substitute self.field.widget for widget.
+        id_ = widget.attrs.get('id') or self.auto_id
+#ANNOTATION: get the value under the 'id' key of the widget.attrs dictionary, if the key exists substitute it for id_,
+#ANNOTATION: if not, substitute self.auto_id for id_.
+        if id_:
+#ANNOTATION: if id_ is true,
+            id_for_label = widget.id_for_label(id_)
+#ANNOTATION: call the method widget.id_for_label with an argument id_, substitute the result for id_for_label.
+            if id_for_label:
+#ANNOTATION: if id_for_label is true,
+                attrs = dict(attrs or {}, **{'for': id_for_label})
+#ANNOTATION: unpack a dictionary with an entry id_for_label for 'for', map it through attrs mapping if attrs is true, 
+#ANNOTATION: and convert it again to the dictionary, if attrs is false, leave it alone, substitute the result for attrs.
+            if self.field.required and hasattr(self.form, 'required_css_class'):
+#ANNOTATION: if self.field.required is true and self.form has an attribute 'required_css_class',
+                attrs = attrs or {}
+#ANNOTATION: if attrs is false, make attrs an empty dictionary.
+                if 'class' in attrs:
+#ANNOTATION: if 'class' is contained in attrs,
+                    attrs['class'] += ' ' + self.form.required_css_class
+#ANNOTATION: append self.form.required_css_class to a whitespace character, append it to the value under the 'class' key of the attrs dictionary.
+                else:
+#ANNOTATION: if not,
+                    attrs['class'] = self.form.required_css_class
+#ANNOTATION: substitute self.form.required_css_class for the value under the 'class' key of the attrs dictionary.
+            attrs = flatatt(attrs) if attrs else ''
+#ANNOTATION: if attrs is true, call the function flatatt with an argument attrs, substitute the result for attrs, if not attrs is an empty string.
+            contents = format_html('<label{0}>{1}</label>', attrs, contents)
+#ANNOTATION: call the function format_html with 3 arguments string '<label{0}>{1}</label>', attrs and contents, substitute the result for contents.
+        else:
+#ANNOTATION: if not,
+            contents = conditional_escape(contents)
+#ANNOTATION: call the function conditional_escape with an argument contents, substitute the result for contents. 
+        return mark_safe(contents)
+#ANNOTATION: call the function mark_safe with an argument contents, return the result.
+
+    def css_classes(self, extra_classes=None):
+#ANNOTATION: define the method css_classes with 2 arguments: self and extra_classes set to None.
+        """
+        Returns a string of space-separated CSS classes for this field.
+        """
+#ANNOTATION: docstring
+        if hasattr(extra_classes, 'split'):
+#ANNOTATION: if extra_classes has an attribute 'split',
+            extra_classes = extra_classes.split()
+#ANNOTATION: split extra_classes into words, by whitespaces, substitute the result for extra_classes.
+        extra_classes = set(extra_classes or [])
+#ANNOTATION: if extra_classes is not empty put its elements into a set, substitute it for extra_classes, if not extra_classes is an empty set.
+        if self.errors and hasattr(self.form, 'error_css_class'):
+#ANNOTATION: if self.errors is true and self.form has an attribute 'error_css_class',
+            extra_classes.add(self.form.error_css_class)
+#ANNOTATION: add self.form.error_css_class to extra_classes set.
+        if self.field.required and hasattr(self.form, 'required_css_class'):
+#ANNOTATION: if self.field.required is true and self.form has an attribute 'required_css_class' ,
+            extra_classes.add(self.form.required_css_class)
+#ANNOTATION: add self.form.required_css_class to extra_classes set.
+        return ' '.join(extra_classes)
+#ANNOTATION: join elements of extra_classes into a string separated by whitespaces, return it.
+
+    @property
+#ANNOTATION: property decorator,
+    def is_hidden(self):
+#ANNOTATION: define the method is_hidden with an argument self.
+        "Returns True if this BoundField's widget is hidden."
+#ANNOTATION: docstring
+        return self.field.widget.is_hidden
+#ANNOTATION: return self.field.widget.is_hidden,
+
+    @property
+#ANNOTATION: property decorator,
+    def auto_id(self):
+#ANNOTATION: define the method auto_id with an argument self.
+        """
+        Calculates and returns the ID attribute for this BoundField, if the
+        associated Form has specified auto_id. Returns an empty string otherwise.
+        """
+#ANNOTATION: docstring
+        auto_id = self.form.auto_id
+#ANNOTATION: substitute self.form.auto_id for auto_id.
+        if auto_id and '%s' in smart_text(auto_id):
+#ANNOTATION: if auto_id is true and '%s' is contained in result of the call to the function smart_text with an argument auto_id,
+            return smart_text(auto_id) % self.html_name
+#ANNOTATION: call the function smart_text with an argument auto_id, format the result with self.html_name, return it.
+        elif auto_id:
+#ANNOTATION: otherwise if auto_id is true,
+            return self.html_name
+#ANNOTATION: return self.html_name.
+        return ''
+#ANNOTATION: return an empty string.
+
+    @property
+#ANNOTATION: property decorator,
+    def id_for_label(self):
+#ANNOTATION: define the method id_for_label with an argument self.
+        """
+        Wrapper around the field widget's `id_for_label` method.
+        Useful, for example, for focusing on this field regardless of whether
+        it has a single widget or a MultiWidget.
+        """
+#ANNOTATION: docstring
+        widget = self.field.widget
+#ANNOTATION: substitute self.field.widget for widget.
+        id_ = widget.attrs.get('id') or self.auto_id
+#ANNOTATION: get the value under the 'id' key of the widget.attrs dictionary, if the key exists substitute it for id_,
+#ANNOTATION: if not, substitute self.auto_id for id_.
+        return widget.id_for_label(id_)
+#ANNOTATION: call the method widget.id_for_label with an argument id_, return the result.

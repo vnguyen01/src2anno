@@ -1,0 +1,147 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.utils.encoding import force_str
+#ANNOTATION: from django.utils.encoding import force_st into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.six.moves import http_cookies
+#ANNOTATION: from django.utils.six.moves import http_cookies into default name space.
+
+
+# Some versions of Python 2.7 and later won't need this encoding bug fix:
+_cookie_encodes_correctly = http_cookies.SimpleCookie().value_encode(';') == (';', '"\\073"')
+#ANNOTATION: call the function http_cookies.SimpleCookie, on the return value call the value_encode method, with the argument character ';',
+#ANNOTATION: if the tuple result equals to tuple containing character ';' and string '"\\073"', respectively,
+#ANNOTATION: assign _cookie_encodes_correctly the boolean True value, otherwise assign it False.
+# See ticket #13007, http://bugs.python.org/issue2193 and http://trac.edgewall.org/ticket/2256
+_tc = http_cookies.SimpleCookie()
+#ANNOTATION: assign return value of the call to the http_cookies.SimpleCookie function to _tc.
+try:
+#ANNOTATION: try,
+    _tc.load(str('foo:bar=1'))
+#ANNOTATION: call the _tc.load method with the 'foo:bar=1' converted to string as an argument.
+    _cookie_allows_colon_in_names = True
+#ANNOTATION:  _cookie_allows_colon_in_names is a boolean True.
+except http_cookies.CookieError:
+#ANNOTATION: if http_cookies.CookieError exception is caught,
+    _cookie_allows_colon_in_names = False
+#ANNOTATION: _cookie_allows_colon_in_names is boolean False.
+
+if _cookie_encodes_correctly and _cookie_allows_colon_in_names:
+#ANNOTATION: if _cookie_encodes_correctly and _cookie_allows_colon_in_names are boolean True,
+    SimpleCookie = http_cookies.SimpleCookie
+#ANNOTATION: substitute http_cookies.SimpleCookie for SimpleCookie.
+else:
+#ANNOTATION: if not,
+    Morsel = http_cookies.Morsel
+#ANNOTATION: substitute http_cookies.Morsel for Morsel.
+
+    class SimpleCookie(http_cookies.SimpleCookie):
+#ANNOTATION: derive class SimpleCookie from the base class http_cookies.SimpleCookie.
+        if not _cookie_encodes_correctly:
+#ANNOTATION: if _cookie_encodes_correctly is boolean False,
+            def value_encode(self, val):
+#ANNOTATION: define method value_encode with self class instance and val as arguments.
+                # Some browsers do not support quoted-string from RFC 2109,
+                # including some versions of Safari and Internet Explorer.
+                # These browsers split on ';', and some versions of Safari
+                # are known to split on ', '. Therefore, we encode ';' and ','
+
+                # SimpleCookie already does the hard work of encoding and decoding.
+                # It uses octal sequences like '\\012' for newline etc.
+                # and non-ASCII chars. We just make use of this mechanism, to
+                # avoid introducing two encoding schemes which would be confusing
+                # and especially awkward for javascript.
+
+                # NB, contrary to Python docs, value_encode returns a tuple containing
+                # (real val, encoded_val)
+                val, encoded = super(SimpleCookie, self).value_encode(val)
+#ANNOTATION: from the base class of the class SimpleCookie call the value_encode method with val as the argument, store the result in the val and encoded, respectively.
+
+                encoded = encoded.replace(";", "\\073").replace(",", "\\054")
+#ANNOTATION: in encoded, replace all the occurrences of unicode character "\\054" with ',' character and "\\073" with ';' characters. 
+                # If encoded now contains any quoted chars, we need double quotes
+                # around the whole string.
+                if "\\" in encoded and not encoded.startswith('"'):
+#ANNOTATION: if encoded contains string "\\" and if encoded doesnt start with the double quote symbol,
+                    encoded = '"' + encoded + '"'
+#ANNOTATION: put the double qoutes around encoded.
+
+                return val, encoded
+#ANNOTATION: return val and encoded as a tuple.
+
+        if not _cookie_allows_colon_in_names:
+#ANNOTATION: if _cookie_allows_colon_in_names is False,
+            def load(self, rawdata):
+#ANNOTATION: define the method load with self class instance and rawdata as arguments.
+                self.bad_cookies = set()
+#ANNOTATION: self.bad_cookies is an empty set.
+                if six.PY2 and isinstance(rawdata, six.text_type):
+#ANNOTATION: if six.PY2 is true and rawdata is an instance of the type six.text_type.
+                    rawdata = force_str(rawdata)
+#ANNOTATION: call the function force_str with raw data as an argument and substitute it for rawdata.
+                super(SimpleCookie, self).load(rawdata)
+#ANNOTATION: from the base class of the SimpleCookie class call the method load with rawdata as argument.
+                for key in self.bad_cookies:
+#ANNOTATION: for every key is self.bad_cookies,
+                    del self[key]
+#ANNOTATION: delete self entry under the key key.
+
+            # override private __set() method:
+            # (needed for using our Morsel, and for laxness with CookieError
+            def _BaseCookie__set(self, key, real_value, coded_value):
+#ANNOTATION: define protected method _BaseCookie__set with self class instance, key, real_value and coded_value as arguments.
+                key = force_str(key)
+#ANNOTATION: evaluate the function force_str with key as the argument, substitute it for key.
+                try:
+#ANNOTATION: try, 
+                    M = self.get(key, Morsel())
+#ANNOTATION: get the value under the key of the dictionary self, if key does not exists return evaluated result of the function Morsel, substitute it for M.
+                    M.set(key, real_value, coded_value)
+#ANNOTATION: call the M.set method with the key, real_value, coded_value as the arguments.
+                    dict.__setitem__(self, key, M)
+#ANNOTATION: call the private dict.__setitem__ method with self class instance, key and M as arguments.
+                except http_cookies.CookieError:
+#ANNOTATION: if http_cookies.CookieError exception is raised.
+                    if not hasattr(self, 'bad_cookies'):
+#ANNOTATION: if self does not have 'bad_cookies' attribute,
+                        self.bad_cookies = set()
+#ANNOTATION: self.bad_cookies is an empty set.
+                    self.bad_cookies.add(key)
+#ANNOTATION: add key to the self.bad_cookies set.
+                    dict.__setitem__(self, key, http_cookies.Morsel())
+#ANNOTATION: call the private dict.__setitem__ method with self class instance, key and result of the function http_cookies.Morsel() as arguments.
+
+
+def parse_cookie(cookie):
+#ANNOTATION: define the function parse_cookie with cookie as the argument.
+    if cookie == '':
+#ANNOTATION: if cookie is an empty string,
+        return {}
+#ANNOTATION: return an empty dictionary.
+    if not isinstance(cookie, http_cookies.BaseCookie):
+#ANNOTATION: if cookie is not an instance of http_cookies.BaseCookie,
+        try:
+#ANNOTATION: try,
+            c = SimpleCookie()
+#ANNOTATION: c is an instance of the class SimpleCookie.
+            c.load(cookie)
+#ANNOTATION: call the load method on the c class instance, with the cookie argument.
+        except http_cookies.CookieError:
+#ANNOTATION: if http_cookies.CookieError exception is raised,
+            # Invalid cookie
+            return {}
+#ANNOTATION: return an empty dictionary.
+    else:
+#ANNOTATION: if not,
+        c = cookie
+#ANNOTATION: substitute cookie for c.
+    cookiedict = {}
+#ANNOTATION: cookiedict is an empty dictionary.
+    for key in c.keys():
+#ANNOTATION: for every key in return value of the method c.keys call,
+        cookiedict[key] = c.get(key).value
+#ANNOTATION: get the value filed from the return value of the call to the c.key with the argument key, add the value to the cookiedict under the key key.
+    return cookiedict
+#ANNOTATION: return cookiedict.

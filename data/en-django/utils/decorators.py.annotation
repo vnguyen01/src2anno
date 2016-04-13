@@ -1,0 +1,206 @@
+"Functions that help with dynamically creating decorators for views."
+#ANNOTATION: docstring
+
+from functools import wraps, update_wrapper, WRAPPER_ASSIGNMENTS
+#ANNOTATION: from functools import wraps, update_wrapper and WRAPPER_ASSIGNMENTS into default name space.
+
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+class classonlymethod(classmethod):
+#ANNOTATION: derive the class classonlymethod from the classmethod base class.
+    def __get__(self, instance, owner):
+#ANNOTATION: define the method __get__ with 3 arguments: self, instance and owner.
+        if instance is not None:
+#ANNOTATION: if instance is not None,
+            raise AttributeError("This method is available only on the view class.")
+#ANNOTATION: raise an AttributeError exception with an argument string "This method is available only on the view class.".
+        return super(classonlymethod, self).__get__(instance, owner)
+#ANNOTATION: call the method __get__ with 2 arguments: instance and owner, from the base class of the classonlymethod class, return the result.
+
+
+def method_decorator(decorator):
+#ANNOTATION: define the function method_decorator with an argument decorator.
+    """
+    Converts a function decorator into a method decorator
+    """
+#ANNOTATION: docstring
+    # 'func' is a function at the time it is passed to _dec, but will eventually
+    # be a method of the class it is defined it.
+    def _dec(func):
+#ANNOTATION: define the function _dec with an argument func.
+        def _wrapper(self, *args, **kwargs):
+#ANNOTATION: define the method _wrapper with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+            @decorator
+#ANNOTATION: decorator decorator.
+            def bound_func(*args2, **kwargs2):
+#ANNOTATION: define the function bound_func with 2 arguments: unpacked list args2 and unpacked dictionary kwargs2.
+                return func.__get__(self, type(self))(*args2, **kwargs2)
+#ANNOTATION: call the method func.__get__ with 2 arguments: self and type of self object, call the result with 2 arguments: 
+#ANNOTATION: unpacked list args2 and unpacked dictionary kwargs2, return the result.
+            # bound_func has the signature that 'decorator' expects i.e.  no
+            # 'self' argument, but it is a closure over self so it can call
+            # 'func' correctly.
+            return bound_func(*args, **kwargs)
+#ANNOTATION: call the function bound_func with 2 arguments: unpacked list args and unpacked dictionary kwargs, return the result.
+        # In case 'decorator' adds attributes to the function it decorates, we
+        # want to copy those. We don't have access to bound_func in this scope,
+        # but we can cheat by using it on a dummy function.
+
+        @decorator
+#ANNOTATION: decorator decorator.
+        def dummy(*args, **kwargs):
+#ANNOTATION: define the function dummy with 2 arguments: unpacked list args and unpacked dictionary kwargs.
+            pass
+#ANNOTATION: do nothing.
+        update_wrapper(_wrapper, dummy)
+#ANNOTATION: call the function update_wrapper with 2 arguments: _wrapper and dummy.
+        # Need to preserve any existing attributes of 'func', including the name.
+        update_wrapper(_wrapper, func)
+#ANNOTATION: call the function update_wrapper with 2 arguments: _wrapper and func. 
+
+        return _wrapper
+#ANNOTATION: return _wrapper.
+
+    update_wrapper(_dec, decorator, assigned=available_attrs(decorator))
+#ANNOTATION: call the function update_wrapper with 3 arguments: _dec, decorator and assigned as result of the function available_attrs, 
+#ANNOTATION: called with an argument decorator.
+    # Change the name to aid debugging.
+    if hasattr(decorator, '__name__'):
+#ANNOTATION: if decorator has an attribute 'process_view',
+        _dec.__name__ = 'method_decorator(%s)' % decorator.__name__
+#ANNOTATION: _dec.__name__ is a string 'method_decorator(%s)' formated with decorator.__name__.
+    else:
+#ANNOTATION: if not, 
+        _dec.__name__ = 'method_decorator(%s)' % decorator.__class__.__name__
+#ANNOTATION: _dec.__name__ is a string 'method_decorator(%s)' formated with decorator.__class__.__name__.
+    return _dec
+#ANNOTATION: return _dec.
+
+
+def decorator_from_middleware_with_args(middleware_class):
+#ANNOTATION: define the function decorator_from_middleware_with_args with an argument middleware_class.
+    """
+    Like decorator_from_middleware, but returns a function
+    that accepts the arguments to be passed to the middleware_class.
+    Use like::
+
+         cache_page = decorator_from_middleware_with_args(CacheMiddleware)
+         # ...
+
+         @cache_page(3600)
+         def my_view(request):
+             # ...
+    """
+#ANNOTATION: docstring
+    return make_middleware_decorator(middleware_class)
+#ANNOTATION: call the function make_middleware_decorator with an argument middleware_class, return the result.
+
+
+def decorator_from_middleware(middleware_class):
+#ANNOTATION: define the function decorator_from_middleware with an argument middleware_class.
+    """
+    Given a middleware class (not an instance), returns a view decorator. This
+    lets you use middleware functionality on a per-view basis. The middleware
+    is created with no params passed.
+    """
+#ANNOTATION: docstring
+    return make_middleware_decorator(middleware_class)()
+#ANNOTATION: call the function make_middleware_decorator with an argument middleware_class, call the result, return the new result.
+
+
+def available_attrs(fn):
+#ANNOTATION: define the function available_attrs with an argument fn.
+    """
+    Return the list of functools-wrappable attributes on a callable.
+    This is required as a workaround for http://bugs.python.org/issue3445
+    under Python 2.
+    """
+#ANNOTATION: docstring
+    if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+        return WRAPPER_ASSIGNMENTS
+#ANNOTATION: return WRAPPER_ASSIGNMENTS.
+    else:
+#ANNOTATION: if not,
+        return tuple(a for a in WRAPPER_ASSIGNMENTS if hasattr(fn, a))
+#ANNOTATION: if fh has an attribute a, for every a in WRAPPER_ASSIGNMENTS, put a into a tuple, return the resulting tuple.
+
+
+def make_middleware_decorator(middleware_class):
+#ANNOTATION: define the function make_middleware_decorator with an argument middleware_class.
+    def _make_decorator(*m_args, **m_kwargs):
+#ANNOTATION: define the function make_decorator with 2 arguments: unpacked list m_args and unpacked dictionary m_kwargs.
+        middleware = middleware_class(*m_args, **m_kwargs)
+#ANNOTATION: call the function middleware_class with 2 arguments: unpacked list m_args and unpacked dictionary m_kwargs,
+#ANNOTATION: substitute the middleware.
+
+        def _decorator(view_func):
+#ANNOTATION: define the function _decorator with an argument view_func.
+            @wraps(view_func, assigned=available_attrs(view_func))
+#ANNOTATION: decorator function wraps with 2 arguments: view_func and assigned set to result of the function available_attrs, 
+#ANNOTATION: called with an argument view_func.
+            def _wrapped_view(request, *args, **kwargs):
+#ANNOTATION: define the function _wrapped_view with 3 arguments: request, unpacked list args and unpacked dictionary kwargs.
+                if hasattr(middleware, 'process_request'):
+#ANNOTATION: if middleware has an attribute 'process_request',
+                    result = middleware.process_request(request)
+#ANNOTATION: call the method middleware.process_request with an argument request, substitute the result for result.
+                    if result is not None:
+#ANNOTATION: if result is not None,
+                        return result
+#ANNOTATION: return result.
+                if hasattr(middleware, 'process_view'):
+#ANNOTATION: if middleware has an attribute 'process_view',
+                    result = middleware.process_view(request, view_func, args, kwargs)
+#ANNOTATION: call the method middleware.process_view with 4 arguments: request, view_func, args and kwargs, substitute the result for result.
+                    if result is not None:
+#ANNOTATION: if result is not None,
+                        return result
+#ANNOTATION: return result.
+                try:
+#ANNOTATION: try,
+                    response = view_func(request, *args, **kwargs)
+#ANNOTATION: call the function view_func with 3 arguments: request, unpacked list args, unpacked dictionary kwargs, substitute the result for response.
+                except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+                    if hasattr(middleware, 'process_exception'):
+#ANNOTATION:  if middleware has an attribute 'process_exception',
+                        result = middleware.process_exception(request, e)
+#ANNOTATION: call the method middleware.process_exception with 2 arguments: request and e, substitute the result for result.
+                        if result is not None:
+#ANNOTATION: if result is not None,
+                            return result
+#ANNOTATION: return result,
+                    raise
+#ANNOTATION: raise an exception.
+                if hasattr(response, 'render') and callable(response.render):
+#ANNOTATION: if response has an attribute 'render' and response.render is a callable object,
+                    if hasattr(middleware, 'process_template_response'):
+#ANNOTATION: if middleware has an attribute 'process_response',
+                        response = middleware.process_template_response(request, response)
+#ANNOTATION: call the method middleware.process_template_response with 2 arguments: request and response, substitute the result for response.
+                    # Defer running of process_response until after the template
+                    # has been rendered:
+                    if hasattr(middleware, 'process_response'):
+#ANNOTATION: if middleware has an attribute 'process_response',
+                        callback = lambda response: middleware.process_response(request, response)
+#ANNOTATION: callback is an lambda function with an argument response and with return value result of the method middleware.process_response,
+#ANNOTATION: called with 2 arguments: request and response.
+                        response.add_post_render_callback(callback)
+#ANNOTATION: call the method response.add_post_render_callback with an argument callback.
+                else:
+#ANNOTATION: if not,
+                    if hasattr(middleware, 'process_response'):
+#ANNOTATION: if middleware has an attribute 'process_response',
+                        return middleware.process_response(request, response)
+#ANNOTATION: call the method middleware.process_response with 2 arguments: request and response, return the result.
+                return response
+#ANNOTATION: return response.
+            return _wrapped_view
+#ANNOTATION: return _wrapped_view.
+        return _decorator
+#ANNOTATION: return _decorator.
+    return _make_decorator
+#ANNOTATION: return _make_decorator.

@@ -1,0 +1,383 @@
+from __future__ import absolute_import  # Avoid importing `importlib` from this package.
+#ANNOTATION: from __future__ import absolute_ into default name space.
+
+import decimal
+#ANNOTATION: import module decimal.
+import datetime
+#ANNOTATION: import module datetime.
+from importlib import import_module
+#ANNOTATION: from importlib import import_module into default name space.
+import unicodedata
+#ANNOTATION: import module unicodedata.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.utils import dateformat, numberformat, datetime_safe
+#ANNOTATION: from django.utils import dateformat, numberformat and datetime_safe into default name space.
+from django.utils.encoding import force_str
+#ANNOTATION: from django.utils.encoding import force_str into default name space.
+from django.utils.functional import lazy
+#ANNOTATION: from django.utils.functional import lazy into default name space.
+from django.utils.safestring import mark_safe
+#ANNOTATION: from django.utils.safestring import mark_safe into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.translation import get_language, to_locale, check_for_language
+#ANNOTATION: from django.utils.translation import get_language, to_locale and check_for_language into default name space.
+
+# format_cache is a mapping from (format_type, lang) to the format string.
+# By using the cache, it is possible to avoid running get_format_modules
+# repeatedly.
+_format_cache = {}
+#ANNOTATION: _format_cache is an empty dictionary.
+_format_modules_cache = {}
+#ANNOTATION:_format_modules_cache is an empty dictionary. 
+
+ISO_INPUT_FORMATS = {
+    'DATE_INPUT_FORMATS': ('%Y-%m-%d',),
+    'TIME_INPUT_FORMATS': ('%H:%M:%S', '%H:%M:%S.%f', '%H:%M'),
+    'DATETIME_INPUT_FORMATS': (
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%d %H:%M:%S.%f',
+        '%Y-%m-%d %H:%M',
+        '%Y-%m-%d'
+    ),
+}
+#ANNOTATION: ISO_INPUT_FORMATS is a dictionary with 3 entries: tuple with an element string '%Y-%m-%d' for 'DATE_INPUT_FORMATS',
+#ANNOTATION: tuple with 3 elements: strings '%H:%M:%S', '%H:%M:%S.%f' and '%H:%M' for 'TIME_INPUT_FORMATS',
+#ANNOTATION: tuple with 4 elements: strings '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M' and '%Y-%m-%d' for 'DATETIME_INPUT_FORMATS'.
+
+
+def reset_format_cache():
+#ANNOTATION: define the function reset_format_cache.
+    """Clear any cached formats.
+
+    This method is provided primarily for testing purposes,
+    so that the effects of cached formats can be removed.
+    """
+#ANNOTATION: docstring
+    global _format_cache, _format_modules_cache
+#ANNOTATION: use global variables _format_cache and _format_modules_cache.
+    _format_cache = {}
+#ANNOTATION: _format_cache is an empty dictionary.
+    _format_modules_cache = {}
+#ANNOTATION: _format_modules_cache is an empty dictionary.
+
+
+def iter_format_modules(lang, format_module_path=None):
+#ANNOTATION: define the function iter_format_modules with 2 arguments: lang and format_module_path set to None.
+    """
+    Does the heavy lifting of finding format modules.
+    """
+#ANNOTATION: docstring
+    if not check_for_language(lang):
+#ANNOTATION: call the function check_for_language with an argument lang, if it evaluates to false,
+        return
+#ANNOTATION: return nothing.
+
+    if format_module_path is None:
+#ANNOTATION: if format_module_path is None.
+        format_module_path = settings.FORMAT_MODULE_PATH
+#ANNOTATION: substitute settings.FORMAT_MODULE_PATH for settings.FORMAT_MODULE_PATH.
+
+    format_locations = []
+#ANNOTATION: format_locations is an empty list.
+    if format_module_path:
+#ANNOTATION: if format_module_path is true,
+        if isinstance(format_module_path, six.string_types):
+#ANNOTATION: if format_module_path is an instance of six.string_types,
+            format_module_path = [format_module_path]
+#ANNOTATION: format_module_path is a list containing an element format_module_path. 
+        for path in format_module_path:
+#ANNOTATION: for every path in format_module_path,
+            format_locations.append(path + '.%s')
+#ANNOTATION: concatenate path and string '.%s', append the result to format_module_path.
+    format_locations.append('django.conf.locale.%s')
+#ANNOTATION: append string 'django.conf.locale.%s' to format_locations.
+    locale = to_locale(lang)
+#ANNOTATION: call the function to_locale with an argument lang, substitute the result for locale.
+    locales = [locale]
+#ANNOTATION: locales is a list with an element locale.
+    if '_' in locale:
+#ANNOTATION: if '_' is contained in locale,
+        locales.append(locale.split('_')[0])
+#ANNOTATION: split locale by '_', append the first element of the result to locales.
+    for location in format_locations:
+#ANNOTATION: for every location in format_locations,
+        for loc in locales:
+#ANNOTATION: for every loc in locales,
+            try:
+#ANNOTATION: try,
+                yield import_module('%s.formats' % (location % loc))
+#ANNOTATION: call the function import_module with an argument string '%s.formats' formated with location, which is formated with loc,
+#ANNOTATION: yield the result.
+            except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+
+
+def get_format_modules(lang=None, reverse=False):
+#ANNOTATION: define the function get_format_modules with 2 arguments: lang set to None and reverse set to boolean False.
+    """
+    Returns a list of the format modules found
+    """
+#ANNOTATION: docstring
+    if lang is None:
+#ANNOTATION: if lang is None,
+        lang = get_language()
+#ANNOTATION: call the function get_language, substitute the result for lang.
+    modules = _format_modules_cache.setdefault(lang, list(iter_format_modules(lang, settings.FORMAT_MODULE_PATH)))
+#ANNOTATION: call the method _format_modules_cache.setdefault with 2 arguments: lang and list created out of the results of the function,
+#ANNOTATION: iter_format_modules called with 2 arguments: lang and settings.FORMAT_MODULE_PATH, substitute the result for modules.
+    if reverse:
+#ANNOTATION: if reverse is true,
+        return list(reversed(modules))
+#ANNOTATION: reverse the order of modules elements, put them into a list, return it.
+    return modules
+#ANNOTATION: return modules.s
+
+
+def get_format(format_type, lang=None, use_l10n=None):
+#ANNOTATION: define the function get_format with 3 arguments: format_type, lang set to None and use_l10n set to None.
+    """
+    For a specific format type, returns the format for the current
+    language (locale), defaults to the format in the settings.
+    format_type is the name of the format, e.g. 'DATE_FORMAT'
+
+    If use_l10n is provided and is not None, that will force the value to
+    be localized (or not), overriding the value of settings.USE_L10N.
+    """
+#ANNOTATION: docstring
+    format_type = force_str(format_type)
+#ANNOTATION: call the function force_str with an argument format_type, substitute the result for format_type.
+    if use_l10n or (use_l10n is None and settings.USE_L10N):
+#ANNOTATION: if use_l10n is true, or if use_l10n is None and settings.USE_L10N is true,
+        if lang is None:
+#ANNOTATION: if lang is None,
+            lang = get_language()
+#ANNOTATION: call the function get_language, substitute the result for lang.
+        cache_key = (format_type, lang)
+#ANNOTATION: cache_key is a tuple with 2 argumetns: format_type and lang.
+        try:
+#ANNOTATION: try,
+            cached = _format_cache[cache_key]
+#ANNOTATION: substitute value under the cache_key key of the _format_cache dictionary for cached.
+            if cached is not None:
+#ANNOTATION: if cached is not None,
+                return cached
+#ANNOTATION: return cached.
+            else:
+#ANNOTATION: if not,
+                # Return the general setting by default
+                return getattr(settings, format_type)
+#ANNOTATION: get format_type attribute of the settings object, return it.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            for module in get_format_modules(lang):
+#ANNOTATION: call the function get_format_modules with an argument lang, for every module in the result,
+                try:
+#ANNOTATION: try,
+                    val = getattr(module, format_type)
+#ANNOTATION: get format_type attribute of module object, substitute the result for val.
+                    for iso_input in ISO_INPUT_FORMATS.get(format_type, ()):
+#ANNOTATION: get the value under the if iso_input not in val key of the ISO_INPUT_FORMATS dictionary, if it doesnt exists return an empty tuple,
+#ANNOTATION: for every iso_input in the result,
+                        if iso_input not in val:
+#ANNOTATION: if iso_input is not contained in val,
+                            if isinstance(val, tuple):
+#ANNOTATION: if val is an instance of tuple,
+                                val = list(val)
+#ANNOTATION: convert val to an list, substitute it for val.
+                            val.append(iso_input)
+#ANNOTATION: append iso_input to val.
+                    _format_cache[cache_key] = val
+#ANNOTATION: substitute val for the value under the cache_key key of the _format_cache dictionary.
+                    return val
+#ANNOTATION: return val.
+                except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+                    pass
+#ANNOTATION: do nothing.
+            _format_cache[cache_key] = None
+#ANNOTATION: value under the cache_key key of the _format_cache dictionary is None.
+    return getattr(settings, format_type)
+#ANNOTATION: get format_type attribute of the settings object, return it.
+
+get_format_lazy = lazy(get_format, six.text_type, list, tuple)
+#ANNOTATION: call the function lazy with 4 arguments: get_format, six.text_type, list and tuple, substitute the result for get_format_lazy.
+
+
+def date_format(value, format=None, use_l10n=None):
+#ANNOTATION: define the function date_format with 3 arguments: value, format set to None and use_l10n set to None.
+    """
+    Formats a datetime.date or datetime.datetime object using a
+    localizable format
+
+    If use_l10n is provided and is not None, that will force the value to
+    be localized (or not), overriding the value of settings.USE_L10N.
+    """
+#ANNOTATION: docstring
+    return dateformat.format(value, get_format(format or 'DATE_FORMAT', use_l10n=use_l10n))
+#ANNOTATION: call the function dateformat.format with 2 arguments: value and result of the function get_format called with 2 arguments:
+#ANNOTATION: format, if its true, otherwise string 'DATE_FORMAT' and use_l10n as use_l10n, return the result.
+
+
+def time_format(value, format=None, use_l10n=None):
+#ANNOTATION: define the function time_format with 3 arguments: value, format set to None and use_l10n set to None.
+    """
+    Formats a datetime.time object using a localizable format
+
+    If use_l10n is provided and is not None, that will force the value to
+    be localized (or not), overriding the value of settings.USE_L10N.
+    """
+#ANNOTATION: docstring
+    return dateformat.time_format(value, get_format(format or 'TIME_FORMAT', use_l10n=use_l10n))
+#ANNOTATION: call the function dateformat.time_format with 2 arguments: value and result of the function get_format called with 2 arguments:
+#ANNOTATION: format, if its true, otherwise string 'TIME_FORMAT' and use_l10n as use_l10n, return the result.
+
+
+def number_format(value, decimal_pos=None, use_l10n=None, force_grouping=False):
+#ANNOTATION: define the function number_format with 4 arguments: value, decimal_pos set to None, use_l10n set to None,
+#ANNOTATION: and force_grouping set to boolean False.
+    """
+    Formats a numeric value using localization settings
+
+    If use_l10n is provided and is not None, that will force the value to
+    be localized (or not), overriding the value of settings.USE_L10N.
+    """
+#ANNOTATION: docstring
+    if use_l10n or (use_l10n is None and settings.USE_L10N):
+#ANNOTATION: if use_l10n is true, or use_l10n is None and settings.USE_L10N is true,
+        lang = get_language()
+#ANNOTATION: call the function get_language, substitute the result for lang.
+    else:
+#ANNOTATION: if not,
+        lang = None
+#ANNOTATION: lang is None.
+    return numberformat.format(
+        value,
+        get_format('DECIMAL_SEPARATOR', lang, use_l10n=use_l10n),
+        decimal_pos,
+        get_format('NUMBER_GROUPING', lang, use_l10n=use_l10n),
+        get_format('THOUSAND_SEPARATOR', lang, use_l10n=use_l10n),
+        force_grouping=force_grouping
+    )
+#ANNOTATION: call the method numberformat.format with 6 arguments: value, result of the function get_format called with 3 arguments:
+#ANNOTATION: string 'DECIMAL_SEPARATOR', lang and use_l10n set to use_l10n, decimal_pos, result of the function get_format called with 3 arguments:
+#ANNOTATION: string 'NUMBER_GROUPING', lang and use_l10n as use_l10n, result of the function get_format called with an argument:
+#ANNOTATION: string 'THOUSAND_SEPARATOR', lang and use_l10n as use_l10n and force_grouping as force_grouping, return the result.
+
+
+def localize(value, use_l10n=None):
+#ANNOTATION: define the function localize with 2 arguments value and use_l10n set to None.
+    """
+    Checks if value is a localizable type (date, number...) and returns it
+    formatted as a string using current locale format.
+
+    If use_l10n is provided and is not None, that will force the value to
+    be localized (or not), overriding the value of settings.USE_L10N.
+    """
+#ANNOTATION: docstring
+    if isinstance(value, bool):
+#ANNOTATION: if value is an instance of bool.
+        return mark_safe(six.text_type(value))
+#ANNOTATION: call the function six.text_type with an argument value, use the result as an argument for the call to the function mark_safe,
+#ANNOTATION: return the result.
+    elif isinstance(value, (decimal.Decimal, float) + six.integer_types):
+#ANNOTATION: otherwise if value is an instance of decimal.Decimal, float or six.integer_types,
+        return number_format(value, use_l10n=use_l10n)
+#ANNOTATION: call the function number_format with 2 arguments: value and use_l10 as use_l10n, return the result.
+    elif isinstance(value, datetime.datetime):
+#ANNOTATION: otherwise if value is an instance of datetime.datetime,
+        return date_format(value, 'DATETIME_FORMAT', use_l10n=use_l10n)
+#ANNOTATION: call the function date_format with 2 arguments: value, string 'DATETIME_FORMAT' and use_l10n as use_l10n, return the result.
+    elif isinstance(value, datetime.date):
+#ANNOTATION: otherwise if value is an instance of datetime.date,
+        return date_format(value, use_l10n=use_l10n)
+#ANNOTATION: call the function date_format with 2 arguments: value and use_l10n as use_l10n, return the result.
+    elif isinstance(value, datetime.time):
+#ANNOTATION: otherwise if value is an instance of datetime.time,
+        return time_format(value, 'TIME_FORMAT', use_l10n=use_l10n)
+#ANNOTATION: call the function time_format with 3 arguments: value, string 'TIME_FORMAT' and use_l10n as use_l10n, return the result.
+    else:
+#ANNOTATION: if not,
+        return value
+#ANNOTATION: return value.
+
+
+def localize_input(value, default=None):
+#ANNOTATION: define the function localize_input with 2 arguments value and default set to None.
+    """
+    Checks if an input value is a localizable type and returns it
+    formatted with the appropriate formatting string of the current locale.
+    """
+#ANNOTATION: docstring
+    if isinstance(value, (decimal.Decimal, float) + six.integer_types):
+#ANNOTATION: otherwise if value is an instance of decimal.Decimal, float or six.integer_types,
+        return number_format(value)
+#ANNOTATION: call the function number_format with an argument value, return the result.
+    elif isinstance(value, datetime.datetime):
+#ANNOTATION: otherwise if value is an instance of datetime.datetime,
+        value = datetime_safe.new_datetime(value)
+#ANNOTATION: call the method datetime_safe.new_datetime with an argument value, substitute the result for value.
+        format = force_str(default or get_format('DATETIME_INPUT_FORMATS')[0])
+#ANNOTATION: call the function force_str with an argument: default if it is true, or if not, first element of the result of the function,
+#ANNOTATION: get_format called with an argument string 'DATETIME_INPUT_FORMATS', substitute the result for format.
+        return value.strftime(format)
+#ANNOTATION: call the method value.strftime with an argument format, return the result.
+    elif isinstance(value, datetime.date):
+#ANNOTATION: otherwise if value is an instance of datetime.date,
+        value = datetime_safe.new_date(value)
+#ANNOTATION: call the method datetime_safe.new_date with an argument value, substitute the result for value.
+        format = force_str(default or get_format('DATE_INPUT_FORMATS')[0])
+#ANNOTATION: call the function force_str with an argument: default if it is true, or if not, first element of the result of the function,
+#ANNOTATION: get_format called with an argument string 'DATE_INPUT_FORMATS', substitute the result for format.
+        return value.strftime(format)
+#ANNOTATION: call the method value.strftime with an argument format, return the result.
+    elif isinstance(value, datetime.time):
+#ANNOTATION: otherwise if value is an instance of datetime.time,
+        format = force_str(default or get_format('TIME_INPUT_FORMATS')[0])
+#ANNOTATION: call the function force_str with an argument: default if it is true, or if not, first element of the result of the function,
+#ANNOTATION: get_format called with an argument string 'TIME_INPUT_FORMATS', substitute the result for format.
+        return value.strftime(format)
+#ANNOTATION: call the method value.strftime with an argument format, return the result.
+    return value
+#ANNOTATION: return value.
+
+
+def sanitize_separators(value):
+#ANNOTATION: define the function sanitize_separators with an argument value.
+    """
+    Sanitizes a value according to the current decimal and
+    thousand separator setting. Used with form field input.
+    """
+#ANNOTATION: docstring
+    if settings.USE_L10N and isinstance(value, six.string_types):
+#ANNOTATION: if settings.USE_L10N is true and value is an instance of six.string_types,
+        parts = []
+#ANNOTATION: parts is an empty list.
+        decimal_separator = get_format('DECIMAL_SEPARATOR')
+#ANNOTATION: call the function get_format with an argument string 'DECIMAL_SEPARATOR', substitute the result for decimal_separator. 
+        if decimal_separator in value:
+#ANNOTATION: if decimal_separator is contained in value,
+            value, decimals = value.split(decimal_separator, 1)
+#ANNOTATION: split value into two parts by decimal_separator, assign the result to value and decimals.
+            parts.append(decimals)
+#ANNOTATION: append decimals to parts.
+        if settings.USE_THOUSAND_SEPARATOR:
+#ANNOTATION: if settings.USE_THOUSAND_SEPARATOR is true,
+            thousand_sep = get_format('THOUSAND_SEPARATOR')
+#ANNOTATION: call the function get_format with an argument string 'THOUSAND_SEPARATOR', substitute the result for thousand_sep. 
+            for replacement in set([
+                    thousand_sep, unicodedata.normalize('NFKD', thousand_sep)]):
+#ANNOTATION: call the function unicodedata.normalize with 2 arguments: string 'NFKD' and thousand_sep, put the result and thousand_sep into a set,
+#ANNOTATION: for every replacement in the resulting set,
+                value = value.replace(replacement, '')
+#ANNOTATION: replace every occurrence of replacement in value for an empty string, substitute the result for value.
+        parts.append(value)
+#ANNOTATION: append value to parts.
+        value = '.'.join(reversed(parts))
+#ANNOTATION: reverse order of parts, join them into a string, separated with '.', substitute the result for value.
+    return value
+#ANNOTATION: return value.

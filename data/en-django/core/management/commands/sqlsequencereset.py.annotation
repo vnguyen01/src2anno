@@ -1,0 +1,46 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.core.management.base import AppCommand
+#ANNOTATION: from django.core.management.base import AppCommand into default name space.
+from django.core.management.sql import check_for_migrations
+#ANNOTATION: from django.core.management.sql import check_for_migrations into default name space.
+from django.db import connections, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import connections and DEFAULT_DB_ALIAS into default name space.
+
+
+class Command(AppCommand):
+#ANNOTATION: derive the class Command from the AppCommand base class.
+    help = 'Prints the SQL statements for resetting sequences for the given app name(s).'
+#ANNOTATION: help is a string 'Prints the SQL statements for resetting sequences for the given app name(s).'.
+
+    output_transaction = True
+#ANNOTATION: output_transaction is boolean True.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments, with 2 arguments self and parser.
+        super(Command, self).add_arguments(parser)
+#ANNOTATION: call the method add_arguments from the base class of the Command class, with an argument parser.
+        parser.add_argument('--database', default=DEFAULT_DB_ALIAS,
+            help='Nominates a database to print the SQL for. Defaults to the '
+                 '"default" database.')
+#ANNOTATION: call the method parser.add_argument with 3 arguments: string '--database', default set to DEFAULT_DB_ALIAS,
+#ANNOTATION: and help set to string 'Nominates a database to print the SQL for. Defaults to the "default" database.'.
+
+    def handle_app_config(self, app_config, **options):
+#ANNOTATION: define the method handle_app_config with 3 arguments: self, app_config and unpacked dictionary options.
+        if app_config.models_module is None:
+#ANNOTATION: if app_config.models_module is None,
+            return
+#ANNOTATION: return nothing.
+        connection = connections[options.get('database')]
+#ANNOTATION: get the value under the 'database' key of the options dictionary, 
+#ANNOTATION: use the result as a key to get the value from the connections dictionary, substitute the result for connection.
+        check_for_migrations(app_config, connection)
+#ANNOTATION: call the function check_for_migrations with 2 arguments: app_config and connection.
+        models = app_config.get_models(include_auto_created=True)
+#ANNOTATION: call the method app_config.get_models with include_auto_created set to boolean True, substitute the result for models.
+        statements = connection.ops.sequence_reset_sql(self.style, models)
+#ANNOTATION: call the method connection.ops.sequence_reset_sql with 2 arguments self.style and models, substitute the result for statements.
+        return '\n'.join(statements)
+#ANNOTATION: join statements into a string, separated by newline characters, return it.

@@ -1,0 +1,286 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import os
+#ANNOTATION: import module os.
+from io import BytesIO, StringIO, UnsupportedOperation
+#ANNOTATION: from io import BytesIO,  StringIO and UnsupportedOperation into default name space.
+
+from django.utils.encoding import smart_text
+#ANNOTATION: from django.utils.encoding import smart_text into default name space.
+from django.core.files.utils import FileProxyMixin
+#ANNOTATION: from django.core.files.utils import FileProxyMixin into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.encoding import force_bytes, python_2_unicode_compatible
+#ANNOTATION: from django.utils.encoding import force_bytes and python_2_unicode_compatible into default name space.
+
+
+@python_2_unicode_compatible
+#ANNOTATION: decorator python_2_unicode_compatible,  
+class File(FileProxyMixin):
+#ANNOTATION: derive the class File from the FileProxyMixin base class.
+    DEFAULT_CHUNK_SIZE = 64 * 2 ** 10
+#ANNOTATION: bring integer 2 to the power of 10, multiply it by 64, substitute the result for DEFAULT_CHUNK_SIZE.
+
+    def __init__(self, file, name=None):
+#ANNOTATION: define the method __init__ with self class instance, file, and name defaulting to None as arguments.
+        self.file = file
+#ANNOTATION: substitute file for self.file.
+        if name is None:
+#ANNOTATION: if name is None,
+            name = getattr(file, 'name', None)
+#ANNOTATION: get 'name' attribute from the file object, if it doesnt exists use None, substitute it for name.
+        self.name = name
+#ANNOTATION: substitute name for self.name.
+        if hasattr(file, 'mode'):
+#ANNOTATION: if file object has an attribute 'mode',
+            self.mode = file.mode
+#ANNOTATION: substitute file.mode for self.mode.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with argument self.
+        return smart_text(self.name or '')
+#ANNOTATION: evaluate the function smart_text with argument self.name, if exists, or an empty string, if not, return the result.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with argument self.
+        return "<%s: %s>" % (self.__class__.__name__, self or "None")
+#ANNOTATION: substitute '%s' in string '<%s: %s>' with self.__class__.__name__ and self, if exists, or string 'None' if it doesnt, return it.
+
+    def __bool__(self):
+#ANNOTATION: define the method __bool__ with argument self.
+        return bool(self.name)
+#ANNOTATION: convert self.name into an boolean, return it.
+
+    def __nonzero__(self):      # Python 2 compatibility
+#ANNOTATION: define the method __nonzero__ with argument self.
+        return type(self).__bool__(self)
+#ANNOTATION: call the __bool__ method with argument self, on the return value of the type function with argument self, return the result.
+
+    def __len__(self):
+#ANNOTATION: define the method __len__ with argument self.
+        return self.size
+#ANNOTATION: return self.size.
+
+    def _get_size_from_underlying_file(self):
+#ANNOTATION: define the method _get_size_from_underlying_file with argument self.
+        if hasattr(self.file, 'size'):
+#ANNOTATION: if self.file has an attribute 'size',
+            return self.file.size
+#ANNOTATION: return self.file.size.
+        if hasattr(self.file, 'name'):
+#ANNOTATION: if self.file has an attribute 'name',
+            try:
+#ANNOTATION: try,
+                return os.path.getsize(self.file.name)
+#ANNOTATION: call the os.path.getsize function with argument self.file.name, return the result.
+            except (OSError, TypeError):
+#ANNOTATION: if OSError or TypeError errors occurred.
+                pass
+#ANNOTATION: do nothing.
+        if hasattr(self.file, 'tell') and hasattr(self.file, 'seek'):
+#ANNOTATION: if self.file has an attribute 'tell' and an attribute 'seek',
+            pos = self.file.tell()
+#ANNOTATION: get the position of the self.file file pointer, substitute it for pos.
+            self.file.seek(0, os.SEEK_END)
+#ANNOTATION: position the file self.file pointer at the end.
+            size = self.file.tell()
+#ANNOTATION: get the position of the file self.file pointer, substitute it for size.
+            self.file.seek(pos)
+#ANNOTATION: position file self.file pointer at the pos position.
+            return size
+#ANNOTATION: return size.
+        raise AttributeError("Unable to determine the file's size.")
+#ANNOTATION: raise an AttributeError exception with string "Unable to determine the file's size." as argument.
+
+    def _get_size(self):
+#ANNOTATION: define the method _get_size with argument self.
+        if hasattr(self, '_size'):
+#ANNOTATION: if self has an attribute '_size'.
+            return self._size
+#ANNOTATION: return self._size.
+        self._size = self._get_size_from_underlying_file()
+#ANNOTATION: call the method self._get_size_from_underlying_file, substitute the result for self._size.
+        return self._size
+#ANNOTATION: return self._size.
+
+    def _set_size(self, size):
+#ANNOTATION: define the method _set_size with arguments self and size.
+        self._size = size
+#ANNOTATION: substitute size for self._size.
+
+    size = property(_get_size, _set_size)
+#ANNOTATION: size is a property object with _get_size as getter method and _set_size as setter method.
+
+    def _get_closed(self):
+#ANNOTATION: define the method _get_closed with argument self.
+        return not self.file or self.file.closed
+#ANNOTATION: if self.file is false or self.file.closed is true, return boolean true, otherwise return boolean false.
+    closed = property(_get_closed)
+#ANNOTATION: closed is a property object with _get_closed as a getter method.
+
+    def chunks(self, chunk_size=None):
+#ANNOTATION: define the method chunks with arguments self and chunk_size defaulting to None.
+        """
+        Read the file and yield chucks of ``chunk_size`` bytes (defaults to
+        ``UploadedFile.DEFAULT_CHUNK_SIZE``).
+        """
+#ANNOTATION: docstring
+        if not chunk_size:
+#ANNOTATION: if chunk_size is false,
+            chunk_size = self.DEFAULT_CHUNK_SIZE
+#ANNOTATION: substitute the self.DEFAULT_CHUNK_SIZE for chunk_size.
+
+        try:
+#ANNOTATION: try,
+            self.seek(0)
+#ANNOTATION: position the file pointer at the beginning of self file.
+        except (AttributeError, UnsupportedOperation):
+#ANNOTATION: if AttributeError or UnsupportedOperation exception occurred.
+            pass
+#ANNOTATION: do nothing.
+
+        while True:
+#ANNOTATION: endless loop,
+            data = self.read(chunk_size)
+#ANNOTATION: call the self.read method with argument chunk_size, substitute the result for data.
+            if not data:
+#ANNOTATION: if data is false,
+                break
+#ANNOTATION: break from the smallest enclosing loop.
+            yield data
+#ANNOTATION: yield one element of data iterable.
+
+    def multiple_chunks(self, chunk_size=None):
+#ANNOTATION: define the method __multiple_chunks__ with arguments self and chunk_size defaulting to None.
+        """
+        Returns ``True`` if you can expect multiple chunks.
+
+        NB: If a particular file representation is in memory, subclasses should
+        always return ``False`` -- there's no good reason to read from memory in
+        chunks.
+        """
+#ANNOTATION: docstring 
+        if not chunk_size:
+#ANNOTATION: if chunk_size is false,
+            chunk_size = self.DEFAULT_CHUNK_SIZE
+#ANNOTATION: substitute self.DEFAULT_CHUNK_SIZE for chunk_size.
+        return self.size > chunk_size
+#ANNOTATION: if self.size is greater than chunk_size, return boolean True, otherwise return boolean False.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with argument self.
+        # Iterate over this file-like object by newlines
+        buffer_ = None
+#ANNOTATION: buffer_ is None.
+        for chunk in self.chunks():
+#ANNOTATION: for every chunk in return value of the method self.chunks,
+            chunk_buffer = BytesIO(chunk)
+#ANNOTATION: evaluate the function BytesIO with argument chunk, substitute it for chunk_buffer.
+
+            for line in chunk_buffer:
+#ANNOTATION: for every line in chunk_buffer,
+                if buffer_:
+#ANNOTATION: if buffer_ is true,
+                    line = buffer_ + line
+#ANNOTATION: increment line by buffer_.
+                    buffer_ = None
+#ANNOTATION: buffer_ is None.
+
+                # If this is the end of a line, yield
+                # otherwise, wait for the next round
+                if line[-1:] in (b'\n', b'\r'):
+#ANNOTATION: if last element of line is newline or carriage return character,
+                    yield line
+#ANNOTATION: yield one element of line iterable.
+                else:
+#ANNOTATION: if not,
+                    buffer_ = line
+#ANNOTATION: substitute line for buffer_.
+
+        if buffer_ is not None:
+#ANNOTATION: if buffer_ is not None,
+            yield buffer_
+#ANNOTATION: yield one element from the buffer_ iterable.
+
+    def __enter__(self):
+#ANNOTATION: define the method __enter__ with argument self.
+        return self
+#ANNOTATION: return self.
+
+    def __exit__(self, exc_type, exc_value, tb):
+#ANNOTATION: define the method __exit__ with self, exc_type, exc_value and tb as arguments.
+        self.close()
+#ANNOTATION: close the file self.
+
+    def open(self, mode=None):
+#ANNOTATION: define the method open with arguments self and mode defaulting to None.
+        if not self.closed:
+#ANNOTATION: if file self is not closed,
+            self.seek(0)
+#ANNOTATION: position the file pointer at the beginning of self file.
+        elif self.name and os.path.exists(self.name):
+#ANNOTATION: otherwise if self.name exists and self.name file path exists,
+            self.file = open(self.name, mode or self.mode)
+#ANNOTATION: open the file self.name in mode or self.mode mode, whichever exists, assign the file handler to self.file.
+        else:
+#ANNOTATION: if not,
+            raise ValueError("The file cannot be reopened.")
+#ANNOTATION: raise an ValueError exception with string "The file cannot be reopened." as an argument.
+
+    def close(self):
+#ANNOTATION: define the method close with argument self.
+        self.file.close()
+#ANNOTATION: call the method self.file.close.
+
+
+@python_2_unicode_compatible
+#ANNOTATION: decorator python_2_unicode_compatible,
+class ContentFile(File):
+#ANNOTATION: derive the class ContentFile from File base class.
+    """
+    A File-like object that takes just raw content, rather than an actual file.
+    """
+#ANNOTATION: docstring
+    def __init__(self, content, name=None):
+#ANNOTATION: define the method __init__ with arguments self, content and name defaulting to None.
+        if six.PY3:
+#ANNOTATION: if six.PY3 is boolean True,
+            stream_class = StringIO if isinstance(content, six.text_type) else BytesIO
+#ANNOTATION: substitute StringIO for stream_class if content is an instance of six.text_type, otherwise substitute BytesIO for stream_class.
+        else:
+#ANNOTATION: if not,
+            stream_class = BytesIO
+#ANNOTATION: substitute BytesIO for stream_class.
+            content = force_bytes(content)
+#ANNOTATION: call the function force_bytes with argument content, substitute it for content.
+        super(ContentFile, self).__init__(stream_class(content), name=name)
+#ANNOTATION: call the __init__ method with stream_class(content) and name set to name arguments, from the base class of the ContentFile class.
+        self.size = len(content)
+#ANNOTATION: substitute length of content for self.size.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with argument self.
+        return 'Raw content'
+#ANNOTATION: return a string 'Raw content'. 
+
+    def __bool__(self):
+#ANNOTATION: define the method __bool__ with argument self.
+        return True
+#ANNOTATION: return boolean True.
+
+    def __nonzero__(self):      # Python 2 compatibility
+#ANNOTATION: define the method __nonzero__ with argument self.
+        return type(self).__bool__(self)
+#ANNOTATION: evaluate the method type(self).__bool__ with argument self, return the result.
+
+    def open(self, mode=None):
+#ANNOTATION: define the method open with arguments self and mode set to None.
+        self.seek(0)
+#ANNOTATION: call the self.seek method with argument integer 0.
+
+    def close(self):
+#ANNOTATION: define the method close with argument self.
+        pass
+#ANNOTATION: do nothing.

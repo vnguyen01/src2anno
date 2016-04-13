@@ -1,0 +1,499 @@
+import os
+#ANNOTATION: import module os.
+import errno
+#ANNOTATION: import module errno.
+import itertools
+#ANNOTATION: import module itertools.
+from datetime import datetime
+#ANNOTATION: from datetime import datetime into default name space.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core.exceptions import SuspiciousFileOperation
+#ANNOTATION: from django.core.exceptions import SuspiciousFileOperation into default name space.
+from django.core.files import locks, File
+#ANNOTATION: from django.core.files import locks and File into default name space.
+from django.core.files.move import file_move_safe
+#ANNOTATION: from django.core.files.move import file_move_safe into default name space.
+from django.utils.encoding import force_text, filepath_to_uri
+#ANNOTATION: from django.utils.encoding import force_text and filepath_to_uri into default name space.
+from django.utils.functional import LazyObject
+#ANNOTATION: from django.utils.functional import LazyObject into default name space.
+from django.utils.module_loading import import_string
+#ANNOTATION: from django.utils.module_loading import import_string into default name space.
+from django.utils.six.moves.urllib.parse import urljoin
+#ANNOTATION: from django.utils.six.moves.urllib.parse import urljoin into default name space.
+from django.utils.text import get_valid_filename
+#ANNOTATION: from django.utils.text import get_valid_filename into default name space.
+from django.utils._os import safe_join, abspathu
+#ANNOTATION: from django.utils._os import safe_join and abspathu into default name space.
+from django.utils.deconstruct import deconstructible
+#ANNOTATION: from django.utils.deconstruct import deconstructible into default name space.
+
+
+__all__ = ('Storage', 'FileSystemStorage', 'DefaultStorage', 'default_storage')
+#ANNOTATION: __all__ is a tuple containing strings: 'Storage', 'FileSystemStorage', 'DefaultStorage' and 'default_storage'. 
+
+
+class Storage(object):
+#ANNOTATION: derive the class Storage from the object base class.
+    """
+    A base storage class, providing some default behaviors that all other
+    storage systems can inherit or override, as necessary.
+    """
+#ANNOTATION: docstring
+
+    # The following methods represent a public interface to private methods.
+    # These shouldn't be overridden by subclasses unless absolutely necessary.
+
+    def open(self, name, mode='rb'):
+#ANNOTATION: define the method open with arguments self, name and mode defaulting to string 'rb'.
+        """
+        Retrieves the specified file from storage.
+        """
+#ANNOTATION: docstring
+        return self._open(name, mode)
+#ANNOTATION: call the self._open method with name and mode arguments, return the result.
+
+    def save(self, name, content):
+#ANNOTATION: define the method save with arguments self, name and content.
+        """
+        Saves new content to the file specified by name. The content should be
+        a proper File object or any python file-like object, ready to be read
+        from the beginning.
+        """
+#ANNOTATION: docstring
+        # Get the proper name for the file, as it will actually be saved.
+        if name is None:
+#ANNOTATION: if name is None,
+            name = content.name
+#ANNOTATION: substitute content.name for name.
+
+        if not hasattr(content, 'chunks'):
+#ANNOTATION: if content has an 'chunks' attribute,
+            content = File(content)
+#ANNOTATION: content is a File object instance created with content argument.
+
+        name = self.get_available_name(name)
+#ANNOTATION: call the method self.get_available_name with argument name, substitute it for name.
+        name = self._save(name, content)
+#ANNOTATION: call the method self._save with arguments name and content, substitute it for name.
+
+        # Store filenames with forward slashes, even on Windows
+        return force_text(name.replace('\\', '/'))
+#ANNOTATION: replace all the strings '\\' with '/' in the string name, use it as an argument for the call to the force_text function, return the result.
+
+    # These methods are part of the public API, with default implementations.
+
+    def get_valid_name(self, name):
+#ANNOTATION: define the method det_valid_name with arguments self and name.
+        """
+        Returns a filename, based on the provided filename, that's suitable for
+        use in the target storage system.
+        """
+#ANNOTATION: docstring
+        return get_valid_filename(name)
+#ANNOTATION: call the get_valid_filename with argument name, return the result.
+
+    def get_available_name(self, name):
+#ANNOTATION: define the method get_available_name with arguments self and name.
+        """
+        Returns a filename that's free on the target storage system, and
+        available for new content to be written to.
+        """
+#ANNOTATION: docstring
+        dir_name, file_name = os.path.split(name)
+#ANNOTATION: call the os.path.split with argument name, assign the result to the dir_name and file_name respectively.
+        file_root, file_ext = os.path.splitext(file_name)
+#ANNOTATION: call the os.path.splitext with argument file_name, assign the result to the file_root and file_ext respectively. 
+        # If the filename already exists, add an underscore and a number (before
+        # the file extension, if one exists) to the filename until the generated
+        # filename doesn't exist.
+        count = itertools.count(1)
+#ANNOTATION: call the itertools.count function with argument integer 1, substitute the result for count.
+        while self.exists(name):
+#ANNOTATION: as long as self.exists function with argument name evaluates to boolean True,
+            # file_ext includes the dot.
+            name = os.path.join(dir_name, "%s_%s%s" % (file_root, next(count), file_ext))
+#ANNOTATION: substitute '%s' in string "%s_%s%s" with: file_root, next(count) and file_ext, join the dir_name and previous string into a valid file path, substitute it for name.
+
+        return name
+#ANNOTATION: return name.
+
+    def path(self, name):
+#ANNOTATION: define the method path with arguments self and name.
+        """
+        Returns a local filesystem path where the file can be retrieved using
+        Python's built-in open() function. Storage systems that can't be
+        accessed using open() should *not* implement this method.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError("This backend doesn't support absolute paths.")
+#ANNOTATION: raise an NotImplementedError exception with argument string "This backend doesn't support absolute paths.".
+
+    # The following methods form the public API for storage systems, but with
+    # no default implementations. Subclasses must implement *all* of these.
+
+    def delete(self, name):
+#ANNOTATION: define the method delete with arguments self and name.
+        """
+        Deletes the specified file from the storage system.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of Storage must provide a delete() method')
+#ANNOTATION: raise an NotImplementedError exception with argument string 'subclasses of Storage must provide a delete() method'.
+
+    def exists(self, name):
+#ANNOTATION: define the method exists with arguments self and name.
+        """
+        Returns True if a file referenced by the given name already exists in the
+        storage system, or False if the name is available for a new file.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of Storage must provide an exists() method')
+#ANNOTATION: raise an NotImplementedError exception with argument string 'subclasses of Storage must provide an exists() method'.
+
+    def listdir(self, path):
+#ANNOTATION: define the method listdir with arguments self and path.
+        """
+        Lists the contents of the specified path, returning a 2-tuple of lists;
+        the first item being directories, the second item being files.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of Storage must provide a listdir() method')
+#ANNOTATION: raise an NotImplementedError exception with argument string 'subclasses of Storage must provide a listdir() method'.
+
+    def size(self, name):
+#ANNOTATION: define the method size with arguments self and name.
+        """
+        Returns the total size, in bytes, of the file specified by name.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of Storage must provide a size() method')
+#ANNOTATION: raise an NotImplementedError exception with argument string 'subclasses of Storage must provide a size() method'.
+
+    def url(self, name):
+#ANNOTATION: define the method url with arguments self and name.
+        """
+        Returns an absolute URL where the file's contents can be accessed
+        directly by a Web browser.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of Storage must provide a url() method')
+#ANNOTATION: raise an NotImplementedError exception with argument string 'subclasses of Storage must provide a url() method'.
+
+    def accessed_time(self, name):
+#ANNOTATION: define the method accessed_time with arguments self and name.
+        """
+        Returns the last accessed time (as datetime object) of the file
+        specified by name.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of Storage must provide an accessed_time() method')
+#ANNOTATION: raise an NotImplementedError exception with argument string 'subclasses of Storage must provide an accessed_time() method'.
+
+    def created_time(self, name):
+#ANNOTATION: define the method created_time with arguments self and name.
+        """
+        Returns the creation time (as datetime object) of the file
+        specified by name.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of Storage must provide a created_time() method')
+#ANNOTATION: raise an NotImplementedError exception with argument string 'subclasses of Storage must provide a created_time() method'.
+
+    def modified_time(self, name):
+#ANNOTATION: define the method modified_time with arguments self and name.
+        """
+        Returns the last modified time (as datetime object) of the file
+        specified by name.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of Storage must provide a modified_time() method')
+#ANNOTATION: raise an NotImplementedError exception with argument string 'subclasses of Storage must provide a modified_time() method'.
+
+
+@deconstructible
+#ANNOTATION: decorator deconstructible, 
+class FileSystemStorage(Storage):
+#ANNOTATION: derive the class FileSystemStorage from the Storage base class. 
+    """
+    Standard filesystem storage
+    """
+#ANNOTATION: docstring
+
+    def __init__(self, location=None, base_url=None, file_permissions_mode=None,
+            directory_permissions_mode=None):
+#ANNOTATION: define the method __init__ with 5 arguments: self, location set to None, base_url set to None, file_permissions_mode set to None,
+#ANNOTATION: and directory_permissions_mode set to None.
+        if location is None:
+#ANNOTATION: if location is None,
+            location = settings.MEDIA_ROOT
+#ANNOTATION: substitute the settings.MEDIA_ROOT for location.
+        self.base_location = location
+#ANNOTATION: substitute the location for self.base_location.
+        self.location = abspathu(self.base_location)
+#ANNOTATION: substitute the return value of the function abspathu with self.base_location as argument for self.location.
+        if base_url is None:
+#ANNOTATION: if base_url is None,
+            base_url = settings.MEDIA_URL
+#ANNOTATION: substitute settings.MEDIA_URL for base_url.
+        elif not base_url.endswith('/'):
+#ANNOTATION: otherwise if base_url does not ends with '/' character,
+            base_url += '/'
+#ANNOTATION: append character '/' to the base_url.
+        self.base_url = base_url
+#ANNOTATION: substitute base_url for self.base_url.
+        self.file_permissions_mode = (
+            file_permissions_mode if file_permissions_mode is not None
+            else settings.FILE_UPLOAD_PERMISSIONS
+        )
+#ANNOTATION: self.file_permissions_mode is a tuple containing: file_permissions_mode if file_permissions_mode is not None, 
+#ANNOTATION: or settings.FILE_UPLOAD_PERMISSIONS if it is.
+        self.directory_permissions_mode = (
+            directory_permissions_mode if directory_permissions_mode is not None
+            else settings.FILE_UPLOAD_DIRECTORY_PERMISSIONS
+        )
+#ANNOTATION: self.directory_permissions_mode is a tuple containing: directory_permissions_mode if directory_permissions_mode is not None, 
+#ANNOTATION: or settings.FILE_UPLOAD_DIRECTORY_PERMISSIONS if it is.
+
+    def _open(self, name, mode='rb'):
+#ANNOTATION: define the method _open with arguments self, name and mode defaulting to string 'rb'.
+        return File(open(self.path(name), mode))
+#ANNOTATION: call the function self.path with argument name, use it and mode as arguments for the call to the function open, use it as an argument for creatinon of a File object instance, return it.
+
+    def _save(self, name, content):
+#ANNOTATION: define the method _save with arguments self, name and content.
+        full_path = self.path(name)
+#ANNOTATION: substitute result of the self.path function with argument name for full_path.
+
+        # Create any intermediate directories that do not exist.
+        # Note that there is a race between os.path.exists and os.makedirs:
+        # if os.makedirs fails with EEXIST, the directory was created
+        # concurrently, and we can continue normally. Refs #16082.
+        directory = os.path.dirname(full_path)
+#ANNOTATION: call the function os.path.dirname with argument full_path, substitute the result for directory.
+        if not os.path.exists(directory):
+#ANNOTATION: if call to the function os.path.exists with argument directory evaluates to boolean False,
+            try:
+#ANNOTATION: try,
+                if self.directory_permissions_mode is not None:
+#ANNOTATION: if self.directory_permissions_mode is not None,
+                    # os.makedirs applies the global umask, so we reset it,
+                    # for consistency with file_permissions_mode behavior.
+                    old_umask = os.umask(0)
+#ANNOTATION: call the os.umask function with argument integer 0, substitute the result for old_umask.
+                    try:
+#ANNOTATION: try,
+                        os.makedirs(directory, self.directory_permissions_mode)
+#ANNOTATION: call the os.makedirs function with directory and self.directory_permissions_mode as arguments.
+                    finally:
+#ANNOTATION: finally perform,
+                        os.umask(old_umask)
+#ANNOTATION: call the os.umask function with argument old_umask.
+                else:
+#ANNOTATION: if not,
+                    os.makedirs(directory)
+#ANNOTATION: call the function os.makedirs with argument directory.
+            except OSError as e:
+#ANNOTATION: if exception OSError, renamed to e, occurred,
+                if e.errno != errno.EEXIST:
+#ANNOTATION: if e.errno is not equal to errno.EEXIST,
+                    raise
+#ANNOTATION: raise an exception.
+        if not os.path.isdir(directory):
+#ANNOTATION: if directory is not an directory,
+            raise IOError("%s exists and is not a directory." % directory)
+#ANNOTATION: raise an IOError exception with argument string "%s exists and is not a directory.", where '%s' is replaced by directory.
+
+        # There's a potential race condition between get_available_name and
+        # saving the file; it's possible that two threads might return the
+        # same name, at which point all sorts of fun happens. So we need to
+        # try to create the file, but if it already exists we have to go back
+        # to get_available_name() and try again.
+
+        while True:
+#ANNOTATION: endless loop,
+            try:
+#ANNOTATION: try,
+                # This file has a file path that we can move.
+                if hasattr(content, 'temporary_file_path'):
+#ANNOTATION: if content has an attribute 'temporary_file_path',
+                    file_move_safe(content.temporary_file_path(), full_path)
+#ANNOTATION: call the function file_move_safe with content.temporary_file_path function result and full_path.
+
+                # This is a normal uploadedfile that we can stream.
+                else:
+#ANNOTATION: if not,
+                    # This fun binary flag incantation makes os.open throw an
+                    # OSError if the file already exists before we open it.
+                    flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                             getattr(os, 'O_BINARY', 0))
+#ANNOTATION: evaluate binary expression with 4 operands: os.O_WRONLY, binary or os.O_CREAT, binary or os.O_EXCL, 
+#ANNOTATION: binary or 'O_BINARY' attribute of the os object, or integer 0 if it doesnt exists.
+                    # The current umask value is masked out by os.open!
+                    fd = os.open(full_path, flags, 0o666)
+#ANNOTATION: call the os.open function with full_path, flags and octal number 0o666 as arguments, substitute the result for fd.
+                    _file = None
+#ANNOTATION: _file is None.
+                    try:
+#ANNOTATION: try,
+                        locks.lock(fd, locks.LOCK_EX)
+#ANNOTATION: call the function locks.lock with fd and locks.LOCK_EX as arguments.
+                        for chunk in content.chunks():
+#ANNOTATION: for every chunk in content.chunks function return value,
+                            if _file is None:
+#ANNOTATION: if _file is None,
+                                mode = 'wb' if isinstance(chunk, bytes) else 'wt'
+#ANNOTATION: mode is a string 'wb' is chunk is instance of the type bytes, otherwise mode is a string 'wt'.
+                                _file = os.fdopen(fd, mode)
+#ANNOTATION: call the function os.fdopen with arguments fd and mode, substitute it for _file.
+                            _file.write(chunk)
+#ANNOTATION: write the chunk to the file _file.
+                    finally:
+#ANNOTATION: finally perform,
+                        locks.unlock(fd)
+#ANNOTATION: call the function locks.unlock with argument fd.
+                        if _file is not None:
+#ANNOTATION: if _file is not None,
+                            _file.close()
+#ANNOTATION: close the _file file.
+                        else:
+#ANNOTATION: if not,
+                            os.close(fd)
+#ANNOTATION: close fd file.
+            except OSError as e:
+#ANNOTATION: if OSError, renamed to e, is caught,
+                if e.errno == errno.EEXIST:
+#ANNOTATION: if e.errno equals to errno.EEXIST,
+                    # Ooops, the file exists. We need a new file name.
+                    name = self.get_available_name(name)
+#ANNOTATION: call the method self.get_available_name with argument name, substitute the result for name.
+                    full_path = self.path(name)
+#ANNOTATION: call the method self.path with argument name, substitute the result for full_path.
+                else:
+#ANNOTATION: if not,
+                    raise
+#ANNOTATION: raise an exception.
+            else:
+#ANNOTATION: if not,
+                # OK, the file save worked. Break out of the loop.
+                break
+#ANNOTATION: break from the smallest enclosing loop.
+
+        if self.file_permissions_mode is not None:
+#ANNOTATION:  if self.file_permissions_mode is not None,
+            os.chmod(full_path, self.file_permissions_mode)
+#ANNOTATION: call the function os.chmod with arguments full_path and self.file_permissions_mode.
+
+        return name
+#ANNOTATION: return name.
+
+    def delete(self, name):
+#ANNOTATION: define the method delete with arguments self and name.
+        assert name, "The name argument is not allowed to be empty."
+#ANNOTATION: if name is boolean False raise an assert error with message string "The name argument is not allowed to be empty.".
+        name = self.path(name)
+#ANNOTATION: call the self.path with argument name, substitute it for name.
+        # If the file exists, delete it from the filesystem.
+        # Note that there is a race between os.path.exists and os.remove:
+        # if os.remove fails with ENOENT, the file was removed
+        # concurrently, and we can continue normally.
+        if os.path.exists(name):
+#ANNOTATION: if os.path.exists function with argument name, evaluates to boolean True,
+            try:
+#ANNOTATION: try,
+                os.remove(name)
+#ANNOTATION: call the os.remove function with argument name.
+            except OSError as e:
+#ANNOTATION: if OSError, renamed to e, is caught,
+                if e.errno != errno.ENOENT:
+#ANNOTATION: if e.errno equals to errno.EEXIST,
+                    raise
+#ANNOTATION: raise an exception.
+
+    def exists(self, name):
+#ANNOTATION: define the method exists with arguments self and name.
+        return os.path.exists(self.path(name))
+#ANNOTATION: call the self.path function with argument name, use the result as the argument for the call to the os.path.exists function, return the result.
+
+    def listdir(self, path):
+#ANNOTATION: define the method listdir with arguments self and path.
+        path = self.path(path)
+#ANNOTATION: call the self.path function with argument path, substitute it for path.
+        directories, files = [], []
+#ANNOTATION: directories, files are empty lists.
+        for entry in os.listdir(path):
+#ANNOTATION: for every entry in os.listdir function return value called with the argument path,
+            if os.path.isdir(os.path.join(path, entry)):
+#ANNOTATION: join path and entry into a file path, if it exists,
+                directories.append(entry)
+#ANNOTATION: append entry to the directories list.
+            else:
+#ANNOTATION: if not,
+                files.append(entry)
+#ANNOTATION: append entry to files list.
+        return directories, files
+#ANNOTATION: return directories and files.
+
+    def path(self, name):
+#ANNOTATION: define the method path with arguments self and name.
+        try:
+#ANNOTATION: try,
+            path = safe_join(self.location, name)
+#ANNOTATION: call the safe_join function with arguments self.location and name, substitute it for path.
+        except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+            raise SuspiciousFileOperation("Attempted access to '%s' denied." % name)
+#ANNOTATION: raise an SuspiciousFileOperation exception with string "Attempted access to '%s' denied." as argument, replace '%s' with name.
+        return os.path.normpath(path)
+#ANNOTATION: call the os.path.normpath with argument path, return the result.
+
+    def size(self, name):
+#ANNOTATION: define the method size with arguments self and name.
+        return os.path.getsize(self.path(name))
+#ANNOTATION: call the self.path with argument name, use the result as an argument for the call to the os.path.getsize function, return the result.
+
+    def url(self, name):
+#ANNOTATION: define the method url with arguments self and name.
+        if self.base_url is None:
+#ANNOTATION: if self.base_url is None,
+            raise ValueError("This file is not accessible via a URL.")
+#ANNOTATION: raise an ValueError with string "This file is not accessible via a URL." as argument.
+        return urljoin(self.base_url, filepath_to_uri(name))
+#ANNOTATION: call the urljoin function with arguments: self.base_url and result of the call to the function filepath_to_uri with argument name, return the result.
+
+    def accessed_time(self, name):
+#ANNOTATION: define the method accessed_time with arguments self and name.
+        return datetime.fromtimestamp(os.path.getatime(self.path(name)))
+#ANNOTATION: call the function self.path with argument name, use the result as an argument for the call to the function os.path.getatime,
+#ANNOTATION: use the result as an argument for the call to the function datetime.fromtimestamp, return the result.
+
+    def created_time(self, name):
+#ANNOTATION: define the method created_time with arguments self and name.
+        return datetime.fromtimestamp(os.path.getctime(self.path(name)))
+#ANNOTATION: call the function self.path with argument name, use the result as an argument for the call to the function os.path.getctime,
+#ANNOTATION: use the result as an argument for the call to the function datetime.fromtimestamp, return the result.
+
+    def modified_time(self, name):
+#ANNOTATION: define the method modified_time with arguments self and name.
+        return datetime.fromtimestamp(os.path.getmtime(self.path(name)))
+#ANNOTATION: call the function self.path with argument name, use the result as an argument for the call to the function os.path.getmtime,
+#ANNOTATION: use the result as an argument for the call to the function datetime.fromtimestamp, return the result.
+
+
+def get_storage_class(import_path=None):
+#ANNOTATION: define the function get_storage_class with argument import_path=None defaulting to None.
+    return import_string(import_path or settings.DEFAULT_FILE_STORAGE)
+#ANNOTATION: call the import_string with argument: import_path if exists or settings.DEFAULT_FILE_STORAGE, if not, return the result.
+
+
+class DefaultStorage(LazyObject):
+#ANNOTATION: derive the class DefaultStorage from the LazyObject base class.
+    def _setup(self):
+#ANNOTATION: define the _setup method with argument self.
+        self._wrapped = get_storage_class()()
+#ANNOTATION: call the function that is the return value of get_storage_class method, substitute the result for self._wrapped.
+
+default_storage = DefaultStorage()
+#ANNOTATION: call the DefaultStorage method, substitute the result for default_storage.

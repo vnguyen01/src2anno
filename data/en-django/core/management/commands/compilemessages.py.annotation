@@ -1,0 +1,201 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import codecs
+#ANNOTATION: import module codecs.
+import glob
+#ANNOTATION: import module glob.
+import os
+#ANNOTATION: import module os.
+
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+from django.core.management.utils import find_command, popen_wrapper
+#ANNOTATION: from django.core.management.utils import find_command and popen_wrapper into default name space.
+from django.utils._os import npath, upath
+#ANNOTATION: from django.utils._os import npath and upath into default name space.
+
+
+def has_bom(fn):
+#ANNOTATION: define the function has_bom with fn as argument.
+    with open(fn, 'rb') as f:
+#ANNOTATION: open the file fn in read mode, with file descriptor as f,
+        sample = f.read(4)
+#ANNOTATION: read 4 bytes from file f and store it in sample.
+    return sample[:3] == b'\xef\xbb\xbf' or \
+        sample.startswith(codecs.BOM_UTF16_LE) or \
+        sample.startswith(codecs.BOM_UTF16_BE)
+#ANNOTATION: evaluate the boolean expression, if first three characters of sample equals to string of bytes '\xef\xbb\xbf\',
+#ANNOTATION: of if sample starts with codecs.BOM_UTF16_LE or sample starts with codecs.BOM_UTF16_BE, return the evaluated boolean expression. 
+
+
+def is_writable(path):
+#ANNOTATION: define the function is_writable with path as argument,
+    # Known side effect: updating file access/modified time to current time if
+    # it is writable.
+    try:
+#ANNOTATION: try,
+        with open(path, 'a'):
+#ANNOTATION: with open file path in append mode,
+            os.utime(path, None)
+#ANNOTATION: call the os.utime unction, with path and None as arguments.
+    except (IOError, OSError):
+#ANNOTATION: if IOError or OSError exceptions occurred,
+        return False
+#ANNOTATION: return boolean False.
+    return True
+#ANNOTATION: return boolean True.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive class Command from base class BaseCommand.
+    help = 'Compiles .po files to .mo files for use with builtin gettext support.'
+#ANNOTATION: help is string 'Compiles .po files to .mo files for use with builtin gettext support.'.
+
+    requires_system_checks = False
+#ANNOTATION: requires_system_checks is boolean False.
+    leave_locale_alone = True
+#ANNOTATION: leave_locale_alone is boolean True.
+
+    program = 'msgfmt'
+#ANNOTATION: program is string 'msgfmt'
+    program_options = ['--check-format']
+#ANNOTATION: program_options is list containing string '--check-format'.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define method add_arguments with self class instance and parser as arguments.
+        parser.add_argument('--locale', '-l', dest='locale', action='append', default=[],
+            help='Locale(s) to process (e.g. de_AT). Default is to process all. '
+            'Can be used multiple times.')
+#ANNOTATION: call the method parser.add_argument with string '--locale', string '-l', dest set to string 'locale', action set to string 'append',
+#ANNOTATION: default as an empty list and help as an string 'Locale(s) to process (e.g. de_AT). Default is to process all. Can be used multiple times.'.
+        parser.add_argument('--exclude', '-x', dest='exclude', action='append', default=[],
+            help='Locales to exclude. Default is none. Can be used multiple times.')
+#ANNOTATION: call the method parser.add_argument with string '--exclude', string '-x', dest set to string 'exclude', action set to string 'append',
+#ANNOTATION: default as an empty list and help as an string 'Locales to exclude. Default is none. Can be used multiple times.'.
+
+    def handle(self, **options):
+#ANNOTATION: define the handle method with self class instance and dictionary **options as arguments.
+        locale = options.get('locale')
+#ANNOTATION: get the value under the key 'locale' of the options dictionary, substitute it for locale.
+        exclude = options.get('exclude')
+#ANNOTATION: get the value under the key 'exclude' of the options dictionary, substitute it for exclude.
+        self.verbosity = int(options.get('verbosity'))
+#ANNOTATION: get the value under the key 'exclude' of the options dictionary, convert it to an integer, substitute it for exclude.
+
+        if find_command(self.program) is None:
+#ANNOTATION: if evaluation of the function find_command with self.program as argument equals to None,
+            raise CommandError("Can't find %s. Make sure you have GNU gettext "
+                               "tools 0.15 or newer installed." % self.program)
+#ANNOTATION: raise CommandError exception, with sring "Can't find %s. Make sure you have GNU gettext tools 0.15 or newer installed." as argument, substitute '%s' with self.program.
+
+        basedirs = [os.path.join('conf', 'locale'), 'locale']
+#ANNOTATION: basedirs is a list containing tuple with strings, 'conf/locale' and 'locale'.
+        if os.environ.get('DJANGO_SETTINGS_MODULE'):
+#ANNOTATION: if value under the 'DJANGO_SETTINGS_MODULE' key of os.environ dictionary exists.
+            from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+            basedirs.extend([upath(path) for path in settings.LOCALE_PATHS])
+#ANNOTATION: call function update with path as the argument, for every path in settings.LOCALE_PATHS, extend basedirs list with previous items. 
+
+        # Gather existing directories.
+        basedirs = set(map(os.path.abspath, filter(os.path.isdir, basedirs)))
+#ANNOTATION: create a list out of basedir elements for which function os.path.isdir returns true, apply the os.path.abspath function on every element, and put the results in a list, basedir is set of previous list elements.
+
+        if not basedirs:
+#ANNOTATION: if basedirs is empty,
+            raise CommandError("This script should be run from the Django Git "
+                               "checkout or your project or app tree, or with "
+                               "the settings module specified.")
+#ANNOTATION: raise CommandError exception with string "This script should be run from the Django Git checkout or your project or app tree, or with the settings module specified.", as argument.
+
+        # Build locale list
+        all_locales = []
+#ANNOTATION: all_locales is an empty string.
+        for basedir in basedirs:
+#ANNOTATION: for every basedir in basedirs,
+            locale_dirs = filter(os.path.isdir, glob.glob('%s/*' % basedir))
+#ANNOTATION: locale_dirs is a list of elements from the list of path names that maths the basedir path with '/*' wild card characters for which call to the os.path.isdir returned true, assign it to locale_dirs.  
+            all_locales.extend(map(os.path.basename, locale_dirs))
+#ANNOTATION: extend all_locales list with the elements of locale_dirs list on which os.path.basename function was applied.
+
+        # Account for excluded locales
+        locales = locale or all_locales
+#ANNOTATION: take locale or all_locales, whichever is not empty, respectively, and substitute it for locales.
+        locales = set(locales) - set(exclude)
+#ANNOTATION: locales is relative complement of set exclude in set locales.
+
+        for basedir in basedirs:
+#ANNOTATION: for every basedir in basedirs,
+            if locales:
+#ANNOTATION: if locales in not empty,
+                dirs = [os.path.join(basedir, l, 'LC_MESSAGES') for l in locales]
+#ANNOTATION: join basedir, l and string 'LC_MESSAGES' into a path separated by '/' for every l in locales, assign the list to dirs.
+            else:
+#ANNOTATION: if not,
+                dirs = [basedir]
+#ANNOTATION: dirs is a list containing basedir.
+            locations = []
+#ANNOTATION: locations is an empty list.
+            for ldir in dirs:
+#ANNOTATION: for every ldir in dirs,
+                for dirpath, dirnames, filenames in os.walk(ldir):
+#ANNOTATION: for dirpath, dirnames and filenames, respectively, in directory tree tuple starting from the ldir,
+                    locations.extend((dirpath, f) for f in filenames if f.endswith('.po'))
+#ANNOTATION: extend locations with tuple containing dirpath and f, for every f in filenames, only if it ends with string '.po'.
+            if locations:
+#ANNOTATION: if locations is not empty,
+                self.compile_messages(locations)
+#ANNOTATION: call the self.compile_messages with locations as argument,
+
+    def compile_messages(self, locations):
+#ANNOTATION: define compile_messages method with self class instance and locations as a arguments.
+        """
+        Locations is a list of tuples: [(directory, file), ...]
+        """
+#ANNOTATION: docstring
+        for i, (dirpath, f) in enumerate(locations):
+#ANNOTATION: for every i and tuple containing dirpath and f, in enumerated list of locations,
+            if self.verbosity > 0:
+#ANNOTATION: if self.verbosity is greater than integer 0,
+                self.stdout.write('processing file %s in %s\n' % (f, dirpath))
+#ANNOTATION: call the self.stdout.write method with string 'processing file %s in %s\n' as argument, replacing all the occurrences of '%s' with f and dirpath, respectively.
+            po_path = os.path.join(dirpath, f)
+#ANNOTATION: po_path is a string containing joined directory path from dirpath and f.
+            if has_bom(po_path):
+#ANNOTATION: evaluate function has_bom with po_path as argument.
+                raise CommandError("The %s file has a BOM (Byte Order Mark). "
+                                   "Django only supports .po files encoded in "
+                                   "UTF-8 and without any BOM." % po_path)
+#ANNOTATION: raise CommandError exception with string "The %s file has a BOM (Byte Order Mark). Django only supports .po files encoded in UTF-8 and without any BOM.", with '%s' replaced with po_path, as argument.
+            base_path = os.path.splitext(po_path)[0]
+#ANNOTATION: call os.path.splitext function with po_path as argument, substitute the first element of the result for base_path.
+
+            # Check writability on first location
+            if i == 0 and not is_writable(npath(base_path + '.mo')):
+#ANNOTATION: if i equals to integer 0 and 
+                self.stderr.write("The po files under %s are in a seemingly not writable location. "
+                                  "mo files will not be updated/created." % dirpath)
+#ANNOTATION: call the self.stderr.write, with string "The po files under %s are in a seemingly not writable location. mo files will not be updated/created." as argument, with '%s' replaced by dirpath.
+                return
+#ANNOTATION: return nothing.
+
+            args = [self.program] + self.program_options + ['-o',
+                    npath(base_path + '.mo'), npath(base_path + '.po')]
+#ANNOTATION: extend self.program list with self.program_options, string '-o', 
+#ANNOTATION: return value of the npath function with string '.mo' appended to the base_path as argument,
+#ANNOTATION: and return value of the npath function with string '.po' appended to the base_path as argument, substitute it for args.    
+            output, errors, status = popen_wrapper(args)
+#ANNOTATION: call the popen_wrapper with args as the argument, assign the result to the output, errors and status, respectively.
+            if status:
+#ANNOTATION: if status is True,
+                if errors:
+#ANNOTATION: if errors is True,
+                    msg = "Execution of %s failed: %s" % (self.program, errors)
+#ANNOTATION: msg is a string "Execution of %s failed: %s", with '%s' replaced by self.program and errors.
+                else:
+#ANNOTATION: if not,
+                    msg = "Execution of %s failed" % self.program
+#ANNOTATION: msg is a string "Execution of %s failed", with '%s' replaced by self.program.
+                raise CommandError(msg)
+#ANNOTATION: raise CommandError exception with msg as argument.

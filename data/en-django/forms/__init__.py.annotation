@@ -1,0 +1,17 @@
+"""
+Django validation and HTML form handling.
+"""
+#ANNOTATION: docstring
+
+from django.core.exceptions import ValidationError  # NOQA
+#ANNOTATION: from django.core.exceptions import ValidationError into default name space.
+from django.forms.fields import *  # NOQA
+#ANNOTATION: from django.forms.fields import everything into default name space.
+from django.forms.forms import *  # NOQA
+#ANNOTATION: from django.forms.forms import everything into default name space.
+from django.forms.formsets import *  # NOQA
+#ANNOTATION: from django.forms.formsets import everything into default name space.
+from django.forms.models import *  # NOQA
+#ANNOTATION: from django.forms.models import everything into default name space.
+from django.forms.widgets import *  # NOQA
+#ANNOTATION: from django.forms.widgets import everything into default name space.

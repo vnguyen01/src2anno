@@ -1,0 +1,226 @@
+"""
+Functions for working with "safe strings": strings that can be displayed safely
+without further escaping in HTML. Marking something as a "safe string" means
+that the producer of the string has already turned characters that should not
+be interpreted by the HTML engine (e.g. '<') into the appropriate entities.
+"""
+#ANNOTATION: docstring
+from django.utils.functional import curry, Promise
+#ANNOTATION: from django.utils.functional import curry and Promise into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+class EscapeData(object):
+#ANNOTATION: derive the class EscapeData from object base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+class EscapeBytes(bytes, EscapeData):
+#ANNOTATION: derive the class EscapeBytes from bytes and EscapeData base classes.
+    """
+    A byte string that should be HTML-escaped when output.
+    """
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class EscapeText(six.text_type, EscapeData):
+#ANNOTATION: derive the class EscapeText from six.text_type and EscapeData base classes.
+    """
+    A unicode string object that should be HTML-escaped when output.
+    """
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+    EscapeString = EscapeText
+#ANNOTATION: substitute EscapeText for EscapeString.
+else:
+#ANNOTATION: if not,
+    EscapeString = EscapeBytes
+#ANNOTATION: substitute EscapeBytes for EscapeString.
+    # backwards compatibility for Python 2
+    EscapeUnicode = EscapeText
+#ANNOTATION: substitute EscapeText for EscapeUnicode.
+
+
+class SafeData(object):
+#ANNOTATION: derive the class SafeData from object base class.
+    def __html__(self):
+#ANNOTATION: define the method __html__ with an argument self.
+        """
+        Returns the html representation of a string.
+
+        Allows interoperability with other template engines.
+        """
+#ANNOTATION: docstring
+        return self
+#ANNOTATION: return self.
+
+
+class SafeBytes(bytes, SafeData):
+#ANNOTATION: derive the class SafeBytes from bytes and SafeData base classes.
+    """
+    A bytes subclass that has been specifically marked as "safe" (requires no
+    further escaping) for HTML output purposes.
+    """
+#ANNOTATION: docstring
+    def __add__(self, rhs):
+#ANNOTATION: define the method __add__ with 2 arguments self and rhs.
+        """
+        Concatenating a safe byte string with another safe byte string or safe
+        unicode string is safe. Otherwise, the result is no longer safe.
+        """
+#ANNOTATION: docstring
+        t = super(SafeBytes, self).__add__(rhs)
+#ANNOTATION: call the __add__ method with an arguments rhs from the base class of the class SafeBytes, substitute the result for t.
+        if isinstance(rhs, SafeText):
+#ANNOTATION: if rhs is an instance of SafeText,
+            return SafeText(t)
+#ANNOTATION: return an instance of SafeText, created with an argument t.
+        elif isinstance(rhs, SafeBytes):
+#ANNOTATION: otherwise if rhs is an instance of SafeBytes,
+            return SafeBytes(t)
+#ANNOTATION: return an instance of SafeBytes, created with an argument t.
+        return t
+#ANNOTATION: return t.
+
+    def _proxy_method(self, *args, **kwargs):
+#ANNOTATION: define the method _proxy_method with 3 arguments self, unpacked list args and unpacked dictionary kwargs.
+        """
+        Wrap a call to a normal unicode method up so that we return safe
+        results. The method that is being wrapped is passed in the 'method'
+        argument.
+        """
+#ANNOTATION: docstring
+        method = kwargs.pop('method')
+#ANNOTATION: remove kwargs dictionary element under the 'method' key, substitute it for method.
+        data = method(self, *args, **kwargs)
+#ANNOTATION: call the function method with 3 arguments: self, unpacked list args and unpacked dictionary kwargs, substitute the result for data.
+        if isinstance(data, bytes):
+#ANNOTATION: if data is an instance of bytes,
+            return SafeBytes(data)
+#ANNOTATION: return an instance of SafeBytes, created with an argument data.
+        else:
+#ANNOTATION: if not,
+            return SafeText(data)
+#ANNOTATION: return an instance of SafeText, created with an argument data.
+
+    decode = curry(_proxy_method, method=bytes.decode)
+#ANNOTATION: call the function curry with 2 arguments: _proxy_method and method set to bytes.decode, substitute the result for decode.
+
+
+class SafeText(six.text_type, SafeData):
+#ANNOTATION: derive the class SafeText from six.text_type and SafeData base classes.
+    """
+    A unicode (Python 2) / str (Python 3) subclass that has been specifically
+    marked as "safe" for HTML output purposes.
+    """
+#ANNOTATION: docstring
+    def __add__(self, rhs):
+#ANNOTATION: define the method __add__ with 2 arguments self and rhs.
+        """
+        Concatenating a safe unicode string with another safe byte string or
+        safe unicode string is safe. Otherwise, the result is no longer safe.
+        """
+#ANNOTATION: docstring
+        t = super(SafeText, self).__add__(rhs)
+#ANNOTATION: call the __add__ method with an arguments rhs from the base class of the class SafeText, substitute the result for t.
+        if isinstance(rhs, SafeData):
+#ANNOTATION: if rhs is an instance of SafeData.
+            return SafeText(t)
+#ANNOTATION: return an instance of SafeText, created with an argument t.
+        return t
+#ANNOTATION: return t.
+
+    def _proxy_method(self, *args, **kwargs):
+#ANNOTATION: define the method _proxy_method with 3 arguments self, unpacked list args and unpacked dictionary kwargs.
+        """
+        Wrap a call to a normal unicode method up so that we return safe
+        results. The method that is being wrapped is passed in the 'method'
+        argument.
+        """
+#ANNOTATION: docstring
+        method = kwargs.pop('method')
+#ANNOTATION: remove kwargs dictionary element under the 'method' key, substitute it for method.
+        data = method(self, *args, **kwargs)
+#ANNOTATION: call the function method with 3 arguments: self, unpacked list args and unpacked dictionary kwargs, substitute the result for data.
+        if isinstance(data, bytes):
+#ANNOTATION: if data is an instance of bytes.
+            return SafeBytes(data)
+#ANNOTATION: return an instance of SafeBytes, created with an argument data.
+        else:
+#ANNOTATION: if not,
+            return SafeText(data)
+#ANNOTATION: return an instance of SafeText, created with an argument data.
+
+    encode = curry(_proxy_method, method=six.text_type.encode)
+#ANNOTATION: call the function curry with 2 arguments: _proxy_method and method set to six.text_type.encode, substitute the result for encode.
+
+if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+    SafeString = SafeText
+#ANNOTATION: substitute SafeText for SafeString.
+else:
+#ANNOTATION: if not,
+    SafeString = SafeBytes
+#ANNOTATION: substitute SafeBytes for SafeString.
+    # backwards compatibility for Python 2
+    SafeUnicode = SafeText
+#ANNOTATION: substitute SafeText for SafeUnicode.
+
+
+def mark_safe(s):
+#ANNOTATION: define the function mark_safe with an argument s.
+    """
+    Explicitly mark a string as safe for (HTML) output purposes. The returned
+    object can be used everywhere a string or unicode object is appropriate.
+
+    Can be called multiple times on a single string.
+    """
+#ANNOTATION: docstring
+    if isinstance(s, SafeData):
+#ANNOTATION: if s is an instance of SafeData.
+        return s
+#ANNOTATION: return s.
+    if isinstance(s, bytes) or (isinstance(s, Promise) and s._delegate_bytes):
+#ANNOTATION: if s is an instance of bytes or Promise and s._delegate_bytes is true,
+        return SafeBytes(s)
+#ANNOTATION: return an instance of SafeBytes, created with an argument s.
+    if isinstance(s, (six.text_type, Promise)):
+#ANNOTATION: if s is an instance of six.text_type or Promise,
+        return SafeText(s)
+#ANNOTATION: return an instance of SafeText, created with an argument s.
+    return SafeString(str(s))
+#ANNOTATION: return an instance of SafeText, created with an argument s converted into a string.
+
+
+def mark_for_escaping(s):
+#ANNOTATION: define the function mark_for_escaping with an argument s.
+    """
+    Explicitly mark a string as requiring HTML escaping upon output. Has no
+    effect on SafeData subclasses.
+
+    Can be called multiple times on a single string (the resulting escaping is
+    only applied once).
+    """
+#ANNOTATION: docstring
+    if isinstance(s, (SafeData, EscapeData)):
+#ANNOTATION: if s is an instance of SafeData or EscapeData,
+        return s
+#ANNOTATION: return s.
+    if isinstance(s, bytes) or (isinstance(s, Promise) and s._delegate_bytes):
+#ANNOTATION: if s is an instance of bytes or Promise and s._delegate_bytes is true,
+        return EscapeBytes(s)
+#ANNOTATION: return an instance of EscapeBytes, created with an argument s.
+    if isinstance(s, (six.text_type, Promise)):
+#ANNOTATION: if s is an instance of six.text_type or Promise,
+        return EscapeText(s)
+#ANNOTATION: return an instance of EscapeText, created with an argument s.
+    return EscapeBytes(bytes(s))
+#ANNOTATION: return an instance of EscapeBytes, created with an argument, reuslt of the call to the function bytes with an argument s.

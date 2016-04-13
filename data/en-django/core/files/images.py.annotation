@@ -1,0 +1,124 @@
+"""
+Utility functions for handling images.
+
+Requires Pillow as you might imagine.
+"""
+#ANNOTATION: docstring 
+import zlib
+#ANNOTATION: import module zlib.
+
+from django.core.files import File
+#ANNOTATION: from django.core.files import File into default name space.
+
+
+class ImageFile(File):
+#ANNOTATION: derive class ImageFile from the base class File.
+    """
+    A mixin for use alongside django.core.files.base.File, which provides
+    additional features for dealing with images.
+    """
+#ANNOTATION: docstring
+    def _get_width(self):
+#ANNOTATION: define method _get_width with self class instance as the argument.
+        return self._get_image_dimensions()[0]
+#ANNOTATION: return the first element of the return value of the call to the self._det_image_dimensions method.
+    width = property(_get_width)
+#ANNOTATION: get property attribute _get_width, and substitute it for width.
+
+    def _get_height(self):
+#ANNOTATION: define method _get_height with self class instance as the argument.
+        return self._get_image_dimensions()[1]
+#ANNOTATION: return the second element of the return value of the call to the self._det_image_dimensions method.
+    height = property(_get_height)
+#ANNOTATION: get property attribute _get_height, and substitute it for width. 
+
+    def _get_image_dimensions(self):
+#ANNOTATION: define the method _get_image_dimensions with self class instance as the argument.
+        if not hasattr(self, '_dimensions_cache'):
+#ANNOTATION: if self does not have an attribute named '_dimensions_cache'.
+            close = self.closed
+#ANNOTATION: substitute self.closed for close.
+            self.open()
+#ANNOTATION: call the method self.open()
+            self._dimensions_cache = get_image_dimensions(self, close=close)
+#ANNOTATION: evaluate the method get_image_dimensions with self class instance and close set to close as the arguments, substitute the result for self._dimensions_cache.
+        return self._dimensions_cache
+#ANNOTATION: return self._dimensions_cache.
+
+
+def get_image_dimensions(file_or_path, close=False):
+#ANNOTATION: define the function get_image_dimension with file_or_path and close set to boolean False as the arguments.
+    """
+    Returns the (width, height) of an image, given an open file or a path.  Set
+    'close' to True to close the file at the end if it is initially in an open
+    state.
+    """
+#ANNOTATION: docstring
+    from PIL import ImageFile as PillowImageFile
+#ANNOTATION: from PIL module import ImageFile as PillowImageFile.
+
+    p = PillowImageFile.Parser()
+#ANNOTATION: p is image parser object, set by calling the PillowImageFile.Parser method. 
+    if hasattr(file_or_path, 'read'):
+#ANNOTATION: if file_or_path has an attribute 'read',
+        file = file_or_path
+#ANNOTATION: substitute file_or_path for file.
+        file_pos = file.tell()
+#ANNOTATION: get the position in bytes from the start of the file, store it in file_pos.
+        file.seek(0)
+#ANNOTATION: set the file position pointer at the beginning.
+    else:
+#ANNOTATION: if not,
+        file = open(file_or_path, 'rb')
+#ANNOTATION: open file named file_or_path for reading, store the file object handle in file.
+        close = True
+#ANNOTATION: close is boolean True.
+    try:
+#ANNOTATION: try,
+        # Most of the time Pillow only needs a small chunk to parse the image
+        # and get the dimensions, but with some TIFF files Pillow needs to
+        # parse the whole file.
+        chunk_size = 1024
+#ANNOTATION: chunk_size is an integer 1024.
+        while 1:
+#ANNOTATION: endless while loop,
+            data = file.read(chunk_size)
+#ANNOTATION: read chunk_size bytes from file and store it in data.
+            if not data:
+#ANNOTATION: if data is empty.
+                break
+#ANNOTATION: break from the endless loop.
+            try:
+#ANNOTATION: try,
+                p.feed(data)
+#ANNOTATION: feed data to the parser p.
+            except zlib.error as e:
+#ANNOTATION: if zlib.error as e exception is raised,
+                # ignore zlib complaining on truncated stream, just feed more
+                # data to parser (ticket #19457).
+                if e.args[0].startswith("Error -5"):
+#ANNOTATION: if e.args list first element starts with string "Error -5", 
+                    pass
+#ANNOTATION: do nothig.
+                else:
+#ANNOTATION: if not,
+                    raise
+#ANNOTATION: raise an exception.
+            if p.image:
+#ANNOTATION: if p.image is not empty,
+                return p.image.size
+#ANNOTATION: return size of the image that was fed to the parser p.
+            chunk_size *= 2
+#ANNOTATION: double the chunk size.
+        return None
+#ANNOTATION: return None.
+    finally:
+#ANNOTATION: execute regardless of the exception being raised,
+        if close:
+#ANNOTATION: if close is True,
+            file.close()
+#ANNOTATION: close file file.
+        else:
+#ANNOTATION: if not,
+            file.seek(file_pos)
+#ANNOTATION: set the file position pointer at file_pos.

@@ -1,0 +1,311 @@
+"Memcached cache backend"
+#ANNOTATION: docstring
+
+import time
+#ANNOTATION: import module time.
+import pickle
+#ANNOTATION: import module pickle.
+
+from django.core.cache.backends.base import BaseCache, DEFAULT_TIMEOUT
+#ANNOTATION: from django.core.cache.backends.base import BaseCache and DEFAULT_TIMEOUT into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.deprecation import RenameMethodsBase, RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RenameMethodsBase and RemovedInDjango19Warning into default name space.
+from django.utils.encoding import force_str
+#ANNOTATION: from django.utils.encoding import force_str into default name space.
+from django.utils.functional import cached_property
+#ANNOTATION: from django.utils.functional import cached_property into default name space.
+
+
+class BaseMemcachedCacheMethods(RenameMethodsBase):
+#ANNOTATION: derive the class BaseMemcachedCacheMethods from RenameMethodsBase the base class.
+    renamed_methods = (
+        ('_get_memcache_timeout', 'get_backend_timeout', RemovedInDjango19Warning),
+    )
+#ANNOTATION: renamed methods is a tuple containing 3 elements: '_get_memcache_timeout', 'get_backend_timeout' and RemovedInDjango19Warning.
+
+
+class BaseMemcachedCache(six.with_metaclass(BaseMemcachedCacheMethods, BaseCache)):
+#ANNOTATION: derive the class BaseMemcachedCache from base class BaseMemcachedCacheMethods and BaseCache. 
+    def __init__(self, server, params, library, value_not_found_exception):
+#ANNOTATION: define the method __init__ with, self, server, params, library, value_not_found_exception as arguments.
+        super(BaseMemcachedCache, self).__init__(params)
+#ANNOTATION: call the initialization method with argument params for the base class of the BaseMemcachedCache class.
+        if isinstance(server, six.string_types):
+#ANNOTATION: if server is an instance of six.string_types,
+            self._servers = server.split(';')
+#ANNOTATION: split server with ';' as delimiter, substitute the result for self._servers.
+        else:
+#ANNOTATION: if not,
+            self._servers = server
+#ANNOTATION: substitute server for self._servers.
+
+        # The exception type to catch from the underlying library for a key
+        # that was not found. This is a ValueError for python-memcache,
+        # pylibmc.NotFound for pylibmc, and cmemcache will return None without
+        # raising an exception.
+        self.LibraryValueNotFoundException = value_not_found_exception
+#ANNOTATION: substitute value_not_found_exception for self.LibraryValueNotFoundException.
+
+        self._lib = library
+#ANNOTATION: substitute library for self._lib.
+        self._options = params.get('OPTIONS', None)
+#ANNOTATION: call the params.get function with string 'OPTIONS' and None as arguments, substitute the result for self._options.
+
+    @property
+#ANNOTATION: property decorator,
+    def _cache(self):
+#ANNOTATION: define the method _cache with argument self.
+        """
+        Implements transparent thread-safe access to a memcached client.
+        """
+#ANNOTATION: docstring
+        if getattr(self, '_client', None) is None:
+#ANNOTATION: if self object has an attribute '_client',
+            self._client = self._lib.Client(self._servers)
+#ANNOTATION: call the self._lib.Client with argument self._servers, substitute the result for self._client.
+
+        return self._client
+#ANNOTATION: return self._client.
+
+    def get_backend_timeout(self, timeout=DEFAULT_TIMEOUT):
+#ANNOTATION: define the method get_backend_timeout with self and timeout set to DEFAULT_TIMEOUT as arguments.
+        """
+        Memcached deals with long (> 30 days) timeouts in a special
+        way. Call this function to obtain a safe value for your timeout.
+        """
+#ANNOTATION: docstring
+        if timeout == DEFAULT_TIMEOUT:
+#ANNOTATION: if timeout equals to DEFAULT_TIMEOUT,
+            timeout = self.default_timeout
+#ANNOTATION: substitute self.default_timeout for timeout.
+
+        if timeout is None:
+#ANNOTATION: if timeout is None,
+            # Using 0 in memcache sets a non-expiring timeout.
+            return 0
+#ANNOTATION: return integer 0.
+        elif int(timeout) == 0:
+#ANNOTATION: else if timeout converted into an integer equals to integer 0,
+            # Other cache backends treat 0 as set-and-expire. To achieve this
+            # in memcache backends, a negative timeout must be passed.
+            timeout = -1
+#ANNOTATION: timeout is a integer -1.
+
+        if timeout > 2592000:  # 60*60*24*30, 30 days
+#ANNOTATION: if timeout is greater than integer 2592000,
+            # See http://code.google.com/p/memcached/wiki/FAQ
+            # "You can set expire times up to 30 days in the future. After that
+            # memcached interprets it as a date, and will expire the item after
+            # said date. This is a simple (but obscure) mechanic."
+            #
+            # This means that we have to switch to absolute timestamps.
+            timeout += int(time.time())
+#ANNOTATION: convert return value of the function time.time to an integer, increment timeout by it.
+        return int(timeout)
+#ANNOTATION: convert timeout into an integer, return it.
+
+    def make_key(self, key, version=None):
+#ANNOTATION: define the method make_key with self class instance, key and version defaulting to None as arguments.
+        # Python 2 memcache requires the key to be a byte string.
+        return force_str(super(BaseMemcachedCache, self).make_key(key, version))
+#ANNOTATION: call the method make_key with arguments key and version from the base class of the class BaseMemcachedCache, use it as an argument for the call to the function force_str, return the result.
+
+    def add(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method add with 5 arguments, self class instance, key, value, timeout set to DEFAULT_TIMEOUT and version set to None.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute the result for key.
+        return self._cache.add(key, value, self.get_backend_timeout(timeout))
+#ANNOTATION: call the method self._cache.add with key, value, self.get_backend_timeout(timeout) as arguments.
+
+    def get(self, key, default=None, version=None):
+#ANNOTATION: define the method get with 5 arguments, self class instance, key, default set to None and version set to None.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute the result for key.
+        val = self._cache.get(key)
+#ANNOTATION: call the self._cache.get method with argument key, substitute the result for val.
+        if val is None:
+#ANNOTATION: if val is None,
+            return default
+#ANNOTATION: return default.
+        return val
+#ANNOTATION: return val.
+
+    def set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method set with 5 arguments, self class instance, key, value, timeout set to DEFAULT_TIMEOUT and version set to None.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute the result for key.
+        self._cache.set(key, value, self.get_backend_timeout(timeout))
+#ANNOTATION: call the method self._cache.set with key, value, self.get_backend_timeout(timeout) as arguments.
+
+    def delete(self, key, version=None):
+#ANNOTATION: define the method delete with self, key and version set to None as arguments.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute the result for key.
+        self._cache.delete(key)
+#ANNOTATION: call the method self._cache.delete with argument key.
+
+    def get_many(self, keys, version=None):
+#ANNOTATION: define the method get_many with self class instance, keys and version defaulting to None as arguments.
+        new_keys = [self.make_key(x, version=version) for x in keys]
+#ANNOTATION: define the method get_many with 3 arguments, self class instance, keys and version set to None.
+        ret = self._cache.get_multi(new_keys)
+#ANNOTATION: call the method self._cache.get_multi with argument new_keys, substitute the result for ret.
+        if ret:
+#ANNOTATION: if ret is true.
+            _ = {}
+#ANNOTATION: _ is an empty dictionary.
+            m = dict(zip(new_keys, keys))
+#ANNOTATION: zip together new_keys and keys, convert it to dictionary, assign it to m.
+            for k, v in ret.items():
+#ANNOTATION: for every k and v in return value of the ret.items function,
+                _[m[k]] = v
+#ANNOTATION: substitute v for value under the k-th element of m key of _ dictionary.
+            ret = _
+#ANNOTATION: substitute _ for ret.
+        return ret
+#ANNOTATION: return ret.
+
+    def close(self, **kwargs):
+#ANNOTATION: define the method close with self and dictionary pairs of elements kwargs.
+        self._cache.disconnect_all()
+#ANNOTATION: call the method self._cache.disconnect_all.
+
+    def incr(self, key, delta=1, version=None):
+#ANNOTATION: define the method incr with self, key, delta defaulting to integer 1 and version defaulting to None as arguments.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute the result for key.
+        # memcached doesn't support a negative delta
+        if delta < 0:
+#ANNOTATION: if delta is smaller than integer 0,
+            return self._cache.decr(key, -delta)
+#ANNOTATION: evaluate the method self._cache.decr with key and negative delta as arguments, return the result.
+        try:
+#ANNOTATION: try,
+            val = self._cache.incr(key, delta)
+#ANNOTATION: call the method self._cache.incr with key and delta as arguments, substitute the result for val.
+
+        # python-memcache responds to incr on non-existent keys by
+        # raising a ValueError, pylibmc by raising a pylibmc.NotFound
+        # and Cmemcache returns None. In all cases,
+        # we should raise a ValueError though.
+        except self.LibraryValueNotFoundException:
+#ANNOTATION: if self.LibraryValueNotFoundException exception is caught,
+            val = None
+#ANNOTATION: val is None.
+        if val is None:
+#ANNOTATION: if val is None,
+            raise ValueError("Key '%s' not found" % key)
+#ANNOTATION: raise an ValueError exception with string "Key '%s' not found" as argument, substitute '%s' for key.
+        return val
+#ANNOTATION: return val.
+
+    def decr(self, key, delta=1, version=None):
+#ANNOTATION: define the method decr with self, key, delta defaulting to integer 1 and version defaulting to None as arguments.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute the result for key.
+        # memcached doesn't support a negative delta
+        if delta < 0:
+#ANNOTATION: if delta is smaller than integer 0.
+            return self._cache.incr(key, -delta)
+#ANNOTATION: evaluate the method self._cache.incr with key and negative delta as arguments, return the result.
+        try:
+#ANNOTATION: try,
+            val = self._cache.decr(key, delta)
+#ANNOTATION: call the method self._cache.decr with key and delta as arguments, substitute the result for val.
+
+        # python-memcache responds to incr on non-existent keys by
+        # raising a ValueError, pylibmc by raising a pylibmc.NotFound
+        # and Cmemcache returns None. In all cases,
+        # we should raise a ValueError though.
+        except self.LibraryValueNotFoundException:
+#ANNOTATION: if self.LibraryValueNotFoundException exception is caught,
+            val = None
+#ANNOTATION: val is None.
+        if val is None:
+#ANNOTATION: if val is None,
+            raise ValueError("Key '%s' not found" % key)
+#ANNOTATION: raise an ValueError exception with string "Key '%s' not found" as argument, substitute '%s' for key. 
+        return val
+#ANNOTATION: return val.
+
+    def set_many(self, data, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method set_many with self, data, timeout set to DEFAULT_TIMEOUT and version set to None as arguments.
+        safe_data = {}
+#ANNOTATION: safe_data is an empty dictionary.
+        for key, value in data.items():
+#ANNOTATION: for every key and value in data.items function return value,
+            key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute the result for key.
+            safe_data[key] = value
+#ANNOTATION: substitute value for value under the key key of safe_data dictionary.
+        self._cache.set_multi(safe_data, self.get_backend_timeout(timeout))
+#ANNOTATION: call the method self._cache.set_multi with safe_data, self.get_backend_timeout(timeout) as arguments.
+
+    def delete_many(self, keys, version=None):
+#ANNOTATION: define the function delete_many with self, keys and version set to None as arguments.
+        l = lambda x: self.make_key(x, version=version)
+#ANNOTATION: l is lambda function with argument x, that calls the method self.make_key with x and version set to version as arguments.
+        self._cache.delete_multi(map(l, keys))
+#ANNOTATION: call the method self_cache.delete_multi with argument list containing keys mapped through function l.
+
+    def clear(self):
+#ANNOTATION: define the method clear with argument self.
+        self._cache.flush_all()
+#ANNOTATION: call the method self._cache_flush_all.
+
+
+class MemcachedCache(BaseMemcachedCache):
+#ANNOTATION: derive the class MemcachedCache from the BaseMemcachedCache base class.
+    "An implementation of a cache binding using python-memcached"
+#ANNOTATION: docstring
+    def __init__(self, server, params):
+#ANNOTATION: define the method __init__ with argument self, server and params.
+        import memcache
+#ANNOTATION: import memcache.
+        super(MemcachedCache, self).__init__(server, params,
+                                             library=memcache,
+                                             value_not_found_exception=ValueError)
+#ANNOTATION: call method __init__ from the base class of the class MemcachedCache with arguments: server, params, 
+#ANNOTATION: library set to memcache and value_not_found_exception set to ValueError.
+
+    @property
+#ANNOTATION: property decorator,
+    def _cache(self):
+#ANNOTATION: define the method _cache with self class instance as an argument.
+        if getattr(self, '_client', None) is None:
+#ANNOTATION: if attribute '_client' of the self object is None,
+            self._client = self._lib.Client(self._servers, pickleProtocol=pickle.HIGHEST_PROTOCOL)
+#ANNOTATION: call the method self._lib.Client with self._servers and pickleProtocol set to pickle.HIGHEST_PROTOCOL as arguments, substitute the result for self._client.
+        return self._client
+#ANNOTATION: return self._client.
+
+
+class PyLibMCCache(BaseMemcachedCache):
+#ANNOTATION: derive the class PyLibMCCache from BaseMemcachedCache base class.
+    "An implementation of a cache binding using pylibmc"
+#ANNOTATION: docstring
+    def __init__(self, server, params):
+#ANNOTATION: define the method __init__ with self, server and params as arguments.
+        import pylibmc
+#ANNOTATION: import pylibmc.
+        super(PyLibMCCache, self).__init__(server, params,
+                                           library=pylibmc,
+                                           value_not_found_exception=pylibmc.NotFound)
+#ANNOTATION: call method __init__ from the base class of the class PyLibMCCache with arguments: server, params, 
+#ANNOTATION: library set to pylibmc and value_not_found_exception set to pylibmc.NotFound.
+
+    @cached_property
+#ANNOTATION: decorator cached_property,
+    def _cache(self):
+#ANNOTATION: define the method _cache with argument self.
+        client = self._lib.Client(self._servers)
+#ANNOTATION: call the method self._lib.Client with argument self._servers.
+        if self._options:
+#ANNOTATION: if self._options exists,
+            client.behaviors = self._options
+#ANNOTATION: substitute self._options for client.behaviors.
+
+        return client
+#ANNOTATION: return client.

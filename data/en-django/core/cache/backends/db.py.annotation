@@ -1,0 +1,359 @@
+"Database cache backend."
+#ANNOTATION: docstring
+import base64
+#ANNOTATION: import module base64.
+from datetime import datetime
+#ANNOTATION: from datetime import datetime into default name space.
+
+try:
+#ANNOTATION: try,
+    from django.utils.six.moves import cPickle as pickle
+#ANNOTATION: from django.utils.six.moves import cPickle as pickle, into default namespace.
+except ImportError:
+#ANNOTATION: if ImportError exception occurred,
+    import pickle
+#ANNOTATION: import pickle.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core.cache.backends.base import BaseCache, DEFAULT_TIMEOUT
+#ANNOTATION: from django.core.cache.backends.base import BaseCache and DEFAULT_TIMEOUT into default name space.
+from django.db import connections, transaction, router, DatabaseError
+#ANNOTATION: from django.db import connections, transaction, router and DatabaseError into default name space.
+from django.db.backends.utils import typecast_timestamp
+#ANNOTATION: from django.db.backends.utils import typecast_timestamp into default name space.
+from django.utils import timezone, six
+#ANNOTATION: from django.utils import timezone and six into default name space.
+from django.utils.encoding import force_bytes
+#ANNOTATION: from django.utils.encoding import force_bytes into default name space.
+
+
+class Options(object):
+#ANNOTATION: derive class Options from the base class object.
+    """A class that will quack like a Django model _meta class.
+
+    This allows cache operations to be controlled by the router
+    """
+#ANNOTATION: docstring
+    def __init__(self, table):
+#ANNOTATION: define the initialization method __init__ with self class instance and table as arguments.
+        self.db_table = table
+#ANNOTATION: substitute table for self.db_table.
+        self.app_label = 'django_cache'
+#ANNOTATION: self.app_label is a string 'django_cache'.
+        self.model_name = 'cacheentry'
+#ANNOTATION: self.model_name is a string 'cacheentry'.
+        self.verbose_name = 'cache entry'
+#ANNOTATION: self.verbose_name is a string 'cache entry'.
+        self.verbose_name_plural = 'cache entries'
+#ANNOTATION: self.verbose_name_plural is a string 'cache entries'.
+        self.object_name = 'CacheEntry'
+#ANNOTATION: self.object_name is a string 'CacheEntry'.
+        self.abstract = False
+#ANNOTATION: self.abstract is boolean False.
+        self.managed = True
+#ANNOTATION: self.managed is boolean True.
+        self.proxy = False
+#ANNOTATION: self.proxy is boolean False.
+
+
+class BaseDatabaseCache(BaseCache):
+#ANNOTATION: derive class BaseDatabaseCache from BaseCache base class.
+    def __init__(self, table, params):
+#ANNOTATION: define the initialization method __init__ with self, table and params as arguments.
+        BaseCache.__init__(self, params)
+#ANNOTATION: call the BaseCache.__init__ method with self class instance and params as the arguments.
+        self._table = table
+#ANNOTATION: substitute table for self._table.
+
+        class CacheEntry(object):
+#ANNOTATION: derive CacheEntry class from the object base class.
+            _meta = Options(table)
+#ANNOTATION: _meta is class Options class instance initialized with table argument.
+        self.cache_model_class = CacheEntry
+#ANNOTATION: substitute CacheEntry for self.cache_model_class.
+
+
+class DatabaseCache(BaseDatabaseCache):
+#ANNOTATION: derive DatabaseCache from the BaseDatabaseCache base class.
+
+    # This class uses cursors provided by the database connection. This means
+    # it reads expiration values as aware or naive datetimes depending on the
+    # value of USE_TZ. They must be compared to aware or naive representations
+    # of "now" respectively.
+
+    # But it bypasses the ORM for write operations. As a consequence, aware
+    # datetimes aren't made naive for databases that don't support time zones.
+    # We work around this problem by always using naive datetimes when writing
+    # expiration values, in UTC when USE_TZ = True and in local time otherwise.
+
+    def get(self, key, default=None, version=None):
+#ANNOTATION: define the method get with 4 arguments, self class instance, key, default set to None and version set to None.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key Whit key and version set to version as arguments, substitute the result for key.
+        self.validate_key(key)
+#ANNOTATION: call the method self.validate_key with argument key.
+        db = router.db_for_read(self.cache_model_class)
+#ANNOTATION: call the method router.db_for_read with self.cache_model_class as argument, substitute the result for db.
+        table = connections[db].ops.quote_name(self._table)
+#ANNOTATION: call the ops.quote_name method with argument self._table on the value under the db key of connections dictionary, substitute the result for table.
+
+        with connections[db].cursor() as cursor:
+#ANNOTATION: call the cursor method on the value under the db key of connections dictionary, preform following with return value named cursor,
+            cursor.execute("SELECT cache_key, value, expires FROM %s "
+                           "WHERE cache_key = %%s" % table, [key])
+#ANNOTATION: call the method cursor.execute with string "SELECT cache_key, value, expires FROM %s WHERE cache_key = %%s" as argument, 
+#ANNOTATION: substitute the '%s' with table and list containing key, respectively. 
+            row = cursor.fetchone()
+#ANNOTATION: call the cursor.fetchone method, substitute the result for row.
+        if row is None:
+#ANNOTATION: if row is None,
+            return default
+#ANNOTATION: return default.
+        now = timezone.now()
+#ANNOTATION: call the timezone.now function, substitute the result for now.
+        expires = row[2]
+#ANNOTATION: substitute third element of row list for expires.
+        if connections[db].features.needs_datetime_string_cast and not isinstance(expires, datetime):
+#ANNOTATION: if features.needs_datetime_string_cast field of the object represented stored under the db key of connections dictionary is true,
+#ANNOTATION: and expires is not an instance of datetime.
+            # Note: typecasting is needed by some 3rd party database backends.
+            # All core backends work without typecasting, so be careful about
+            # changes here - test suite will NOT pick regressions here.
+            expires = typecast_timestamp(str(expires))
+#ANNOTATION: convert expires to a string, use it as argument for the call to the function typecast_timestamp, substitute the result for expires.
+        if expires < now:
+#ANNOTATION: if expires is lesser than now,
+            db = router.db_for_write(self.cache_model_class)
+#ANNOTATION: call the method router.db_for_write with argument self.cache_model_class, substitute the result for db. 
+            with connections[db].cursor() as cursor:
+#ANNOTATION: call the cursor method on the value under the db key of connections dictionary, preform following with return value named cursor,
+                cursor.execute("DELETE FROM %s "
+                               "WHERE cache_key = %%s" % table, [key])
+#ANNOTATION: call the method cursor.execute with string "DELETE FROM %s WHERE cache_key = %%s" as argument, 
+#ANNOTATION: substitute the '%s' with table and list containing key, respectively.
+            return default
+#ANNOTATION: return default.
+        value = connections[db].ops.process_clob(row[1])
+#ANNOTATION: call the method ops.process_clob with second element of row as argument, on the object under the db key of connections dictionary, substitute the result for value.
+        return pickle.loads(base64.b64decode(force_bytes(value)))
+#ANNOTATION: call the function force_bytes with argument value, use the result as an argument for the call to the method base64.b64decode, 
+#ANNOTATION: use the result as the argument for the function call to the pickle.loads, return the result.
+
+    def set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method set with 5 arguments, self class instance, key, value, timeout set to DEFAULT_TIMEOUT and version set to None.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute the result for key.
+        self.validate_key(key)
+#ANNOTATION: call the method self.validate_key with key as argument.
+        self._base_set('set', key, value, timeout)
+#ANNOTATION: call the method self._base_set with string 'set', key, value and timeout as arguments.
+
+    def add(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method add with 5 arguments, self class instance, key, value, timeout set to DEFAULT_TIMEOUT and version set to None.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute the result for key.
+        self.validate_key(key)
+#ANNOTATION: call the method self.validate_key with key as argument.
+        return self._base_set('add', key, value, timeout)
+#ANNOTATION: call the method self._base_set with string 'add', key, value and timeout as arguments, return the result.
+
+    def _base_set(self, mode, key, value, timeout=DEFAULT_TIMEOUT):
+#ANNOTATION: define the protected method _base_set with 4 arguments, self class instance, key, value and timeout set to DEFAULT_TIMEOUT.
+        timeout = self.get_backend_timeout(timeout)
+#ANNOTATION: call the method self.get_backend_timeout with argument timeout, substitute the result for timeout.
+        db = router.db_for_write(self.cache_model_class)
+#ANNOTATION: call the method router.db_for_write with argument self.cache_model_class, substitute the result for db.
+        table = connections[db].ops.quote_name(self._table)
+#ANNOTATION: call the ops.quote_name method with argument self._table on the object under the db key of connections dictionary, substitute the result for table.
+
+        with connections[db].cursor() as cursor:
+#ANNOTATION: call the cursor method on the value under the db key of connections dictionary, preform following with return value named cursor,
+            cursor.execute("SELECT COUNT(*) FROM %s" % table)
+#ANNOTATION: call the method cursor.execute with string "SELECT COUNT(*) FROM %s" as argument, substitute the '%s' with table. 
+            num = cursor.fetchone()[0]
+#ANNOTATION: fetch one record from the database cursor points at, substitute the first element of return value for num.
+            now = timezone.now()
+#ANNOTATION: call the timezone.now function, substitute the result for now.
+            now = now.replace(microsecond=0)
+#ANNOTATION: call the function now.replace with microseconds set to integer 0, substitute the result for now. 
+            if timeout is None:
+#ANNOTATION: if timeout is None,
+                exp = datetime.max
+#ANNOTATION: substitute the datetime.max for exp.
+            elif settings.USE_TZ:
+#ANNOTATION: otherwise is settings.USE_TI is true,
+                exp = datetime.utcfromtimestamp(timeout)
+#ANNOTATION: call the function datetime.utcfromtimestamp with argument timeout, substitute it for exp.
+            else:
+#ANNOTATION: if not,
+                exp = datetime.fromtimestamp(timeout)
+#ANNOTATION: call the function datetime.fromtimestamp with argument timeout, substitute it for exp.
+            exp = exp.replace(microsecond=0)
+#ANNOTATION: call the exp.replace with microsecond set to integer 0, substitute the result for exp.
+            if num > self._max_entries:
+#ANNOTATION: if num is greater than self._max_entries,
+                self._cull(db, cursor, now)
+#ANNOTATION: call the method self._cull with db, cursor and now as arguments.
+            pickled = pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
+#ANNOTATION: call the method pickle.dumps with value and pickle.HIGHEST_PROTOCOL as arguments, substitute it for pickled.
+            b64encoded = base64.b64encode(pickled)
+#ANNOTATION: call the method base64.b64encode with argument pickled, substitute the result for b64encoded.
+            # The DB column is expecting a string, so make sure the value is a
+            # string, not bytes. Refs #19274.
+            if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+                b64encoded = b64encoded.decode('latin1')
+#ANNOTATION: call the method b64encoded.decode with string 'latin1' as argument, substitute the result for b64encoded.
+            try:
+#ANNOTATION: try,
+                # Note: typecasting for datetimes is needed by some 3rd party
+                # database backends. All core backends work without typecasting,
+                # so be careful about changes here - test suite will NOT pick
+                # regressions.
+                with transaction.atomic(using=db):
+#ANNOTATION: with return value of the function transaction.atomic with using set to db as arguments, perform the following, 
+                    cursor.execute("SELECT cache_key, expires FROM %s "
+                                   "WHERE cache_key = %%s" % table, [key])
+#ANNOTATION: call the method cursor.execute with string "SELECT cache_key, expires FROM %s WHERE cache_key = %%s" as argument, 
+#ANNOTATION: substitute the '%s' with table and list containing key, respectively.
+                    result = cursor.fetchone()
+#ANNOTATION: fetch one entry from the database that cursor points at, substitute it for the result.
+                    if result:
+#ANNOTATION: if result is true,
+                        current_expires = result[1]
+#ANNOTATION: substitute the second element of result for current_expires.
+                        if (connections[db].features.needs_datetime_string_cast and not
+                                isinstance(current_expires, datetime)):
+#ANNOTATION: if features.needs_datetime_string_cast field of object under the db key of connections dictionary is true and current_expires is not an instance of datetime object.
+                            current_expires = typecast_timestamp(str(current_expires))
+#ANNOTATION: convert current_expires to a string, use it as the argument for the call to the function typecast_timestamp, substitute the result for current_expires.
+                    exp = connections[db].ops.value_to_db_datetime(exp)
+#ANNOTATION: on the object under the db key of connections dictionary call the method ops.value_to_db_datetime with argument exp, substitute the result for the exp.
+                    if result and (mode == 'set' or (mode == 'add' and current_expires < now)):
+#ANNOTATION: if mode equals to string 'add' and current_expires is lesser than now, or mode equals to string 'set', and result is true, 
+                        cursor.execute("UPDATE %s SET value = %%s, expires = %%s "
+                                       "WHERE cache_key = %%s" % table,
+                                       [b64encoded, exp, key])
+#ANNOTATION: call the method cursor.execute with string "UPDATE %s SET value = %%s, expires = %%s WHERE cache_key = %%s" as argument, 
+#ANNOTATION: substitute the '%s' with table and 3 elements of a list: b64encoded, exp and key, respectively.
+                    else:
+#ANNOTATION: if not,
+                        cursor.execute("INSERT INTO %s (cache_key, value, expires) "
+                                       "VALUES (%%s, %%s, %%s)" % table,
+                                       [key, b64encoded, exp])
+#ANNOTATION: call the method cursor.execute with string "INSERT INTO %s (cache_key, value, expires) VALUES (%%s, %%s, %%s)", 
+#ANNOTATION: substitute the '%s' with table and 3 elements of a list: b64encoded, exp and key, respectively.
+            except DatabaseError:
+#ANNOTATION: if DatabaseError exception is caught,
+                # To be threadsafe, updates/inserts are allowed to fail silently
+                return False
+#ANNOTATION: return boolean False.
+            else:
+#ANNOTATION: if not,
+                return True
+#ANNOTATION: return boolean True.
+
+    def delete(self, key, version=None):
+#ANNOTATION: define the method delete with self class instance, key and version set to None as arguments.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute the result for key.
+        self.validate_key(key)
+#ANNOTATION: call the method self.validate_key with argument key.
+
+        db = router.db_for_write(self.cache_model_class)
+#ANNOTATION: call the method router.db_for_write with argument self.cache_model_class, substitute the result for db.
+        table = connections[db].ops.quote_name(self._table)
+#ANNOTATION: call the ops.quote_name method with argument self._table on the object under the db key of connections dictionary, substitute the result for table.
+
+        with connections[db].cursor() as cursor:
+#ANNOTATION: call the cursor method on the value under the db key of connections dictionary, preform following with return value named cursor,
+            cursor.execute("DELETE FROM %s WHERE cache_key = %%s" % table, [key])
+#ANNOTATION: call the method cursor.execute with string "DELETE FROM %s WHERE cache_key = %%s" as argument, 
+#ANNOTATION: substitute the '%s' with table and list containing key, respectively.
+
+    def has_key(self, key, version=None):
+#ANNOTATION: define the method has_key with self class instance, key and version defaulting to None as arguments.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the self.make_key with key and version set to version as arguments, substitute the result for key.
+        self.validate_key(key)
+#ANNOTATION: call the self.validate_key method with argument key.
+
+        db = router.db_for_read(self.cache_model_class)
+#ANNOTATION: call the method router.db_for_write with argument self.cache_model_class, substitute the result for db.
+        table = connections[db].ops.quote_name(self._table)
+#ANNOTATION: call the ops.quote_name method with argument self._table on the object under the db key of connections dictionary, substitute the result for table.
+
+        if settings.USE_TZ:
+#ANNOTATION: if settings.USE_TZ is true,
+            now = datetime.utcnow()
+#ANNOTATION: call the function datetime.utcnow, substitute the result for now.
+        else:
+#ANNOTATION: if not,
+            now = datetime.now()
+#ANNOTATION: call the function datetime.now, substitute the result to now.
+        now = now.replace(microsecond=0)
+#ANNOTATION: call the method now.replace with the argument microsecond set to integer 0, substitute the result for now.
+
+        with connections[db].cursor() as cursor:
+#ANNOTATION: call the cursor method on the value under the db key of connections dictionary, preform following with return value named cursor,
+            cursor.execute("SELECT cache_key FROM %s "
+                           "WHERE cache_key = %%s and expires > %%s" % table,
+                           [key, connections[db].ops.value_to_db_datetime(now)])
+#ANNOTATION: call the method cursor.execute with string "SELECT cache_key FROM %s WHERE cache_key = %%s and expires > %%s" as argument, 
+#ANNOTATION: substitute the '%s' with table and list containing return value of the method call ops.value_to_db_datetime with argument now on the object under the db key of connections dictionary, respectively.
+            return cursor.fetchone() is not None
+#ANNOTATION: if exists return next entry from the database that cursor points at. 
+
+    def _cull(self, db, cursor, now):
+#ANNOTATION: define the protected method _cull with self class instance, db, cursor and now as arguments.
+        if self._cull_frequency == 0:
+#ANNOTATION: if self._cull_frequency equals to integer 0.
+            self.clear()
+#ANNOTATION: call the self.clear method.
+        else:
+#ANNOTATION: if not,
+            # When USE_TZ is True, 'now' will be an aware datetime in UTC.
+            now = now.replace(tzinfo=None)
+#ANNOTATION: call the method now.replace with argument tzinfo set to None, substitute it for now.
+            table = connections[db].ops.quote_name(self._table)
+#ANNOTATION: call the ops.quote_name method with argument self._table on the object under the db key of connections dictionary, substitute the result for table.
+            cursor.execute("DELETE FROM %s WHERE expires < %%s" % table,
+                           [connections[db].ops.value_to_db_datetime(now)])
+#ANNOTATION: call the method cursor.execute with string "DELETE FROM %s WHERE expires < %%s" as argument, 
+#ANNOTATION: substitute the '%s' with table and list containing return value of the method call ops.value_to_db_datetime with argument now on the object under the db key of connections dictionary, respectively.
+            cursor.execute("SELECT COUNT(*) FROM %s" % table)
+#ANNOTATION: call the method cursor.execute with string "SELECT COUNT(*) FROM %s" as argument, substitute the '%s' with table.
+            num = cursor.fetchone()[0]
+#ANNOTATION: fetch next entry for the database that cursor points into, substitute first element of it for num.
+            if num > self._max_entries:
+#ANNOTATION: if num is greater than self._max_entries,
+                cull_num = num // self._cull_frequency
+#ANNOTATION: divide num by self._cull_frequency, floor the result and substitute it for cull_num.
+                cursor.execute(
+                    connections[db].ops.cache_key_culling_sql() % table,
+                    [cull_num])
+#ANNOTATION: evaluate the method connections[db].ops.cache_key_culling_sql, evaluate the result by table modulus, call the method cursor.execute,
+#ANNOTATION: with previous result and list containing cull_num, respectively as arguments. 
+                cursor.execute("DELETE FROM %s "
+                               "WHERE cache_key < %%s" % table,
+                               [cursor.fetchone()[0]])
+#ANNOTATION: call the method cursor.execute with string "DELETE FROM %s WHERE cache_key < %%s" as argument, 
+#ANNOTATION: substitute the '%s' with table and list containing first element of cursor.fetchone method, respectively.
+
+    def clear(self):
+#ANNOTATION: define the method clear with argument self.
+        db = router.db_for_write(self.cache_model_class)
+#ANNOTATION: call the method router.db_for_write with argument self.cache_model_class, substitute the result for db.
+        table = connections[db].ops.quote_name(self._table)
+#ANNOTATION: call the ops.quote_name method with argument self._table on the object under the db key of connections dictionary, substitute the result for table.
+        with connections[db].cursor() as cursor:
+#ANNOTATION: call the cursor method on the value under the db key of connections dictionary, preform following with return value named cursor,
+            cursor.execute('DELETE FROM %s' % table)
+#ANNOTATION: call the method cursor.execute with string "DELETE FROM %s" as argument, substitute the '%s' with table.
+
+# For backwards compatibility
+class CacheClass(DatabaseCache):
+#ANNOTATION: derive the class CacheClass from the DatabaseCache base class.
+    pass
+#ANNOTATION: do nothing.

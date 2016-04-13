@@ -1,0 +1,162 @@
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core.cache import caches
+#ANNOTATION: from django.core.cache import caches into default name space.
+from django.core.cache.backends.db import BaseDatabaseCache
+#ANNOTATION: from django.core.cache.backends.db import BaseDatabaseCache into default name space.
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+from django.db import connections, router, transaction, models, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import connections, router, transaction, models and DEFAULT_DB_ALIAS into default name space.
+from django.db.utils import DatabaseError
+#ANNOTATION: from django.db.utils import DatabaseError into default name space.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand base class.
+    help = "Creates the tables needed to use the SQL cache backend."
+#ANNOTATION: help is an string "Creates the tables needed to use the SQL cache backend.".
+
+    requires_system_checks = False
+#ANNOTATION: requires_system_checks is boolean False.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with arguments self and parser.
+        parser.add_argument('args', metavar='table_name', nargs='*',
+            help='Optional table names. Otherwise, settings.CACHES is used to '
+            'find cache tables.')
+#ANNOTATION: call the method parser.add_argument with 4 arguments: string 'args', metavar set to string 'table_name', nargs set to '*' character,
+#ANNOTATION: and help set to a string 'Optional table names. Otherwise, settings.CACHES is used to find cache tables.' .
+        parser.add_argument('--database', action='store', dest='database',
+            default=DEFAULT_DB_ALIAS,
+            help='Nominates a database onto which the cache tables will be '
+            'installed. Defaults to the "default" database.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--database', action set to string 'store', dest as a string 'database',
+#ANNOTATION: default set to DEFAULT_DB_ALIAS and help set to a string:
+#ANNOTATION: 'Nominates a database onto which the cache tables will be installed. Defaults to the "default" database.'
+
+    def handle(self, *tablenames, **options):
+#ANNOTATION: define the method handle with arguments self, unpacked list tablenames and unpacked dictionary options.
+        db = options.get('database')
+#ANNOTATION: get value under the 'database' key of the options dictionary, substitute it for db.
+        self.verbosity = int(options.get('verbosity'))
+#ANNOTATION: get the value under the 'verbosity' key of the options dictionary, convet it to an integer and substitute for self.verbosity.
+        if len(tablenames):
+#ANNOTATION: if length of tablenames is greater than zero,
+            # Legacy behavior, tablename specified as argument
+            for tablename in tablenames:
+#ANNOTATION: for every tablename in tablenames,
+                self.create_table(db, tablename)
+#ANNOTATION: call the method self.create_table with arguments: db and tablename.
+        else:
+#ANNOTATION: if not,
+            for cache_alias in settings.CACHES:
+#ANNOTATION: for every cache_alias in settings.CACHES,
+                cache = caches[cache_alias]
+#ANNOTATION: substitute value under the cache_alias key of the caches dictionary for cache.
+                if isinstance(cache, BaseDatabaseCache):
+#ANNOTATION: if cache is an instance of BaseDatabaseCache,
+                    self.create_table(db, cache._table)
+#ANNOTATION: all the method self.create_table with arguments: db and cache._table.
+
+    def create_table(self, database, tablename):
+#ANNOTATION: define the method create_table with arguments self, database and tablename.
+        cache = BaseDatabaseCache(tablename, {})
+#ANNOTATION: cache is an instance of BaseDatabaseCache class, created with arguments: tablename and an empty dictionary. 
+        if not router.allow_migrate(database, cache.cache_model_class):
+#ANNOTATION: call the method router.allow_migrate with 2 arguments: database and cache.cache_model_class, if it evaluates to false,
+            return
+#ANNOTATION: return nothing.
+        connection = connections[database]
+#ANNOTATION: substitute value under the database key of the connections dictionary for connection.
+
+        if tablename in connection.introspection.table_names():
+#ANNOTATION: if tablename is contained in return value of the method connection.introspection.table_names,
+            if self.verbosity > 0:
+#ANNOTATION: if self.verbosity is greater than integer 0,
+                self.stdout.write("Cache table '%s' already exists." % tablename)
+#ANNOTATION: replace '%s' in string "Cache table '%s' already exists." with tablename, write it to the self.stdout stream.
+            return
+#ANNOTATION: return nothing.
+
+        fields = (
+            # "key" is a reserved word in MySQL, so use "cache_key" instead.
+            models.CharField(name='cache_key', max_length=255, unique=True, primary_key=True),
+            models.TextField(name='value'),
+            models.DateTimeField(name='expires', db_index=True),
+        )
+#ANNOTATION: fields is an tuple containing 3 entries: return value of the method models.CharField called with 4 arguments:
+#ANNOTATION: name set to a string 'cache_key', max_length set to integer 255, unique set to boolean True and primary_key set to boolean True,
+#ANNOTATION: return value of the method models.TextField called with argument name set to a string 'value', 
+#ANNOTATION: and return value of the method models.DateTimeField called with 2 arguments: name set to string 'expires' and db_index set to True.
+        table_output = []
+#ANNOTATION: table_output is an empty list.
+        index_output = []
+#ANNOTATION: index_output is an empty list.
+        qn = connection.ops.quote_name
+#ANNOTATION: substitute connection.ops.quote_name for qn.
+        for f in fields:
+#ANNOTATION: for every f in fields,
+            field_output = [qn(f.name), f.db_type(connection=connection)]
+#ANNOTATION: field_output is an list containing 2 elements: return value of the function qn called with an argument f.name,
+#ANNOTATION: and return value of the function f.db_type called with an argument connection set to connection.
+            field_output.append("%sNULL" % ("NOT " if not f.null else ""))
+#ANNOTATION: if f.null is false, append string append "NOT NULL" to field_output, otherwise append "NULL" to field_output.
+            if f.primary_key:
+#ANNOTATION: if f.primary_key is true,
+                field_output.append("PRIMARY KEY")
+#ANNOTATION: append string "PRIMARY KEY" to field_output. 
+            elif f.unique:
+#ANNOTATION: otherwise if f.unique is true,
+                field_output.append("UNIQUE")
+#ANNOTATION: append string "UNIQUE" to field_output.
+            if f.db_index:
+#ANNOTATION: if f.db_index is true,
+                unique = "UNIQUE " if f.unique else ""
+#ANNOTATION: if f.unique is true, substitute "UNIQUE " for unique, otherwise unique is an empty string.
+                index_output.append("CREATE %sINDEX %s ON %s (%s);" %
+                    (unique, qn('%s_%s' % (tablename, f.name)), qn(tablename),
+                    qn(f.name)))
+#ANNOTATION: replace '%s' in string "CREATE %sINDEX %s ON %s (%s);" with: unique, return value of the function qn called with an argument:
+#ANNOTATION: a string '%s_%s', where '%s' is replaced with tablename and f.name, respectively, 
+#ANNOTATION: return value of the function qn called with an argument tablename and return value of the function qn called with an argument f.name. 
+            table_output.append(" ".join(field_output))
+#ANNOTATION: join field_output elements into a string, separated by whitespaces, append it to table_output.
+        full_statement = ["CREATE TABLE %s (" % qn(tablename)]
+#ANNOTATION: full_statement is a list containing: string "CREATE TABLE %s (", where %s is replaced by result of the function qn called with an argument tablename.
+        for i, line in enumerate(table_output):
+#ANNOTATION: for every i and line in enumerated iterable table_output,
+            full_statement.append('    %s%s' % (line, ',' if i < len(table_output) - 1 else ''))
+#ANNOTATION: replace %s in string '    %s%s' with: line and character ',' if i is lesser than length of table_output decremented by one, 
+#ANNOTATION: or with an empty string if its not, append the resulting string to full_statement.
+        full_statement.append(');')
+#ANNOTATION: append string ');' to full_statement. 
+
+        with transaction.atomic(using=database,
+                                savepoint=connection.features.can_rollback_ddl):
+#ANNOTATION: evaluate method transaction.atomic with arguments: using set to database and savepoint set to connection.features.can_rollback_ddl,
+#ANNOTATION: with the result,
+            with connection.cursor() as curs:
+#ANNOTATION: evaluate method connection.cursor, with return value as curs,
+                try:
+#ANNOTATION: try,
+                    curs.execute("\n".join(full_statement))
+#ANNOTATION: join full_statement into a string, separated by newlines, use it as an argument for the call to the method curs.execute.
+                except DatabaseError as e:
+#ANNOTATION: if DatabaseError, renamed to e, exception is caught,
+                    raise CommandError(
+                        "Cache table '%s' could not be created.\nThe error was: %s." %
+                        (tablename, force_text(e)))
+#ANNOTATION: raise an CommandError with an argument string "Cache table '%s' could not be created.\nThe error was: %s.", replace '%s' with:
+#ANNOTATION: tablename and return value of the function force_text called with an argument e, respectively.
+                for statement in index_output:
+#ANNOTATION: for every statement in index_output,
+                    curs.execute(statement)
+#ANNOTATION: execute statement on the database that curs points to.
+
+        if self.verbosity > 1:
+#ANNOTATION: if self.verbosity is greater than integer 1,
+            self.stdout.write("Cache table '%s' created." % tablename)
+#ANNOTATION: replace '%s' in string "Cache table '%s' created." with tablename, write it to self.stdout.

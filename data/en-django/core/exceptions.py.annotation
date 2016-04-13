@@ -1,0 +1,275 @@
+"""
+Global Django exception and warning classes.
+"""
+#ANNOTATION: docstring
+from functools import reduce
+#ANNOTATION: from functools import reduce into default name space.
+import operator
+#ANNOTATION: import module operator.
+
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+
+
+class DjangoRuntimeWarning(RuntimeWarning):
+#ANNOTATION: derive the class DjangoRuntimeWarning from the RuntimeWarning base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+class AppRegistryNotReady(Exception):
+#ANNOTATION: derive the class AppRegistryNotReady from the Exception base class.
+    """The django.apps registry is not populated yet"""
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class ObjectDoesNotExist(Exception):
+#ANNOTATION: derive the class ObjectDoesNotExist from the Exception base class.
+    """The requested object does not exist"""
+#ANNOTATION: docstring
+    silent_variable_failure = True
+#ANNOTATION: silent_variable_failure is an boolean True.
+
+
+class MultipleObjectsReturned(Exception):
+#ANNOTATION: derive the class MultipleObjectsReturned from the Exception base class.
+    """The query returned multiple objects when only one was expected."""
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class SuspiciousOperation(Exception):
+#ANNOTATION: derive the class SuspiciousOperation from the Exception base class.
+    """The user did something suspicious"""
+#ANNOTATION: docstring
+
+
+class SuspiciousMultipartForm(SuspiciousOperation):
+#ANNOTATION: derive the class SuspiciousMultipartForm from the SuspiciousOperation base class.
+    """Suspect MIME request in multipart form data"""
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class SuspiciousFileOperation(SuspiciousOperation):
+#ANNOTATION: derive the class SuspiciousFileOperation from the SuspiciousOperation base class.
+    """A Suspicious filesystem operation was attempted"""
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class DisallowedHost(SuspiciousOperation):
+#ANNOTATION: derive the class DisallowedHost from the SuspiciousOperation base class.
+    """HTTP_HOST header contains invalid value"""
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class DisallowedRedirect(SuspiciousOperation):
+#ANNOTATION: derive the class DisallowedRedirect from the SuspiciousOperation base class.
+    """Redirect to scheme not in allowed list"""
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class PermissionDenied(Exception):
+#ANNOTATION: derive the class PermissionDenied from the Exception base class.
+    """The user did not have permission to do that"""
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class ViewDoesNotExist(Exception):
+#ANNOTATION: derive the class ViewDoesNotExist from the Exception base class.
+    """The requested view does not exist"""
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class MiddlewareNotUsed(Exception):
+#ANNOTATION: derive the class MiddlewareNotUsed from the Exception base class.
+    """This middleware is not used in this server configuration"""
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class ImproperlyConfigured(Exception):
+#ANNOTATION: derive the class ImproperlyConfigured from the Exception base class.
+    """Django is somehow improperly configured"""
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class FieldError(Exception):
+#ANNOTATION: derive the class FieldError from the Exception base class.
+    """Some kind of problem with a model field."""
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+NON_FIELD_ERRORS = '__all__'
+#ANNOTATION: NON_FIELD_ERRORS is an string '__all__'.
+
+
+class ValidationError(Exception):
+#ANNOTATION: derive the class ValidationError from the Exception base class.
+    """An error while validating data."""
+#ANNOTATION: docstring
+    def __init__(self, message, code=None, params=None):
+#ANNOTATION: define the method __init__ with 4 arguments: self, message, code set to None and params set to None.
+        """
+        The `message` argument can be a single error, a list of errors, or a
+        dictionary that maps field names to lists of errors. What we define as
+        an "error" can be either a simple string or an instance of
+        ValidationError with its message attribute set, and what we define as
+        list or dictionary can be an actual `list` or `dict` or an instance
+        of ValidationError with its `error_list` or `error_dict` attribute set.
+        """
+#ANNOTATION: docstring
+
+        # PY2 can't pickle naive exception: http://bugs.python.org/issue1692335.
+        super(ValidationError, self).__init__(message, code, params)
+#ANNOTATION: call the __init__ method from the base class of the class ValidationError with arguments message, code and params.
+
+        if isinstance(message, ValidationError):
+#ANNOTATION: if message is an instance of ValidationError class,
+            if hasattr(message, 'error_dict'):
+#ANNOTATION: if message has an 'error_dict' attribute,
+                message = message.error_dict
+#ANNOTATION: substitute message.error_dict for message.
+            # PY2 has a `message` property which is always there so we can't
+            # duck-type on it. It was introduced in Python 2.5 and already
+            # deprecated in Python 2.6.
+            elif not hasattr(message, 'message' if six.PY3 else 'code'):
+#ANNOTATION: alternatively, if six.PY3 is true check if message does not have an attribute 'message', if six.PY3 is false, check if message doesnt have an attribute 'code', perform the following,
+                message = message.error_list
+#ANNOTATION: substitute message.error_list for message.
+            else:
+#ANNOTATION: if not,
+                message, code, params = message.message, message.code, message.params
+#ANNOTATION: substitute message.message, message.code, message.params for message, code and params, respectively.
+
+        if isinstance(message, dict):
+#ANNOTATION: if message is an instance of dict type,
+            self.error_dict = {}
+#ANNOTATION: self.error_dict is an empty dictionary.
+            for field, messages in message.items():
+#ANNOTATION: for every field, messages in return value of the message.items method,
+                if not isinstance(messages, ValidationError):
+#ANNOTATION: if messages is not an instance of the ValidationError class,
+                    messages = ValidationError(messages)
+#ANNOTATION: messages is an instance of the ValidationError class created with an argument messages. 
+                self.error_dict[field] = messages.error_list
+#ANNOTATION: substitute messages.error_list for the value under the field key of the self.error_dict dictionary.
+
+        elif isinstance(message, list):
+#ANNOTATION: otherwise if message is an instance of the list type.
+            self.error_list = []
+#ANNOTATION: self.error_list is an empty list.
+            for message in message:
+#ANNOTATION: for every message is message,
+                # Normalize plain strings to instances of ValidationError.
+                if not isinstance(message, ValidationError):
+#ANNOTATION: if message is not an instance of the ValidationError class,
+                    message = ValidationError(message)
+#ANNOTATION: message is an instance of the ValidationError class created with an argument message. 
+                self.error_list.extend(message.error_list)
+#ANNOTATION: extend the self.error_list list with message.error_list.
+
+        else:
+#ANNOTATION: if not,
+            self.message = message
+#ANNOTATION: substitute message for self.message.
+            self.code = code
+#ANNOTATION: substitute code for self.code.
+            self.params = params
+#ANNOTATION: substitute params for self.params.
+            self.error_list = [self]
+#ANNOTATION: substitute list containing element self for self.error_list.
+
+    @property
+#ANNOTATION: property getter decorator,
+    def message_dict(self):
+#ANNOTATION: define the method message_dict with an argument self.
+        # Trigger an AttributeError if this ValidationError
+        # doesn't have an error_dict.
+        getattr(self, 'error_dict')
+#ANNOTATION: get attribute 'error_dict' from the self object.
+
+        return dict(self)
+#ANNOTATION: convert object self to a dictionary, return it.
+
+    @property
+#ANNOTATION: property getter decorator,
+    def messages(self):
+#ANNOTATION: define the messages with an argument self.
+        if hasattr(self, 'error_dict'):
+#ANNOTATION: if self has an 'error_dict' attribute,
+            return reduce(operator.add, dict(self).values())
+#ANNOTATION: call the operator.add on the values of the self object converted into a dictionary, until it is reduced to a single value, return it.
+        return list(self)
+#ANNOTATION: convert self to a list and return it.
+
+    def update_error_dict(self, error_dict):
+#ANNOTATION: define the method update_error_dict with arguments self and error_dict.
+        if hasattr(self, 'error_dict'):
+#ANNOTATION: if self has an 'error_dict' attribute,
+            for field, error_list in self.error_dict.items():
+#ANNOTATION: for every field, error_list in self.error_dict.items method return value,
+                error_dict.setdefault(field, []).extend(error_list)
+#ANNOTATION: call the method extend with an argument error_list on the return value of the method error_dict.setdefault called with 2 arguments: field and an empty list.
+        else:
+#ANNOTATION: if not,
+            error_dict.setdefault(NON_FIELD_ERRORS, []).extend(self.error_list)
+#ANNOTATION: call the method extend with an argument error_list on the return value of the method error_dict.setdefault called with 2 arguments: NON_FIELD_ERRORS and an empty list.
+        return error_dict
+#ANNOTATION: return error_dict.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        if hasattr(self, 'error_dict'):
+#ANNOTATION: if self has an 'error_dict' attribute,
+            for field, errors in self.error_dict.items():
+#ANNOTATION: for every field, errors in self.error_dict.items method return value,
+                yield field, list(ValidationError(errors))
+#ANNOTATION: yield field and ValidationError object converted to an list, created with an argument errors.
+        else:
+#ANNOTATION: if not,
+            for error in self.error_list:
+#ANNOTATION: for every error in self.error_list,
+                message = error.message
+#ANNOTATION: substitute error.message for message.
+                if error.params:
+#ANNOTATION: if error.params is true,
+                    message %= error.params
+#ANNOTATION: divide message by error.params, substitute the residue of the division for message.
+                yield force_text(message)
+#ANNOTATION: call the force_text with an argument message, yield the result.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        if hasattr(self, 'error_dict'):
+#ANNOTATION: if self has an attribute 'error_dict',
+            return repr(dict(self))
+#ANNOTATION: return the printable representation of the self object converted to a dictionary.
+        return repr(list(self))
+#ANNOTATION: return the printable representation of the self object converted to a list.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return 'ValidationError(%s)' % self
+#ANNOTATION: return the string 'ValidationError(%s)', replace '%s' with self.

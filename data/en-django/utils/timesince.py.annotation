@@ -1,0 +1,105 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import datetime
+#ANNOTATION: import module datetime.
+
+from django.utils.html import avoid_wrapping
+#ANNOTATION: from django.utils.html import avoid_wrapping into default name space.
+from django.utils.timezone import is_aware, utc
+#ANNOTATION: from django.utils.timezone import is_aware and utc into default name space.
+from django.utils.translation import ugettext, ungettext_lazy
+#ANNOTATION: from django.utils.translation import ugettext and ungettext_lazy into default name space.
+
+
+def timesince(d, now=None, reversed=False):
+#ANNOTATION: define the function timesince with d, now defaulting to None, reversed defaulting to False as arguments. 
+    """
+    Takes two datetime objects and returns the time between d and now
+    as a nicely formatted string, e.g. "10 minutes".  If d occurs after now,
+    then "0 minutes" is returned.
+
+    Units used are years, months, weeks, days, hours, and minutes.
+    Seconds and microseconds are ignored.  Up to two adjacent units will be
+    displayed.  For example, "2 weeks, 3 days" and "1 year, 3 months" are
+    possible outputs, but "2 weeks, 3 hours" and "1 year, 5 days" are not.
+
+    Adapted from
+    http://web.archive.org/web/20060617175230/http://blog.natbat.co.uk/archive/2003/Jun/14/time_since
+    """
+#ANNOTATION: docstring
+    chunks = (
+        (60 * 60 * 24 * 365, ungettext_lazy('%d year', '%d years')),
+        (60 * 60 * 24 * 30, ungettext_lazy('%d month', '%d months')),
+        (60 * 60 * 24 * 7, ungettext_lazy('%d week', '%d weeks')),
+        (60 * 60 * 24, ungettext_lazy('%d day', '%d days')),
+        (60 * 60, ungettext_lazy('%d hour', '%d hours')),
+        (60, ungettext_lazy('%d minute', '%d minutes'))
+    )
+#ANNOTATION: chunks is a tuple containing 6 initial tuples: 
+#ANNOTATION: result of multiplication of integers: 60,60,24,365, and return value of ungettext_lazy with 2 arguments: '%d year', '%d years',
+#ANNOTATION: result of multiplication of integers: 60,60,24,30, and return value of ungettext_lazy with 2 arguments: '%d month', '%d month',
+#ANNOTATION: result of multiplication of integers: 60,60,24,7, and return value of ungettext_lazy with 2 arguments: '%d weeks', '%d weeks',
+#ANNOTATION: result of multiplication of integers: 60,60,24, and return value of ungettext_lazy with 2 arguments: '%d days', '%d days',
+#ANNOTATION: result of multiplication of integers: 60,60, and return value of ungettext_lazy with 2 arguments: '%d hours', '%d hours',
+#ANNOTATION: result of multiplication of integers: 60, and return value of ungettext_lazy with 2 arguments: '%d minutes', '%d minutes',
+
+    # Convert datetime.date to datetime.datetime for comparison.
+    if not isinstance(d, datetime.datetime):
+#ANNOTATION: if d is not an instance of datetime.datetime,
+        d = datetime.datetime(d.year, d.month, d.day)
+#ANNOTATION: call the function datetime.datetime with 3 arguments, d.year, d.month and d.day, substitute the result for d.
+    if now and not isinstance(now, datetime.datetime):
+#ANNOTATION: if now equals to boolean True and now is not an instance of datetime.datetime,
+        now = datetime.datetime(now.year, now.month, now.day)
+#ANNOTATION: call the function datetime.datetime with 3 arguments, now.year, now.month and now.day, substitute the result for now.
+
+    if not now:
+#ANNOTATION: if now is false,
+        now = datetime.datetime.now(utc if is_aware(d) else None)
+#ANNOTATION: call the function datetime.datetime with utc as argument if call to the is_aware(d) returns True, if not None is the argument, store the result in now.
+
+    delta = (d - now) if reversed else (now - d)
+#ANNOTATION: if reversed is True substitute difference of d and now for delta, if not substitute the difference of now and d for delta.
+    # ignore microseconds
+    since = delta.days * 24 * 60 * 60 + delta.seconds
+#ANNOTATION: multiply delta.days, integer 24, integer 60 and integer 60 add delta.seconds to it, substitute the result for since.
+    if since <= 0:
+#ANNOTATION: if since is lesser or equal to integer 0,
+        # d is in the future compared to now, stop processing.
+        return avoid_wrapping(ugettext('0 minutes'))
+#ANNOTATION: call the function ugettext with '0 minutes' as argument, use the result as the argument for the call to the avoid_wrapping function, return the result.
+    for i, (seconds, name) in enumerate(chunks):
+#ANNOTATION: for every i and tuple containing 2 elements: seconds and name, in enumerated chunks,
+        count = since // seconds
+#ANNOTATION: divide since by seconds, store the floored result in count.
+        if count != 0:
+#ANNOTATION: if count does not equals to integer 0,
+            break
+#ANNOTATION: break the execution of the smallest enclosing loop.
+    result = avoid_wrapping(name % count)
+#ANNOTATION: use the remainder of the division of name by count as the argument for the call to the avoid_wrapping function, store the result in result.
+    if i + 1 < len(chunks):
+#ANNOTATION: if i incremented by 1 is lesser than length of chunks, 
+        # Now get the second item
+        seconds2, name2 = chunks[i + 1]
+#ANNOTATION: get the element of chunks at the (i+1)-the index, assign it to the seconds2 and name2, respectively.
+        count2 = (since - (seconds * count)) // seconds2
+#ANNOTATION: multiply seconds by count, subtract it from since, divide the result by seconds2, store the floored result in count2.
+        if count2 != 0:
+#ANNOTATION: if count2 does not equals to integer 0,
+            result += ugettext(', ') + avoid_wrapping(name2 % count2)
+#ANNOTATION: call avoid_wrapping function with name2 modulus count2 as argument, call the ugettext with ', ' as argument, add previous 2 results, increment variable result by it.
+    return result
+#ANNOTATION: return result.
+
+
+def timeuntil(d, now=None):
+#ANNOTATION: define the function timeuntil with 2 arguments, d and now defaulting to none.
+    """
+    Like timesince, but returns a string measuring the time until
+    the given time.
+    """
+#ANNOTATION: docstring
+    return timesince(d, now, reversed=True)
+#ANNOTATION: evaluate the function timesince with d, now and reversed set to boolean true as arguments, return the result.

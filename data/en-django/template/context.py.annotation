@@ -1,0 +1,347 @@
+from copy import copy
+#ANNOTATION: from copy import copy into default name space.
+from django.utils.module_loading import import_string
+#ANNOTATION: from django.utils.module_loading import import_string into default name space.
+
+# Cache of actual callables.
+_standard_context_processors = None
+#ANNOTATION: _standard_context_processors is None.
+# We need the CSRF processor no matter what the user has in their settings,
+# because otherwise it is a security vulnerability, and we can't afford to leave
+# this to human error or failure to read migration instructions.
+_builtin_context_processors = ('django.core.context_processors.csrf',)
+#ANNOTATION: _builtin_context_processors is a tuple containing a string 'django.core.context_processors.csrf'.
+
+
+class ContextPopException(Exception):
+#ANNOTATION: derive the class ContextPopException from the Exception base class.
+    "pop() has been called more times than push()"
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class ContextDict(dict):
+#ANNOTATION: derive the class ContextDict from the dict base class.
+    def __init__(self, context, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 4 arguments: self, context, unpacked list args and unpacked dictionary kwargs.
+        super(ContextDict, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class ContextDict, with 2 arguments: unpacked list args and unpacked dictionary kwargs.
+
+        context.dicts.append(self)
+#ANNOTATION: append self to context.dicts.
+        self.context = context
+#ANNOTATION: substitute context for self.context.
+
+    def __enter__(self):
+#ANNOTATION: define the method __enter__ with an argument self.
+        return self
+#ANNOTATION: return self.
+
+    def __exit__(self, *args, **kwargs):
+#ANNOTATION: define the method __exit__ with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+        self.context.pop()
+#ANNOTATION: remove the first element from the self.context.
+
+
+class BaseContext(object):
+#ANNOTATION: derive the class BaseContext from the object base class.
+    def __init__(self, dict_=None):
+#ANNOTATION: define the method __init__ with 2 arguments: self and dict_ set to None.
+        self._reset_dicts(dict_)
+#ANNOTATION: call the method self._reset_dicts with an argument dict_.
+
+    def _reset_dicts(self, value=None):
+#ANNOTATION: define the method _reset_dicts with 2 arguments: self and value set to None.
+        builtins = {'True': True, 'False': False, 'None': None}
+#ANNOTATION: builtins is an dictionary with 3 initial entries: boolean True for 'True', boolean False for 'False' and None for 'None'.
+        self.dicts = [builtins]
+#ANNOTATION: self.dicts is an list with element builtins.
+        if value is not None:
+#ANNOTATION: if value is not None,
+            self.dicts.append(value)
+#ANNOTATION: append value to self.dicts list.
+
+    def __copy__(self):
+#ANNOTATION: define the method __copy__ with an argument self.
+        duplicate = copy(super(BaseContext, self))
+#ANNOTATION: call the function copy with an argument base class of the class BaseContext, substitute the result for duplicate.
+        duplicate.dicts = self.dicts[:]
+#ANNOTATION: hard copy list self.dicts to duplicate.dicts.
+        return duplicate
+#ANNOTATION: return duplicate.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return repr(self.dicts)
+#ANNOTATION: return printable representation of self.dicts.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        for d in reversed(self.dicts):
+#ANNOTATION: for every d in reversed list self.dicts,
+            yield d
+#ANNOTATION: yield d.
+
+    def push(self, *args, **kwargs):
+#ANNOTATION: define the method push with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+        return ContextDict(self, *args, **kwargs)
+#ANNOTATION: instantiate class ContextDict with 3 arguments: self, unpacked list args and unpacked dictionary kwargs, return it.
+
+    def pop(self):
+#ANNOTATION: define the method pop with an argument self.
+        if len(self.dicts) == 1:
+#ANNOTATION: if length of self.dicts is equal to an integer 1,
+            raise ContextPopException
+#ANNOTATION: raise an ContextPopException.
+        return self.dicts.pop()
+#ANNOTATION: call the method self.dicts.pop, return the result.
+
+    def __setitem__(self, key, value):
+#ANNOTATION: define the method __setitem__ with 3 arguments: self, key and value.
+        "Set a variable in the current context"
+#ANNOTATION: docstring
+        self.dicts[-1][key] = value
+#ANNOTATION: substitute value for value under the key key of dictionary at last element of self.dicts.
+
+    def __getitem__(self, key):
+#ANNOTATION: define the method __getitem__ with 2 arguments: self and key.
+        "Get a variable's value, starting at the current context and going upward"
+#ANNOTATION: docstring
+        for d in reversed(self.dicts):
+#ANNOTATION: for every d in reversed list self.dicts,
+            if key in d:
+#ANNOTATION: if key is contained in d,
+                return d[key]
+#ANNOTATION: return value under the key key of d dictionary.
+        raise KeyError(key)
+#ANNOTATION: raise KeyError exception with an argument key.
+
+    def __delitem__(self, key):
+#ANNOTATION: define the method __delitem__ with 2 arguments: self and key.
+        "Delete a variable from the current context"
+#ANNOTATION: docstring
+        del self.dicts[-1][key]
+#ANNOTATION: delete value under the key key of dictionary at last element of self.dicts.
+
+    def has_key(self, key):
+#ANNOTATION: define the method has_key with 2 arguments: self and key.
+        for d in self.dicts:
+#ANNOTATION: for every d in self.dicts,
+            if key in d:
+#ANNOTATION: if key is contained in d,
+                return True
+#ANNOTATION: return boolean True.
+        return False
+#ANNOTATION: return boolean False.
+
+    def __contains__(self, key):
+#ANNOTATION: define the method __contains__ with 2 arguments: self and key.
+        return self.has_key(key)
+#ANNOTATION: call the method self.has_key with an argument key, return the result. 
+
+    def get(self, key, otherwise=None):
+#ANNOTATION: define the method got with 3 arguments: self, key and otherwise set to None.
+        for d in reversed(self.dicts):
+#ANNOTATION: for every d in reversed list self.dicts,
+            if key in d:
+#ANNOTATION: if key is contained in d,
+                return d[key]
+#ANNOTATION: return value under the key key of d dictionary.
+        return otherwise
+#ANNOTATION: return otherwise.
+
+    def new(self, values=None):
+#ANNOTATION: define the method new with 2 arguments: self and values set to None.
+        """
+        Returns a new context with the same properties, but with only the
+        values given in 'values' stored.
+        """
+#ANNOTATION: docstring
+        new_context = copy(self)
+#ANNOTATION: call the function copy with an argument self, substitute the result for new_context. 
+        new_context._reset_dicts(values)
+#ANNOTATION: call the method new_context._reset_dicts values.
+        return new_context
+#ANNOTATION: return new_context.
+
+    def flatten(self):
+#ANNOTATION: define the method flatten with an argument self.
+        """
+        Returns self.dicts as one dictionary
+        """
+#ANNOTATION: docstring
+        flat = {}
+#ANNOTATION: flat is an empty dictionary,
+        for d in self.dicts:
+#ANNOTATION: for every d in self.dicts,
+            flat.update(d)
+#ANNOTATION: update flat dictionary with d.
+        return flat
+#ANNOTATION: return flat.
+
+    def __eq__(self, other):
+#ANNOTATION: define the method __eq__ with 2 arguments: self and other.
+        """
+        Compares two contexts by comparing theirs 'dicts' attributes.
+        """
+#ANNOTATION: docstring
+        if isinstance(other, BaseContext):
+#ANNOTATION: if other is an instance of BaseContext class,
+            # because dictionaries can be put in different order
+            # we have to flatten them like in templates
+            return self.flatten() == other.flatten()
+#ANNOTATION: call the flatten method of the self and other objects, if they are equal, return boolean True, if not return boolean False.
+
+        # if it's not comparable return false
+        return False
+#ANNOTATION: return boolean False.
+
+
+class Context(BaseContext):
+#ANNOTATION: derive the class Context from the BaseContext base class.
+    "A stack container for variable context"
+#ANNOTATION: docstring
+    def __init__(self, dict_=None, autoescape=True, current_app=None,
+            use_l10n=None, use_tz=None):
+#ANNOTATION: define the method __init__ with 6 arguments: self, dict_ set to None, autoescape set to True, current_app set to None, 
+#ANNOTATION: use_l10n set to None and use_tz set to None.
+        self.autoescape = autoescape
+#ANNOTATION: substitute autoescape for self.autoescape.
+        self.current_app = current_app
+#ANNOTATION: substitute current_app for self.current_app.
+        self.use_l10n = use_l10n
+#ANNOTATION: substitute use_l10n for self.use_l10n.
+        self.use_tz = use_tz
+#ANNOTATION: substitute use_tz for self.use_tz.
+        self.render_context = RenderContext()
+#ANNOTATION: self.render_context is a instance of RenderContext class.
+        super(Context, self).__init__(dict_)
+#ANNOTATION: call the the method __init__ from the base class of the class Context.
+
+    def __copy__(self):
+#ANNOTATION: define the method __copy__ with an argument self.
+        duplicate = super(Context, self).__copy__()
+#ANNOTATION: call the the method __copy__ from the base class of the class Context, substitute the result for duplicate.
+        duplicate.render_context = copy(self.render_context)
+#ANNOTATION: call the function copy with an argument self.render_context, substitute the result for duplicate.render_context.
+        return duplicate
+#ANNOTATION: return duplicate
+
+    def update(self, other_dict):
+#ANNOTATION: define the method update with 2 arguments: self and other_dict.
+        "Pushes other_dict to the stack of dictionaries in the Context"
+#ANNOTATION: docstring
+        if not hasattr(other_dict, '__getitem__'):
+#ANNOTATION: if other_dict doesnt have an '__getitem__' attribute,
+            raise TypeError('other_dict must be a mapping (dictionary-like) object.')
+#ANNOTATION: raise an TypeError exception with an argument string 'other_dict must be a mapping (dictionary-like) object.'.
+        self.dicts.append(other_dict)
+#ANNOTATION: append other_dict to self.dicts.
+        return other_dict
+#ANNOTATION: return other_dict.
+
+
+class RenderContext(BaseContext):
+#ANNOTATION: derive the class RenderContext from the BaseContext base class.
+    """
+    A stack container for storing Template state.
+
+    RenderContext simplifies the implementation of template Nodes by providing a
+    safe place to store state between invocations of a node's `render` method.
+
+    The RenderContext also provides scoping rules that are more sensible for
+    'template local' variables. The render context stack is pushed before each
+    template is rendered, creating a fresh scope with nothing in it. Name
+    resolution fails if a variable is not found at the top of the RequestContext
+    stack. Thus, variables are local to a specific template and don't affect the
+    rendering of other templates as they would if they were stored in the normal
+    template context.
+    """
+#ANNOTATION: docstring
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        for d in self.dicts[-1]:
+#ANNOTATION: for every d in last element of self.dicts,
+            yield d
+#ANNOTATION: yield d.
+
+    def has_key(self, key):
+#ANNOTATION: define the method has_key with 2 arguments: self and key.
+        return key in self.dicts[-1]
+#ANNOTATION: if key is contained in last element of self.dicts, return boolean True, otherwise return boolean False.
+
+    def get(self, key, otherwise=None):
+#ANNOTATION: define the method get with 3 arguments: self, key and otherwise set to None.
+        return self.dicts[-1].get(key, otherwise)
+#ANNOTATION: return value under the key key of dictionary in last element of self.dicts, 
+#ANNOTATION: if it doesnt exists return otherwise.
+
+    def __getitem__(self, key):
+#ANNOTATION: define the method __getitem__ with 2 arguments: self and key.
+        return self.dicts[-1][key]
+#ANNOTATION: return value under the key key of dictionary in last element of self.dicts.
+
+
+# This is a function rather than module-level procedural code because we only
+# want it to execute if somebody uses RequestContext.
+def get_standard_processors():
+#ANNOTATION: define the function get_standard_processors.
+    from django.conf import settings
+#ANNOTATION: from django.conf import settings into default namespace.
+    global _standard_context_processors
+#ANNOTATION: use global variable _standard_context_processors.
+    if _standard_context_processors is None:
+#ANNOTATION: if _standard_context_processors is None,
+        processors = []
+#ANNOTATION: processors is an empty list.
+        collect = []
+#ANNOTATION: collect is an empty list.
+        collect.extend(_builtin_context_processors)
+#ANNOTATION: extend collect list with _builtin_context_processors.
+        collect.extend(settings.TEMPLATE_CONTEXT_PROCESSORS)
+#ANNOTATION: extend collect list with settings.TEMPLATE_CONTEXT_PROCESSORS.
+        for path in collect:
+#ANNOTATION: for every path in collect,
+            func = import_string(path)
+#ANNOTATION: call the function import_string with an argument path, substitute the result for func.
+            processors.append(func)
+#ANNOTATION: append func to processors.
+        _standard_context_processors = tuple(processors)
+#ANNOTATION: convert processors elements into a tuple, substitute it for _standard_context_processors.
+    return _standard_context_processors
+#ANNOTATION: return _standard_context_processors.
+
+
+class RequestContext(Context):
+#ANNOTATION: derive the class RequestContext from the Context base class.
+    """
+    This subclass of template.Context automatically populates itself using
+    the processors defined in TEMPLATE_CONTEXT_PROCESSORS.
+    Additional processors can be specified as a list of callables
+    using the "processors" keyword argument.
+    """
+#ANNOTATION: docstring
+    def __init__(self, request, dict_=None, processors=None, current_app=None,
+            use_l10n=None, use_tz=None):
+#ANNOTATION: define the method __init__ with 7 arguments: self, request, dict_ set to None, processors set to None, current_app set to None, 
+#ANNOTATION: use_l10n set to None and use_tz set to None.
+        Context.__init__(self, dict_, current_app=current_app,
+                use_l10n=use_l10n, use_tz=use_tz)
+#ANNOTATION: call the method Context.__init__ with 5 arguments: self, dict_, current_app as current_app, use_l10n as use_l10n, use_tz as use_tz.
+        if processors is None:
+#ANNOTATION: if processors is None,
+            processors = ()
+#ANNOTATION: processors is an empty tuple.
+        else:
+#ANNOTATION: if not,
+            processors = tuple(processors)
+#ANNOTATION: convert processors into a tuple and substitute it for processors.
+        updates = dict()
+#ANNOTATION: updates is an empty dictionary.
+        for processor in get_standard_processors() + processors:
+#ANNOTATION: call the function get_standard_processors, append processors to the result, for every processor is the result,
+            updates.update(processor(request))
+#ANNOTATION: call the function processor with an argument request, update updates dictionary with the result.
+        self.update(updates)
+#ANNOTATION: update self dictionary with updates.

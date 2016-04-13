@@ -1,0 +1,498 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import glob
+#ANNOTATION: import module glob.
+import gzip
+#ANNOTATION: import module gzip.
+import os
+#ANNOTATION: import module os.
+import warnings
+#ANNOTATION: import module warnings.
+import zipfile
+#ANNOTATION: import module zipfile.
+
+from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core import serializers
+#ANNOTATION: from django.core import serializers into default name space.
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+from django.core.management.color import no_style
+#ANNOTATION: from django.core.management.color import no_style into default name space.
+from django.db import (connections, router, transaction, DEFAULT_DB_ALIAS,
+      IntegrityError, DatabaseError)
+#ANNOTATION: from django.db import connections, router, transaction, DEFAULT_DB_ALIAS, IntegrityError and DatabaseError into default name space.
+from django.utils import lru_cache
+#ANNOTATION: from django.utils import lru_cache into default name space.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+from django.utils.functional import cached_property
+#ANNOTATION: from django.utils.functional import cached_property into default name space.
+from django.utils._os import upath
+#ANNOTATION: from django.utils._os import upath into default name space.
+from itertools import product
+#ANNOTATION: from itertools import product into default name space.
+
+try:
+#ANNOTATION: try,
+    import bz2
+#ANNOTATION: import bz2.
+    has_bz2 = True
+#ANNOTATION: has_bz2 is boolean True.
+except ImportError:
+#ANNOTATION: if ImportError exception is caught, 
+    has_bz2 = False
+#ANNOTATION: has_bz2 is boolean False.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand base class.
+    help = 'Installs the named fixture(s) in the database.'
+#ANNOTATION: help is an string 'Installs the named fixture(s) in the database.'.
+    missing_args_message = ("No database fixture specified. Please provide the "
+                            "path of at least one fixture in the command line.")
+#ANNOTATION: missing_args_message is a tuple containing a string "No database fixture specified. Please provide the "
+#ANNOTATION: "path of at least one fixture in the command line."
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with 2 arguments: self and parser.
+        parser.add_argument('args', metavar='fixture', nargs='+',
+            help='Fixture labels.')
+#ANNOTATION: call the method parser.add_argument with 4 arguments: string 'args', metavar set to string 'fixture', nargs set to '+',
+#ANNOTATION: and help set to 'Fixture labels.'.
+        parser.add_argument('--database', action='store', dest='database',
+            default=DEFAULT_DB_ALIAS, help='Nominates a specific database to load '
+            'fixtures into. Defaults to the "default" database.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--database', action set to string 'store', dest as a string 'database',
+#ANNOTATION: default set to DEFAULT_DB_ALIAS and help as a string 'Nominates a specific database to load fixtures into. Defaults to the "default" database.'
+        parser.add_argument('--app', action='store', dest='app_label',
+            default=None, help='Only look for fixtures in the specified app.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--app', action as a string 'store', dest as a string 'app_label',
+#ANNOTATION: default set to None, help is a string 'Only look for fixtures in the specified app.'.
+        parser.add_argument('--ignorenonexistent', '-i', action='store_true',
+            dest='ignore', default=False,
+            help='Ignores entries in the serialized data for fields that do not '
+            'currently exist on the model.')
+#ANNOTATION: call the method parser.add_argument with 6 arguments: string '--ignorenonexistent', string '-i', action as a string 'store_true',
+#ANNOTATION: dest as a string 'ignore', default set to boolean False and help set to string 'Ignores entries in the serialized data for fields that do not currently exist on the model.'.
+
+    def handle(self, *fixture_labels, **options):
+#ANNOTATION: define the method handle with 3 arguments: self, unpacked list fixture_labels and unpacked dictionary options.
+
+        self.ignore = options.get('ignore')
+#ANNOTATION: get the value under the 'ignore' key of the options dictionary, substitute it for self.ignore.
+        self.using = options.get('database')
+#ANNOTATION: get the value under the 'database' key of the options dictionary, substitute it for self.database.
+        self.app_label = options.get('app_label')
+#ANNOTATION: get the value under the 'app_label' key of the options dictionary, substitute it for self.app_label.
+        self.hide_empty = options.get('hide_empty', False)
+#ANNOTATION: get the value under the 'hide_empty' key of the options dictionary, if the key exists substitute it for self.hide_empty,
+#ANNOTATION: if not, self.hide_empty is boolean False.
+        self.verbosity = options.get('verbosity')
+#ANNOTATION: get the value under the 'verbosity' key of the options dictionary, substitute it for self.verbosity.
+
+        with transaction.atomic(using=self.using):
+#ANNOTATION: call the method transaction.atomic with an argument using set to self.using, with the result,
+            self.loaddata(fixture_labels)
+#ANNOTATION: call the method self.loaddata with an argument fixture_labels. 
+
+        # Close the DB connection -- unless we're still in a transaction. This
+        # is required as a workaround for an  edge case in MySQL: if the same
+        # connection is used to create tables, load data, and query, the query
+        # can return incorrect results. See Django #7572, MySQL #37735.
+        if transaction.get_autocommit(self.using):
+#ANNOTATION: call the method transaction.get_autocommit with an argument self.using, if it evaluates to true,
+            connections[self.using].close()
+#ANNOTATION: get the value under the self.using key of the connections dictionary, call the method close on it.
+
+    def loaddata(self, fixture_labels):
+#ANNOTATION: define the method loaddata with 2 arguments self and fixture_labels.
+        connection = connections[self.using]
+#ANNOTATION: get the value under the self.using key of the connections dictionary, substitute it for connection. 
+
+        # Keep a count of the installed objects and fixtures
+        self.fixture_count = 0
+#ANNOTATION: self.fixture_count is integer 0.
+        self.loaded_object_count = 0
+#ANNOTATION: self.loaded_object_count is integer 0.
+        self.fixture_object_count = 0
+#ANNOTATION: self.fixture_object_count is integer 0.
+        self.models = set()
+#ANNOTATION: self.models is an empty set.
+
+        self.serialization_formats = serializers.get_public_serializer_formats()
+#ANNOTATION: call the method serializers.get_public_serializer_formats, substitute the result for self.serialization_formats.
+        # Forcing binary mode may be revisited after dropping Python 2 support (see #22399)
+        self.compression_formats = {
+            None: (open, 'rb'),
+            'gz': (gzip.GzipFile, 'rb'),
+            'zip': (SingleZipReader, 'r'),
+        }
+#ANNOTATION: self.compression_formats is an dictionary with 3 initial entries: tuple containing 2 elements: open and string 'rb' for None,
+#ANNOTATION: tuple with 2 arguments: gzip.GzipFile and string 'rb' for 'gz', tuple with 2 arguments: SingleZipReader and string 'r' for 'gzip'.
+        if has_bz2:
+#ANNOTATION: if has_bz2 is true,
+            self.compression_formats['bz2'] = (bz2.BZ2File, 'r')
+#ANNOTATION: substitute tuple with 2 elements: bz2.BZ2File and string 'r' for value under the 'bz2' key of the self.compression_formats dictionary.
+
+        with connection.constraint_checks_disabled():
+#ANNOTATION: call the method connection.constraint_checks_disabled, with the result perform,
+            for fixture_label in fixture_labels:
+#ANNOTATION: for every fixture_label in fixture_labels, 
+                self.load_label(fixture_label)
+#ANNOTATION: call the method self.load_label with an argument fixture_label.
+
+        # Since we disabled constraint checks, we must manually check for
+        # any invalid keys that might have been added
+        table_names = [model._meta.db_table for model in self.models]
+#ANNOTATION: for model in self.models append model._meta.db_table to a list, substitute the resulting list for table_names.
+        try:
+#ANNOTATION: try,
+            connection.check_constraints(table_names=table_names)
+#ANNOTATION: call the method connection.check_constraints with an arguments table_names set to table_names.
+        except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+            e.args = ("Problem installing fixtures: %s" % e,)
+#ANNOTATION: e.args is a tuple, containing 1 element: string "Problem installing fixtures: %s", where '%s' is replaced with e.
+            raise
+#ANNOTATION: raise an exception.
+
+        # If we found even one object in a fixture, we need to reset the
+        # database sequences.
+        if self.loaded_object_count > 0:
+#ANNOTATION: if self.loaded_object_count is greater than zero,
+            sequence_sql = connection.ops.sequence_reset_sql(no_style(), self.models)
+#ANNOTATION: call the method connection.ops.sequence_reset_sql with 2 arguments: return value of the no_style and self.models, 
+#ANNOTATION: substitute the result for sequence_sql.
+            if sequence_sql:
+#ANNOTATION: if sequence_sql is true,
+                if self.verbosity >= 2:
+#ANNOTATION: if self.verbosity is grater than, or equal to integer 2,
+                    self.stdout.write("Resetting sequences\n")
+#ANNOTATION: write a string "Resetting sequences\n" to self.stdout stream.
+                with connection.cursor() as cursor:
+#ANNOTATION: call the method connection.cursor, with the result renamed to cursor, perform the following, 
+                    for line in sequence_sql:
+#ANNOTATION: for every line in sequence_sql,
+                        cursor.execute(line)
+#ANNOTATION: call the method cursor.execute with an argument line.
+
+        if self.verbosity >= 1:
+#ANNOTATION: if self.verbosity is greater of equal to integer 1,
+            if self.fixture_count == 0 and self.hide_empty:
+#ANNOTATION: if self.fixture_count equals integer 0 and self.hide_empty is true,
+                pass
+#ANNOTATION: do nothing.
+            elif self.fixture_object_count == self.loaded_object_count:
+#ANNOTATION: otherwise if self.fixture_object_count equals self.loaded_object_count,
+                self.stdout.write("Installed %d object(s) from %d fixture(s)" %
+                    (self.loaded_object_count, self.fixture_count))
+#ANNOTATION: call the method self.stdout.write with an argument string "Installed %d object(s) from %d fixture(s)", 
+#ANNOTATION: where '%d' is replaced with self.loaded_object_count and self.fixture_count, respectively.
+            else:
+#ANNOTATION: if not,
+                self.stdout.write("Installed %d object(s) (of %d) from %d fixture(s)" %
+                    (self.loaded_object_count, self.fixture_object_count, self.fixture_count))
+#ANNOTATION: call the method self.stdout.write with an argument string "Installed %d object(s) (of %d) from %d fixture(s)",
+#ANNOTATION: substitute '%d' with self.loaded_object_count, self.fixture_object_count and self.fixture_count. 
+
+    def load_label(self, fixture_label):
+#ANNOTATION: define the method load_label with self and fixture_label as arguments. 
+        """
+        Loads fixtures files for a given label.
+        """
+#ANNOTATION: docstring
+        for fixture_file, fixture_dir, fixture_name in self.find_fixtures(fixture_label):
+#ANNOTATION: for every fixture_file, fixture_dir and fixture_name in return value of the method self.find_fixtures called with an argument fixture_label,
+            _, ser_fmt, cmp_fmt = self.parse_name(os.path.basename(fixture_file))
+#ANNOTATION: call the function os.path.basename with an argument fixture_file, use the result as an argument for the call to the method,
+#ANNOTATION: self.parse_name, assign the result to _, ser_fmt and cmp_fmt, respectively.
+            open_method, mode = self.compression_formats[cmp_fmt]
+#ANNOTATION: get the value under the cmp_fmt key of the self.compression_formats dictionary, assign it to open_method and mode.
+            fixture = open_method(fixture_file, mode)
+#ANNOTATION: call the function open_method with arguments: fixture_file and mode, substitute the result for fixture.
+            try:
+#ANNOTATION: try,
+                self.fixture_count += 1
+#ANNOTATION: increment self.fixture_count by one.
+                objects_in_fixture = 0
+#ANNOTATION: objects_in_fixture is integer 0.
+                loaded_objects_in_fixture = 0
+#ANNOTATION: loaded_objects_in_fixture is integer 0.
+                if self.verbosity >= 2:
+#ANNOTATION: if self.verbosity is greater or equal to integer 2,
+                    self.stdout.write("Installing %s fixture '%s' from %s." %
+                        (ser_fmt, fixture_name, humanize(fixture_dir)))
+#ANNOTATION: call the method self.stdout.write with an argument string "Installing %s fixture '%s' from %s.",
+#ANNOTATION: substitute '%s' with ser_fmt, fixture_name and return value of the function humanize called with an argument fixture_dir.
+
+                objects = serializers.deserialize(ser_fmt, fixture,
+                    using=self.using, ignorenonexistent=self.ignore)
+#ANNOTATION: call the method serializers.deserialize with 4 arguments: ser_fmt, fixture, using set to self.using,
+#ANNOTATION: and ignorenonexistent set to self.ignore, substitute the result for objects.
+
+                for obj in objects:
+#ANNOTATION: for every obj in objects,
+                    objects_in_fixture += 1
+#ANNOTATION: increment objects_in_fixture by one.
+                    if router.allow_migrate(self.using, obj.object.__class__):
+#ANNOTATION: call the method router.allow_migrate with 2 arguments: self.using and obj.object.__class__, if it evaluates to true,
+                        loaded_objects_in_fixture += 1
+#ANNOTATION: increment loaded_objects_in_fixture by one.
+                        self.models.add(obj.object.__class__)
+#ANNOTATION: add obj.object.__class__ to self.models set.
+                        try:
+#ANNOTATION: try,
+                            obj.save(using=self.using)
+#ANNOTATION: call the method obj.save with an argument using set to self.using.
+                        except (DatabaseError, IntegrityError) as e:
+#ANNOTATION: if DatabaseError or IntegrityError, renamed to e, exceptions are caught,
+                            e.args = ("Could not load %(app_label)s.%(object_name)s(pk=%(pk)s): %(error_msg)s" % {
+                                'app_label': obj.object._meta.app_label,
+                                'object_name': obj.object._meta.object_name,
+                                'pk': obj.object.pk,
+                                'error_msg': force_text(e)
+                            },)
+#ANNOTATION: e.args is a tuple containing string "Could not load %(app_label)s.%(object_name)s(pk=%(pk)s): %(error_msg)s, 
+#ANNOTATION: where '%(app_label)s' is replaced for obj.object._meta.app_label, '%(object_name)s' is replaced with obj.object._meta.object_name,
+#ANNOTATION: '%(pk)s' is replaced with obj.object.pk and '%(error_msg)s' is replaced with result of the function force_text with an argument e.
+                            raise
+#ANNOTATION: raise an exceptions
+
+                self.loaded_object_count += loaded_objects_in_fixture
+#ANNOTATION: increment self.loaded_object_count by loaded_objects_in_fixture.
+                self.fixture_object_count += objects_in_fixture
+#ANNOTATION: increment self.fixture_object_count by objects_in_fixture.
+            except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+                if not isinstance(e, CommandError):
+#ANNOTATION: if e is not an instance of CommandError class,
+                    e.args = ("Problem installing fixture '%s': %s" % (fixture_file, e),)
+#ANNOTATION: e.args is a tuple containing string "Problem installing fixture '%s': %s", where '%s' is replaced with fixture_file, e.
+                raise
+#ANNOTATION: raise an exception.
+            finally:
+#ANNOTATION: finally perform,
+                fixture.close()
+#ANNOTATION: call the method fixture.close.
+
+            # Warn if the fixture we loaded contains 0 objects.
+            if objects_in_fixture == 0:
+#ANNOTATION: if objects_in_fixture equals integer 0,
+                warnings.warn(
+                    "No fixture data found for '%s'. (File format may be "
+                    "invalid.)" % fixture_name,
+                    RuntimeWarning
+                )
+#ANNOTATION: call the method warnings.warn with 2 arguments: string "No fixture data found for '%s'. (File format may be invalid.)",
+#ANNOTATION: where '%s' is replaced with fixture_name, and RuntimeWarning.
+
+
+    @lru_cache.lru_cache(maxsize=None)
+#ANNOTATION: decorator method lru_cache.lru_cache with an argument maxsize set to None.
+    def find_fixtures(self, fixture_label):
+#ANNOTATION: define the method find_fixtures with arguments: self and fixture_label.
+        """
+        Finds fixture files for a given label.
+        """
+#ANNOTATION: docstring
+        fixture_name, ser_fmt, cmp_fmt = self.parse_name(fixture_label)
+#ANNOTATION: call the method self.parse_name with an argument fixture_label, substitute the result for fixture_name, ser_fmt, cmp_fmt, respective.
+        databases = [self.using, None]
+#ANNOTATION: databases is a list containing 2 elements: self.using and None.
+        cmp_fmts = list(self.compression_formats.keys()) if cmp_fmt is None else [cmp_fmt]
+#ANNOTATION: call the method self.compression_formats.keys, convert it to list, substitute it for cmp_fmts if cmp_fmt is None,
+#ANNOTATION: otherwise cmp_fmts is a list containing cmp_fmt. 
+        ser_fmts = serializers.get_public_serializer_formats() if ser_fmt is None else [ser_fmt]
+#ANNOTATION: call the method serializers.get_public_serializer_formats, substitute the result for ser_fmts if ser_fmt is None,
+#ANNOTATION: otherwise ser_fmts is a list containing ser_fmt. 
+
+        if self.verbosity >= 2:
+#ANNOTATION: if self.verbosity is greater or equal to integer 2,
+            self.stdout.write("Loading '%s' fixtures..." % fixture_name)
+#ANNOTATION: call the method self.stdout.write with an argument string "Loading '%s' fixtures...", where '%s' is replaced with fixture_name.
+
+        if os.path.isabs(fixture_name):
+#ANNOTATION: if fixture_name is an absolute file path,
+            fixture_dirs = [os.path.dirname(fixture_name)]
+#ANNOTATION: call the method os.path.dirname with an argument fixture_name, append it to a list, substitute resulting list for fixture_dirs. 
+            fixture_name = os.path.basename(fixture_name)
+#ANNOTATION: call the method os.path.basename with an argument fixture_name, substitute the result for fixture_name.
+        else:
+#ANNOTATION: if not,
+            fixture_dirs = self.fixture_dirs
+#ANNOTATION: substitute self.fixture_dirs for fixture_dirs.
+            if os.path.sep in fixture_name:
+#ANNOTATION: if os.path.sep is contained in fixture_name,
+                fixture_dirs = [os.path.join(dir_, os.path.dirname(fixture_name))
+                                for dir_ in fixture_dirs]
+#ANNOTATION: join dir_ and return value of the function os.path.dirname called with an argument fixture_name into a valid file path,
+#ANNOTATION: append it to a list, perform the previous for every dir_ in fixture_dirs, substitute the resulting list for fixture_dirs.
+                fixture_name = os.path.basename(fixture_name)
+#ANNOTATION: call the method os.path.basename with an argument fixture_name, substitute the result for fixture_name.
+
+        suffixes = ('.'.join(ext for ext in combo if ext)
+                for combo in product(databases, ser_fmts, cmp_fmts))
+#ANNOTATION: for every ext in combo, if ext is true, join it to a string, separated by '.', put the result in a tuple, 
+#ANNOTATION: perform the previous for every combo in result of the function product called with 3 arguments: databases, ser_fmts and cmp_fmts,
+#ANNOTATION: substitute the result for suffixes.
+        targets = set('.'.join((fixture_name, suffix)) for suffix in suffixes)
+#ANNOTATION: join fixture_name and suffix into a string, separated by '.' for every suffix in suffixes, put the results in set, substitute it for targets. 
+
+        fixture_files = []
+#ANNOTATION: fixture_files is an empty list.
+        for fixture_dir in fixture_dirs:
+#ANNOTATION: for every fixture_dir in fixture_dirs,
+            if self.verbosity >= 2:
+#ANNOTATION: if self.verbosity is greater or equals to integer 2.
+                self.stdout.write("Checking %s for fixtures..." % humanize(fixture_dir))
+#ANNOTATION: call the method self.stdout.write with an argument string "Checking %s for fixtures...", 
+#ANNOTATION: where '%s' is replaced with result of the function humanize, called with an argument fixture_dir.
+            fixture_files_in_dir = []
+#ANNOTATION: fixture_files_in_dir is an empty list.
+            for candidate in glob.iglob(os.path.join(fixture_dir, fixture_name + '*')):
+#ANNOTATION: join fixture_dir, fixture_name with appended character '*' into a valid file path, 
+#ANNOTATION: use it as an argument for the call to the glob.iglob, for every candidate in result,
+                if os.path.basename(candidate) in targets:
+#ANNOTATION: call the method os.path.basename with an argument candidate, is result is contained in targets,
+                    # Save the fixture_dir and fixture_name for future error messages.
+                    fixture_files_in_dir.append((candidate, fixture_dir, fixture_name))
+#ANNOTATION: append tuple containing 3 elements: candidate, fixture_dir and fixture_name to list fixture_files_in_dir.
+
+            if self.verbosity >= 2 and not fixture_files_in_dir:
+#ANNOTATION: if self.verbosity is greater or equals integer 2 and fixture_files_in_dir is false,
+                self.stdout.write("No fixture '%s' in %s." %
+                                  (fixture_name, humanize(fixture_dir)))
+#ANNOTATION: call the method self.stdout.write with an argument string "No fixture '%s' in %s.", where '%s' is replaced with fixture_name,
+#ANNOTATION: and result of the function humanize called with an argument fixture_dir.
+
+            # Check kept for backwards-compatibility; it isn't clear why
+            # duplicates are only allowed in different directories.
+            if len(fixture_files_in_dir) > 1:
+#ANNOTATION: if length of fixture_files_in_dir is greater than 1,
+                raise CommandError(
+                    "Multiple fixtures named '%s' in %s. Aborting." %
+                    (fixture_name, humanize(fixture_dir)))
+#ANNOTATION: raise an CommandError exception with an argument string "Multiple fixtures named '%s' in %s. Aborting.", where '%s' is replaced with:
+#ANNOTATION: fixture_name and result of the function humanize called with an argument fixture_dir.
+            fixture_files.extend(fixture_files_in_dir)
+#ANNOTATION: extend fixture_files list with fixture_files_in_dir.
+
+        if fixture_name != 'initial_data' and not fixture_files:
+#ANNOTATION: if fixture_name is not equal to string 'initial_data' and fixture_files is false,
+            # Warning kept for backwards-compatibility; why not an exception?
+            warnings.warn("No fixture named '%s' found." % fixture_name)
+#ANNOTATION: call the method warnings.warn with an argument string "No fixture named '%s' found." where '%s' is replaced with fixture_name.
+
+        return fixture_files
+#ANNOTATION: return fixture_files.
+
+    @cached_property
+#ANNOTATION: decorator cached_property,
+    def fixture_dirs(self):
+#ANNOTATION: define the method fixture_dirs with an argument self. 
+        """
+        Return a list of fixture directories.
+
+        The list contains the 'fixtures' subdirectory of each installed
+        application, if it exists, the directories in FIXTURE_DIRS, and the
+        current directory.
+        """
+#ANNOTATION: docstring
+        dirs = []
+#ANNOTATION: dirs is an empty dictionary.
+        for app_config in apps.get_app_configs():
+#ANNOTATION: for ever app_config in return value of the method apps.get_app_configs,
+            if self.app_label and app_config.label != self.app_label:
+#ANNOTATION: if self.app_label is true and app_config.label is not equal to self.app_label,
+                continue
+#ANNOTATION: skip this loop iteration.
+            app_dir = os.path.join(app_config.path, 'fixtures')
+#ANNOTATION: join app_config.path and string 'fixtures' into a valid file path, substitute it for app_dir.
+            if os.path.isdir(app_dir):
+#ANNOTATION: if app_dir is a directory,
+                dirs.append(app_dir)
+#ANNOTATION: append app_dir to dirs list.
+        dirs.extend(list(settings.FIXTURE_DIRS))
+#ANNOTATION: convert settings.FIXTURE_DIRS to a list, extend dirs by it.
+        dirs.append('')
+#ANNOTATION: append an empty string to dirs list.
+        dirs = [upath(os.path.abspath(os.path.realpath(d))) for d in dirs]
+#ANNOTATION: call the function os.path.realpath with an argument d, use the result as an argument for the call to the function os.path.abspath,
+#ANNOTATION: use the result as an argument for the call to the upath function, for every d in dirs, append the results into a list, 
+#ANNOTATION: substitute the resulting list for dirs.
+        return dirs
+#ANNOTATION: return dirs.
+
+    def parse_name(self, fixture_name):
+#ANNOTATION: define the method parse_name with arguments self and fixture_name.
+        """
+        Splits fixture name in name, serialization format, compression format.
+        """
+#ANNOTATION: docstring
+        parts = fixture_name.rsplit('.', 2)
+#ANNOTATION: call the method fixture_name.rsplit with 2 arguments: character '.' and integer 2, substitute the result for parts.
+
+        if len(parts) > 1 and parts[-1] in self.compression_formats:
+#ANNOTATION: if length of parts is greater than integer 1 and last element of parts is contained in self.compression_formats,
+            cmp_fmt = parts[-1]
+#ANNOTATION: substitute the last element of parts for cmp_fmt.
+            parts = parts[:-1]
+#ANNOTATION: substitute the last element of parts for parts.
+        else:
+#ANNOTATION: if not,
+            cmp_fmt = None
+#ANNOTATION: cmp_fmt is None.
+
+        if len(parts) > 1:
+#ANNOTATION: if length of parts is greater than integer 1.
+            if parts[-1] in self.serialization_formats:
+#ANNOTATION: if last element of parts is contained in self.serialization_formats,
+                ser_fmt = parts[-1]
+#ANNOTATION: substitute the last element of parts for ser_fmt.
+                parts = parts[:-1]
+#ANNOTATION: substitute the last element of parts for parts. 
+            else:
+#ANNOTATION: if not,
+                raise CommandError(
+                    "Problem installing fixture '%s': %s is not a known "
+                    "serialization format." % (''.join(parts[:-1]), parts[-1]))
+#ANNOTATION: raise an CommandError with an argument string "Problem installing fixture '%s': %s is not a known serialization format.",
+#ANNOTATION: replace '%s' with: elements of last element of parts joined into a string and last element of parts.
+        else:
+#ANNOTATION: if not,
+            ser_fmt = None
+#ANNOTATION: ser_fmt is None.
+
+        name = '.'.join(parts)
+#ANNOTATION: join elements of parts into a string, separated with '.', substitute it for name.
+
+        return name, ser_fmt, cmp_fmt
+#ANNOTATION: return name, ser_fmt and cmp_fmt.
+
+
+class SingleZipReader(zipfile.ZipFile):
+#ANNOTATION: derive class SingleZipReader for zipfile.ZipFile base class. 
+
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+        zipfile.ZipFile.__init__(self, *args, **kwargs)
+#ANNOTATION: call the method zipfile.ZipFile.__init___ with the arguments self, unpacked list args and unpacked dictionary kwargs.
+        if len(self.namelist()) != 1:
+#ANNOTATION: call the method self.namelist, if the length of the result is not integer 1,
+            raise ValueError("Zip-compressed fixtures must contain one file.")
+#ANNOTATION: raise an ValueError with an string "Zip-compressed fixtures must contain one file.".
+
+    def read(self):
+#ANNOTATION: define the method read with an argument self.
+        return zipfile.ZipFile.read(self, self.namelist()[0])
+#ANNOTATION: call the method zipfile.ZipFile.read with 2 arguments: self and first element of the result of the self.namelist method.
+
+
+def humanize(dirname):
+#ANNOTATION: define the function humanize with an argument dirname.
+    return "'%s'" % dirname if dirname else 'absolute path'
+#ANNOTATION: if dirname is true, return dirname converted to a string and surounded by single quotes, if not return string 'absolute path'.

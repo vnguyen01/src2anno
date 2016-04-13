@@ -1,0 +1,2098 @@
+"""
+Helper functions for creating Form classes from Django models
+and database field objects.
+"""
+#ANNOTATION: docstring
+
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from collections import OrderedDict
+#ANNOTATION: from collections import OrderedDict into default name space.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.core.exceptions import (
+    ImproperlyConfigured, ValidationError, NON_FIELD_ERRORS, FieldError)
+#ANNOTATION: django.core.exceptions import ImproperlyConfigured, ValidationError, NON_FIELD_ERRORS and FieldError into default namespace.
+from django.forms.fields import Field, ChoiceField
+#ANNOTATION: from django.forms.fields import Field and ChoiceField into default name space.
+from django.forms.forms import DeclarativeFieldsMetaclass, BaseForm
+#ANNOTATION: from django.forms.forms import DeclarativeFieldsMetaclass and BaseForm into default name space.
+from django.forms.formsets import BaseFormSet, formset_factory
+#ANNOTATION: from django.forms.formsets import BaseFormSet and formset_factory into default name space.
+from django.forms.utils import ErrorList
+#ANNOTATION: from django.forms.utils import ErrorList into default name space.
+from django.forms.widgets import (SelectMultiple, HiddenInput,
+    MultipleHiddenInput)
+#ANNOTATION: from django.forms.widgets import SelectMultiple, HiddenInput, MultipleHiddenInput into default namespace.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+from django.utils.encoding import smart_text, force_text
+#ANNOTATION: from django.utils.encoding import smart_text and force_text into default name space.
+from django.utils.text import get_text_list, capfirst
+#ANNOTATION: from django.utils.text import get_text_list and capfirst into default name space.
+from django.utils.translation import ugettext_lazy as _, ugettext
+#ANNOTATION: from django.utils.translation import ugettext_lazy as _ and ugettext into default name space.
+
+
+__all__ = (
+    'ModelForm', 'BaseModelForm', 'model_to_dict', 'fields_for_model',
+    'save_instance', 'ModelChoiceField', 'ModelMultipleChoiceField',
+    'ALL_FIELDS', 'BaseModelFormSet', 'modelformset_factory',
+    'BaseInlineFormSet', 'inlineformset_factory',
+)
+#ANNOTATION: __all__ is a tuple containing strings: 'ModelForm', 'BaseModelForm', 'model_to_dict', 'fields_for_model', 'save_instance',
+#ANNOTATION: 'ModelChoiceField', 'ModelMultipleChoiceField', 'ALL_FIELDS', 'BaseModelFormSet', 'modelformset_factory', 'BaseInlineFormSet',
+#ANNOTATION: and 'inlineformset_factory'.
+
+ALL_FIELDS = '__all__'
+#ANNOTATION: ALL_FIELDS is a string '__all__'.
+
+
+def construct_instance(form, instance, fields=None, exclude=None):
+#ANNOTATION: define the function construct_instance with 4 arguments: form, instance, fields set to None and exclude set to None.
+    """
+    Constructs and returns a model instance from the bound ``form``'s
+    ``cleaned_data``, but does not save the returned instance to the
+    database.
+    """
+#ANNOTATION: docstring
+    from django.db import models
+#ANNOTATION: from django.db import models into default namespace.
+    opts = instance._meta
+#ANNOTATION: substitute instance._meta for opts.
+
+    cleaned_data = form.cleaned_data
+#ANNOTATION: substitute form.cleaned_data for cleaned_data.
+    file_field_list = []
+#ANNOTATION: file_field_list is an empty list.
+    for f in opts.fields:
+#ANNOTATION: for every f in opts.fields,
+        if not f.editable or isinstance(f, models.AutoField) \
+                or f.name not in cleaned_data:
+#ANNOTATION: if f.editable is true and f is an instance of models.AutoField, or f.name is not contained in cleaned_data,
+            continue
+#ANNOTATION: skip this loop iteration.
+        if fields is not None and f.name not in fields:
+#ANNOTATION: if fields is not None and f.name is not contained in fields,
+            continue
+#ANNOTATION: skip this loop iteration.
+        if exclude and f.name in exclude:
+#ANNOTATION: if exclude is true and f.name is contained in exclude,
+            continue
+#ANNOTATION: skip this loop iteration.
+        # Defer saving file-type fields until after the other fields, so a
+        # callable upload_to can use the values from other fields.
+        if isinstance(f, models.FileField):
+#ANNOTATION: if f is an instance of models.FileField,
+            file_field_list.append(f)
+#ANNOTATION: append f to file_field_list.
+        else:
+#ANNOTATION: if not,
+            f.save_form_data(instance, cleaned_data[f.name])
+#ANNOTATION: call the method f.save_form_data with 2 arguments: instance and value under the f.name key of cleaned_data dictionary.
+
+    for f in file_field_list:
+#ANNOTATION: for every f in file_field_list,
+        f.save_form_data(instance, cleaned_data[f.name])
+#ANNOTATION: call the method f.save_form_data with 2 arguments: instance and value under the f.name key of cleaned_data dictionary.
+
+    return instance
+#ANNOTATION: return instance.
+
+
+def save_instance(form, instance, fields=None, fail_message='saved',
+                  commit=True, exclude=None, construct=True):
+#ANNOTATION: define the function save_instance with 7 arguments: form, instance, fields set to None, fail_message as string 'saved',
+#ANNOTATION: commit set boolean True, exclude set to None and construct set to boolean True.
+    """
+    Saves bound Form ``form``'s cleaned_data into model instance ``instance``.
+
+    If commit=True, then the changes to ``instance`` will be saved to the
+    database. Returns ``instance``.
+
+    If construct=False, assume ``instance`` has already been constructed and
+    just needs to be saved.
+    """
+#ANNOTATION: docstring
+    if construct:
+#ANNOTATION: if construct is true,
+        instance = construct_instance(form, instance, fields, exclude)
+#ANNOTATION: call the function construct_instance with 4 arguments form, instance, fields, exclude and substitute the result for instance.
+    opts = instance._meta
+#ANNOTATION: substitute instance._meta for opts.
+    if form.errors:
+#ANNOTATION: if form.errors is true,
+        raise ValueError("The %s could not be %s because the data didn't"
+                         " validate." % (opts.object_name, fail_message))
+#ANNOTATION: raise an ValueError with an argument string "The %s could not be %s because the data didn't validate.", 
+#ANNOTATION: where '%s' is replaced with opts.object_name and fail_message, respectively.
+
+    # Wrap up the saving of m2m data as a function.
+    def save_m2m():
+#ANNOTATION: define the function save_m2m.
+        cleaned_data = form.cleaned_data
+#ANNOTATION: substitute form.cleaned_data for cleaned_data.
+        # Note that for historical reasons we want to include also
+        # virtual_fields here. (GenericRelation was previously a fake
+        # m2m field).
+        for f in opts.many_to_many + opts.virtual_fields:
+#ANNOTATION: append opts.virtual_fields to opts.many_to_many, for every f in the result,
+            if not hasattr(f, 'save_form_data'):
+#ANNOTATION: if f doesnt has an 'save_form_data' attribute,
+                continue
+#ANNOTATION: skip this loop iteration.
+            if fields and f.name not in fields:
+#ANNOTATION: if fields is true and f.name is not contained in fields,
+                continue
+#ANNOTATION: skip this loop iteration.
+            if exclude and f.name in exclude:
+#ANNOTATION: if exclude is true and f.name is contained in exclude,
+                continue
+#ANNOTATION: skip this loop iteration.
+            if f.name in cleaned_data:
+#ANNOTATION: if f.name is contained in cleaned_data,
+                f.save_form_data(instance, cleaned_data[f.name])
+#ANNOTATION: call the method f.save_form_data with 2 arguments: instance and value under the f.name key of cleaned_data dictionary.
+    if commit:
+#ANNOTATION: if commit is true,
+        # If we are committing, save the instance and the m2m data immediately.
+        instance.save()
+#ANNOTATION: call the method instance.save.
+        save_m2m()
+#ANNOTATION: call the function save_m2m.
+    else:
+#ANNOTATION: if not,
+        # We're not committing. Add a method to the form to allow deferred
+        # saving of m2m data.
+        form.save_m2m = save_m2m
+#ANNOTATION: substitute save_m2m for form.save_m2m.
+    return instance
+#ANNOTATION: return instance.
+
+
+# ModelForms #################################################################
+
+def model_to_dict(instance, fields=None, exclude=None):
+#ANNOTATION: define the function model_to_dict with 3 arguments: instance, fields set to None and exclude set None.
+    """
+    Returns a dict containing the data in ``instance`` suitable for passing as
+    a Form's ``initial`` keyword argument.
+
+    ``fields`` is an optional list of field names. If provided, only the named
+    fields will be included in the returned dict.
+
+    ``exclude`` is an optional list of field names. If provided, the named
+    fields will be excluded from the returned dict, even if they are listed in
+    the ``fields`` argument.
+    """
+#ANNOTATION: docstring
+    # avoid a circular import
+    from django.db.models.fields.related import ManyToManyField
+#ANNOTATION: from django.db.models.fields.related import ManyToManyField.
+    opts = instance._meta
+#ANNOTATION: substitute instance._meta for opts.
+    data = {}
+#ANNOTATION: data is an empty dictionary.
+    for f in opts.concrete_fields + opts.virtual_fields + opts.many_to_many:
+#ANNOTATION: concatenate opts.concrete_fields, opts.virtual_fields and opts.many_to_many, for every f in the result,
+        if not getattr(f, 'editable', False):
+#ANNOTATION: get 'editable' attribute from object f, if it doesnt exists or its true,
+            continue
+#ANNOTATION: skip this loop iteration.
+        if fields and f.name not in fields:
+#ANNOTATION: if fields is true and f.name is not contained in fields,
+            continue
+#ANNOTATION: skip this loop iteration.
+        if exclude and f.name in exclude:
+#ANNOTATION: if exclude is true and f.name is contained in exclude,
+            continue
+#ANNOTATION: skip this loop iteration.
+        if isinstance(f, ManyToManyField):
+#ANNOTATION: if f is an instance of ManyToManyField,
+            # If the object doesn't have a primary key yet, just use an empty
+            # list for its m2m fields. Calling f.value_from_object will raise
+            # an exception.
+            if instance.pk is None:
+#ANNOTATION: if instance.pk is None,
+                data[f.name] = []
+#ANNOTATION: value under f.name key of the dta dictionary is an empty list.
+            else:
+#ANNOTATION: if not,
+                # MultipleChoiceWidget needs a list of pks, not object instances.
+                qs = f.value_from_object(instance)
+#ANNOTATION: call the method f.value_from_object with an argument instance, substitute the result for qs.
+                if qs._result_cache is not None:
+#ANNOTATION: if qs._result_cache is not None,
+                    data[f.name] = [item.pk for item in qs]
+#ANNOTATION: for every item in qu append item.pk to a list, substitute resulting list for value under f.name key of the data dictionary.
+                else:
+#ANNOTATION: if not,
+                    data[f.name] = list(qs.values_list('pk', flat=True))
+#ANNOTATION: call the method qs.values_list with 2 arguments: string 'pk' and flat set to boolean True, put the results in a list, 
+#ANNOTATION: substitute the result for value under the f.name key of data dictionary.
+        else:
+#ANNOTATION: if not, 
+            data[f.name] = f.value_from_object(instance)
+#ANNOTATION: call the method f.value_from_object with an argument instance, substitute the result for value under the f.name key of the data dictionary.
+    return data
+#ANNOTATION: return data.
+
+
+def fields_for_model(model, fields=None, exclude=None, widgets=None,
+                     formfield_callback=None, localized_fields=None,
+                     labels=None, help_texts=None, error_messages=None):
+#ANNOTATION: define the function fields_for_model with 9 arguments: model, fields set to None, exclude set to None, widgets set to None,
+#ANNOTATION: formfield_callback set to None, localized_fields set to None, labels set to None, help_texts set to None and error_messages set to None.
+    """
+    Returns a ``OrderedDict`` containing form fields for the given model.
+
+    ``fields`` is an optional list of field names. If provided, only the named
+    fields will be included in the returned fields.
+
+    ``exclude`` is an optional list of field names. If provided, the named
+    fields will be excluded from the returned fields, even if they are listed
+    in the ``fields`` argument.
+
+    ``widgets`` is a dictionary of model field names mapped to a widget.
+
+    ``localized_fields`` is a list of names of fields which should be localized.
+
+    ``labels`` is a dictionary of model field names mapped to a label.
+
+    ``help_texts`` is a dictionary of model field names mapped to a help text.
+
+    ``error_messages`` is a dictionary of model field names mapped to a
+    dictionary of error messages.
+
+    ``formfield_callback`` is a callable that takes a model field and returns
+    a form field.
+    """
+#ANNOTATION: docstring
+    field_list = []
+#ANNOTATION: field_list is an empty list.
+    ignored = []
+#ANNOTATION: ignored  is an empty list.
+    opts = model._meta
+#ANNOTATION: substitute model._meta for opts. 
+    # Avoid circular import
+    from django.db.models.fields import Field as ModelField
+#ANNOTATION: from django.db.models.fields import Field as ModelField.
+    sortable_virtual_fields = [f for f in opts.virtual_fields
+                               if isinstance(f, ModelField)]
+#ANNOTATION: if f is an instance of ModelFiled, for every f in opts.virtual_fields, append f to a list, substitute the resulting list for sortable_virtual_fields.
+    for f in sorted(opts.concrete_fields + sortable_virtual_fields + opts.many_to_many):
+#ANNOTATION: concatenate opts.concrete_fields, sortable_virtual_fields and opts.many_to_many, for every f in sorted result,
+        if not getattr(f, 'editable', False):
+#ANNOTATION: get 'editable' attribute from object f, if it doesnt exists or its true,
+            continue
+#ANNOTATION: skip this loop iteration.
+        if fields is not None and f.name not in fields:
+#ANNOTATION: if fields is not None and f.name is not contained in fields,
+            continue
+#ANNOTATION: skip this loop iteration.
+        if exclude and f.name in exclude:
+#ANNOTATION: if exclude is true and f.name is contained in exclude,
+            continue
+#ANNOTATION: skip this loop iteration.
+
+        kwargs = {}
+#ANNOTATION: kwargs is an empty dictionary,
+        if widgets and f.name in widgets:
+#ANNOTATION: if widgets is true and f.name is contained in widgets,
+            kwargs['widget'] = widgets[f.name]
+#ANNOTATION: substitute value under the f.name key of the widgets dictionary for value under the 'widget' key of kwargs dictionary.
+        if localized_fields == ALL_FIELDS or (localized_fields and f.name in localized_fields):
+#ANNOTATION: if localized_fields equals ALL_FIELDS, or if localized_fields is true and f.name is contained in localized_fields,
+            kwargs['localize'] = True
+#ANNOTATION: value under 'localize' key of kwargs dictionary is boolean True.
+        if labels and f.name in labels:
+#ANNOTATION: if labels is true and f.name is contained in labels,
+            kwargs['label'] = labels[f.name]
+#ANNOTATION: substitute value under the f.name key of the labels dictionary for value under the 'label' key of kwargs dictionary.
+        if help_texts and f.name in help_texts:
+#ANNOTATION: if help_texts is true and f.name is contained in help_texts,
+            kwargs['help_text'] = help_texts[f.name]
+#ANNOTATION: substitute value under the f.name key of the help_texts dictionary for value under the 'help_text' key of kwargs dictionary.
+        if error_messages and f.name in error_messages:
+#ANNOTATION: if error_messages is true and f.name is contained in error_messages,
+            kwargs['error_messages'] = error_messages[f.name]
+#ANNOTATION: substitute value under the f.name key of the error_messages dictionary for value under the 'error_messages' key of kwargs dictionary.
+
+        if formfield_callback is None:
+#ANNOTATION: if formfield_callback is None,
+            formfield = f.formfield(**kwargs)
+#ANNOTATION: call the method f.formfield with an argument, unpacked dictionary kwargs, substitute the result for formfield.
+        elif not callable(formfield_callback):
+#ANNOTATION: otherwise if formfield_callback is not callable object,
+            raise TypeError('formfield_callback must be a function or callable')
+#ANNOTATION: raise an TypeError with an string 'formfield_callback must be a function or callable'.
+        else:
+#ANNOTATION: if not,
+            formfield = formfield_callback(f, **kwargs)
+#ANNOTATION: call the method formfield_callback with 2 arguments: f and unpacked dictionary kwargs, substitute the result for formfield.
+
+        if formfield:
+#ANNOTATION: if formfield is true,
+            field_list.append((f.name, formfield))
+#ANNOTATION: append a tuple with 2 elements: f.name and formfield to field_list.
+        else:
+#ANNOTATION: if not,
+            ignored.append(f.name)
+#ANNOTATION: append f.name to ignored list.
+    field_dict = OrderedDict(field_list)
+#ANNOTATION: field_dict is an instance of OrderedDict class, created with an argument field_list.
+    if fields:
+#ANNOTATION: if fields is true,
+        field_dict = OrderedDict(
+            [(f, field_dict.get(f)) for f in fields
+                if ((not exclude) or (exclude and f not in exclude)) and (f not in ignored)]
+        )
+#ANNOTATION: for every f in fields, if exclude is false, or if exclude is true and f is not contained in exclude, and only if f is not in ignored,
+#ANNOTATION: append to list, a tuple with 2 elements: f and value under the f key of field_dict dictionary, use the resulting list as an argument,
+#ANNOTATION: for the creation of the instance of OrderedDict class, substitute it for field_dict.
+    return field_dict
+#ANNOTATION: return field_dict.
+
+
+class ModelFormOptions(object):
+#ANNOTATION: derive the class ModelFormOptions from object base class.
+    def __init__(self, options=None):
+#ANNOTATION: define the method __init__ with arguments: self and options set to None.
+        self.model = getattr(options, 'model', None)
+#ANNOTATION: get 'model' attribute from the options object, if it exists substitute it for self.model, if not self.model is None.
+        self.fields = getattr(options, 'fields', None)
+#ANNOTATION: get 'fields' attribute from the options object, if it exists substitute it for self.fields, if not self.fields is None.
+        self.exclude = getattr(options, 'exclude', None)
+#ANNOTATION: get 'exclude' attribute from the options object, if it exists substitute it for self.exclude, if not self.exclude is None.
+        self.widgets = getattr(options, 'widgets', None)
+#ANNOTATION: get 'widgets' attribute from the options object, if it exists substitute it for self.widgets, if not self.widgets is None.
+        self.localized_fields = getattr(options, 'localized_fields', None)
+#ANNOTATION: get 'localized_fields' attribute from the options object, if it exists substitute it for self.localized_fields,
+#ANNOTATION: if not self.localized_fields is None.
+        self.labels = getattr(options, 'labels', None)
+#ANNOTATION: get 'labels' attribute from the options object, if it exists substitute it for self.labels, if not self.labels is None.
+        self.help_texts = getattr(options, 'help_texts', None)
+#ANNOTATION: get 'help_texts' attribute from the options object, if it exists substitute it for self.help_texts, if not self.help_texts is None.
+        self.error_messages = getattr(options, 'error_messages', None)
+#ANNOTATION: get 'error_messages' attribute from the options object, if it exists substitute it for self.error_messages,
+#ANNOTATION: if not self.error_messages is None.
+
+
+class ModelFormMetaclass(DeclarativeFieldsMetaclass):
+#ANNOTATION: derive the class ModelFormMetaclass from the DeclarativeFieldsMetaclass base class.
+    def __new__(mcs, name, bases, attrs):
+#ANNOTATION: define the method __new__ with 4 arguments: mcs, name, bases and attrs.
+        formfield_callback = attrs.pop('formfield_callback', None)
+#ANNOTATION: remove entry under the 'formfield_callback' key of the attrs dictionary, if it exists substitute if for formfield_callback,
+#ANNOTATION: if not formfield_callback is None.
+
+        new_class = super(ModelFormMetaclass, mcs).__new__(mcs, name, bases, attrs)
+#ANNOTATION: call the method __new__ from the base class of the class ModelFormMetaclass, with 4 arguments: mcs, name, bases and attrs,
+#ANNOTATION: substitute the result for new_class.
+
+        if bases == (BaseModelForm,):
+#ANNOTATION: if bases equals a tuple with an element: class BaseModelForm.
+            return new_class
+#ANNOTATION: return new_class.
+
+        opts = new_class._meta = ModelFormOptions(getattr(new_class, 'Meta', None))
+#ANNOTATION: instantiate class ModelFormOptions with argument: attribute 'Meta' of the new_class object. if it exists or None, if not,
+#ANNOTATION: assign the result to opts and new_class._meta.
+
+        # We check if a string was passed to `fields` or `exclude`,
+        # which is likely to be a mistake where the user typed ('foo') instead
+        # of ('foo',)
+        for opt in ['fields', 'exclude', 'localized_fields']:
+#ANNOTATION: for every opt in list containing 3 elements: strings 'fields', 'exclude' and 'localized_fields',
+            value = getattr(opts, opt)
+#ANNOTATION: get opt attribute of the opts object, substitute it for value.
+            if isinstance(value, six.string_types) and value != ALL_FIELDS:
+#ANNOTATION: if value is an instance of six.string_types and value is not equal to ALL_FIELDS,
+                msg = ("%(model)s.Meta.%(opt)s cannot be a string. "
+                       "Did you mean to type: ('%(value)s',)?" % {
+                           'model': new_class.__name__,
+                           'opt': opt,
+                           'value': value,
+                       })
+#ANNOTATION: msg is a string "%(model)s.Meta.%(opt)s cannot be a string. Did you mean to type: ('%(value)s',)?", where '%(model)s' is replaced,
+#ANNOTATION: with new_class.__name__, '%(opt)s' is replaced with opt and '%(value)s' is replaced with value.
+                raise TypeError(msg)
+#ANNOTATION: raise an TypeError exception with an argument msg.
+
+        if opts.model:
+#ANNOTATION: if opts.model is true,
+            # If a model is defined, extract form fields from it.
+            if opts.fields is None and opts.exclude is None:
+#ANNOTATION: if opts.fields is None and opts.exclude is None,
+                raise ImproperlyConfigured(
+                    "Creating a ModelForm without either the 'fields' attribute "
+                    "or the 'exclude' attribute is prohibited; form %s "
+                    "needs updating." % name
+                )
+#ANNOTATION: raise an ImproperlyConfigured exception with an argument string "Creating a ModelForm without either the 'fields' attribute,
+#ANNOTATION: "or the 'exclude' attribute is prohibited; form %s needs updating.", where '%s' is replaced with name.
+
+            if opts.fields == ALL_FIELDS:
+#ANNOTATION: if opts.fields equals ALL_FIELDS,
+                # Sentinel for fields_for_model to indicate "get the list of
+                # fields from the model"
+                opts.fields = None
+#ANNOTATION: opts.fields is None.
+
+            fields = fields_for_model(opts.model, opts.fields, opts.exclude,
+                                      opts.widgets, formfield_callback,
+                                      opts.localized_fields, opts.labels,
+                                      opts.help_texts, opts.error_messages)
+#ANNOTATION: call the function fields_for_model with 9 arguments: opts.model, opts.fields, opts.exclude, opts.widgets, formfield_callback,
+#ANNOTATION: opts.localized_fields, opts.labels, opts.help_texts and opts.error_messages, substitute the result for fields.
+
+            # make sure opts.fields doesn't specify an invalid field
+            none_model_fields = [k for k, v in six.iteritems(fields) if not v]
+#ANNOTATION: for every k and v in return value of the function six.iteritems called with an argument fields, if n is false, append it to a list,
+#ANNOTATION: substitute the resulting list for none_model_fields.
+            missing_fields = (set(none_model_fields) -
+                              set(new_class.declared_fields.keys()))
+#ANNOTATION: missing_fields is difference between set containing none_model_fields and set containing result of the method,
+#ANNOTATION: new_class.declared_fields.keys.
+            if missing_fields:
+#ANNOTATION: if missing_fields is true,
+                message = 'Unknown field(s) (%s) specified for %s'
+#ANNOTATION: message is an string 'Unknown field(s) (%s) specified for %s'.
+                message = message % (', '.join(missing_fields),
+                                     opts.model.__name__)
+#ANNOTATION: join missing_fields into a string separated by string ', ', use it and opts.model.__name__ to format message, substitute the result for message.
+                raise FieldError(message)
+#ANNOTATION: raise an FieldError exception with an argument message.
+            # Override default model fields with any custom declared ones
+            # (plus, include all the other declared fields).
+            fields.update(new_class.declared_fields)
+#ANNOTATION: update fields dictionary with new_class.declared_fields.
+        else:
+#ANNOTATION: if not,
+            fields = new_class.declared_fields
+#ANNOTATION: substitute new_class.declared_fields for fields.
+
+        new_class.base_fields = fields
+#ANNOTATION: substitute fields for new_class.base_fields.
+
+        return new_class
+#ANNOTATION: return new_class.
+
+
+class BaseModelForm(BaseForm):
+#ANNOTATION: derive the class BaseModelForm from the BaseForm base class.
+    def __init__(self, data=None, files=None, auto_id='id_%s', prefix=None,
+                 initial=None, error_class=ErrorList, label_suffix=None,
+                 empty_permitted=False, instance=None):
+#ANNOTATION: define the method __init__ with 10 arguments: self, data set to None, files set to None, auto_id set to string 'id_%s', 
+#ANNOTATION: prefix set to None, initial set to None, error_class set to ErrorList, label_suffix set to None, 
+#ANNOTATION: empty_permitted set to boolean False, instance set to None.
+        opts = self._meta
+#ANNOTATION: substitute self._meta for opts.
+        if opts.model is None:
+#ANNOTATION: if opts.model is None.
+            raise ValueError('ModelForm has no model class specified.')
+#ANNOTATION: raise an ValueError with an argument string 'ModelForm has no model class specified.'.
+        if instance is None:
+#ANNOTATION: if instance is None,
+            # if we didn't get an instance, instantiate a new one
+            self.instance = opts.model()
+#ANNOTATION: call the method opts.model, substitute the result for self.instance.
+            object_data = {}
+#ANNOTATION: object_data is an empty dictionary.
+        else:
+#ANNOTATION: if not,
+            self.instance = instance
+#ANNOTATION: substitute instance for self.instance.
+            object_data = model_to_dict(instance, opts.fields, opts.exclude)
+#ANNOTATION: call the method model_to_dict with 3 arguments: instance, opts.fields, opts.exclude and substitute the result for object_data.
+        # if initial was provided, it should override the values from instance
+        if initial is not None:
+#ANNOTATION: if initial is not None,
+            object_data.update(initial)
+#ANNOTATION: update object_data dictionary with initial.
+        # self._validate_unique will be set to True by BaseModelForm.clean().
+        # It is False by default so overriding self.clean() and failing to call
+        # super will stop validate_unique from being called.
+        self._validate_unique = False
+#ANNOTATION: self._validate_unique is boolean False.
+        super(BaseModelForm, self).__init__(data, files, auto_id, prefix, object_data,
+                                            error_class, label_suffix, empty_permitted)
+#ANNOTATION: call the method __init__ from the base class of the class BaseModelForm, with 8 arguments: data, files, auto_id, prefix, object_data,
+#ANNOTATION: error_class, label_suffix and empty_permitted.
+        # Apply ``limit_choices_to`` to each field.
+        for field_name in self.fields:
+#ANNOTATION: for every field_name in self.fields,
+            formfield = self.fields[field_name]
+#ANNOTATION: substitute value under the field_name key of the self.fields dictionary for formfield.
+            if hasattr(formfield, 'queryset'):
+#ANNOTATION: if formfield has an attribute 'queryset',
+                limit_choices_to = formfield.limit_choices_to
+#ANNOTATION: substitute formfield.limit_choices_to for limit_choices_to.
+                if limit_choices_to is not None:
+#ANNOTATION: if limit_choices_to is not None,
+                    if callable(limit_choices_to):
+#ANNOTATION: if limit_choices_to is callable object,
+                        limit_choices_to = limit_choices_to()
+#ANNOTATION: call the function limit_choices_to, substitute the result for limit_choices_to.
+                    formfield.queryset = formfield.queryset.complex_filter(limit_choices_to)
+#ANNOTATION: call the method formfield.queryset.complex_filter with an argument limit_choices_to, substitute the result for formfield.queryset. 
+
+    def _get_validation_exclusions(self):
+#ANNOTATION: define the method _get_validation_exclusions with an argument self.
+        """
+        For backwards-compatibility, several types of fields need to be
+        excluded from model validation. See the following tickets for
+        details: #12507, #12521, #12553
+        """
+#ANNOTATION: docstring
+        exclude = []
+#ANNOTATION: exclude is an empty list.
+        # Build up a list of fields that should be excluded from model field
+        # validation and unique checks.
+        for f in self.instance._meta.fields:
+#ANNOTATION: for every f in self.instance._meta.fields,
+            field = f.name
+#ANNOTATION: substitute f.name for field.
+            # Exclude fields that aren't on the form. The developer may be
+            # adding these values to the model after form validation.
+            if field not in self.fields:
+#ANNOTATION: if field is not contained in self.fields,
+                exclude.append(f.name)
+#ANNOTATION: append f.name to exclude.
+
+            # Don't perform model validation on fields that were defined
+            # manually on the form and excluded via the ModelForm's Meta
+            # class. See #12901.
+            elif self._meta.fields and field not in self._meta.fields:
+#ANNOTATION: otherwise if self._meta.fields is true and field is not contained in self._meta.fields,
+                exclude.append(f.name)
+#ANNOTATION: append f.name to exclude.
+            elif self._meta.exclude and field in self._meta.exclude:
+#ANNOTATION: otherwise if self._meta.exclude is true and field is not contained in self._meta.exclude,
+                exclude.append(f.name)
+#ANNOTATION: append f.name to exclude.
+
+            # Exclude fields that failed form validation. There's no need for
+            # the model fields to validate them as well.
+            elif field in self._errors.keys():
+#ANNOTATION: otherwise if field is contained in the result of the call to the method self._errors.keys,
+                exclude.append(f.name)
+#ANNOTATION: append f.name to exclude.
+
+            # Exclude empty fields that are not required by the form, if the
+            # underlying model field is required. This keeps the model field
+            # from raising a required error. Note: don't exclude the field from
+            # validation if the model field allows blanks. If it does, the blank
+            # value may be included in a unique check, so cannot be excluded
+            # from validation.
+            else:
+#ANNOTATION: if not,
+                form_field = self.fields[field]
+#ANNOTATION: substitute value under the field key of the self.fields dictionary for form_field.
+                field_value = self.cleaned_data.get(field, None)
+#ANNOTATION: get the value under the field key of the self.cleaned_data dictionary, if it exists substitute it for field_value, 
+#ANNOTATION: if not field_value is None.
+                if not f.blank and not form_field.required and field_value in form_field.empty_values:
+#ANNOTATION: if f.blank is false and form_field.required is false and field_value is contained in form_field.empty_values,
+                    exclude.append(f.name)
+#ANNOTATION: append f.name to exclude.
+        return exclude
+#ANNOTATION: return exclude.
+
+    def clean(self):
+#ANNOTATION: define the method clean with an argument self.
+        self._validate_unique = True
+#ANNOTATION: self._validate_unique is boolean True.
+        return self.cleaned_data
+#ANNOTATION: return self.cleaned_data.
+
+    def _update_errors(self, errors):
+#ANNOTATION: define the method _update_errors with 2 arguments: self and errors.
+        # Override any validation error messages defined at the model level
+        # with those defined at the form level.
+        opts = self._meta
+#ANNOTATION: substitute self._meta for opts.
+        for field, messages in errors.error_dict.items():
+#ANNOTATION: call the function errors.error_dict.items, for every field and messages in the result,
+            if (field == NON_FIELD_ERRORS and opts.error_messages and
+                    NON_FIELD_ERRORS in opts.error_messages):
+#ANNOTATION: if field equals NON_FIELD_ERRORS and opts.error_messages is true and NON_FIELD_ERRORS is contained in opts.error_messages, 
+                error_messages = opts.error_messages[NON_FIELD_ERRORS]
+#ANNOTATION: substitute value under the NON_FIELD_ERRORS key of opts.error_messages dictionary for error_messages. 
+            elif field in self.fields:
+#ANNOTATION: otherwise if field is contained in self.fields,
+                error_messages = self.fields[field].error_messages
+#ANNOTATION: get the value under the field key of self.fields dictionary, substitute error_messages field of the result for error_messages. 
+            else:
+#ANNOTATION: if not,
+                continue
+#ANNOTATION: skip this loop iteration.
+
+            for message in messages:
+#ANNOTATION: for every message in messages,
+                if (isinstance(message, ValidationError) and
+                        message.code in error_messages):
+#ANNOTATION: if message is an instance of ValidationError class and message.code is contained in error_messages,
+                    message.message = error_messages[message.code]
+#ANNOTATION: substitute error_messages under the message.code key of error_messages dictionary for message.message.
+
+        self.add_error(None, errors)
+#ANNOTATION: call the method self.add_error with 2 arguments: None and errors.
+
+    def _post_clean(self):
+#ANNOTATION: define the method _post_clean with an argument self.
+        opts = self._meta
+#ANNOTATION: substitute self._meta for opts.
+
+        exclude = self._get_validation_exclusions()
+#ANNOTATION: call the method self._get_validation_exclusions, substitute the result for exclude.
+        # a subset of `exclude` which won't have the InlineForeignKeyField
+        # if we're adding a new object since that value doesn't exist
+        # until after the new instance is saved to the database.
+        construct_instance_exclude = list(exclude)
+#ANNOTATION: convert exclude elements to list, substitute it for construct_instance_exclude.
+
+        # Foreign Keys being used to represent inline relationships
+        # are excluded from basic field value validation. This is for two
+        # reasons: firstly, the value may not be supplied (#12507; the
+        # case of providing new values to the admin); secondly the
+        # object being referred to may not yet fully exist (#12749).
+        # However, these fields *must* be included in uniqueness checks,
+        # so this can't be part of _get_validation_exclusions().
+        for name, field in self.fields.items():
+#ANNOTATION: call the method self.fields.items, for every name and field in result,
+            if isinstance(field, InlineForeignKeyField):
+#ANNOTATION: if field is an instance of InlineForeignKeyField class,
+                if self.cleaned_data.get(name) is not None and self.cleaned_data[name]._state.adding:
+#ANNOTATION: if value under the name key of self.cleaned_data dictionary is not None,
+#ANNOTATION:  and field _state.adding of value under the name key of self.cleaned_data dictionary is true,
+                    construct_instance_exclude.append(name)
+#ANNOTATION: append name to construct_instance_exclude list.
+                exclude.append(name)
+#ANNOTATION: append name to exclude.
+
+        # Update the model instance with self.cleaned_data.
+        self.instance = construct_instance(self, self.instance, opts.fields, construct_instance_exclude)
+#ANNOTATION: call the function construct_instance with 4 arguments: self, self.instance, opts.fields and construct_instance_exclude,
+#ANNOTATION: substitute the result for self.instance.
+
+        try:
+#ANNOTATION: try,
+            self.instance.full_clean(exclude=exclude, validate_unique=False)
+#ANNOTATION: call the method self.instance.full_clean with 2 arguments: exclude set to exclude and validate_unique set to boolean False.
+        except ValidationError as e:
+#ANNOTATION: if ValidationError, renamed to e, exception is caught,
+            self._update_errors(e)
+#ANNOTATION: call the method self._update_errors with an argument e.
+
+        # Validate uniqueness if needed.
+        if self._validate_unique:
+#ANNOTATION: if self._validate_unique is true,
+            self.validate_unique()
+#ANNOTATION: call the method self.validate_unique.
+
+    def validate_unique(self):
+#ANNOTATION: define the method validate_unique with an argument self.
+        """
+        Calls the instance's validate_unique() method and updates the form's
+        validation errors if any were raised.
+        """
+#ANNOTATION: docstring
+        exclude = self._get_validation_exclusions()
+#ANNOTATION: call the method self._get_validation_exclusions, substitute the result for exclude.
+        try:
+#ANNOTATION: try,
+            self.instance.validate_unique(exclude=exclude)
+#ANNOTATION: call the method self.instance.validate_unique with an argument exclude set to exclude.
+        except ValidationError as e:
+#ANNOTATION: if ValidationError, renamed to e, exception is caught,
+            self._update_errors(e)
+#ANNOTATION: call the method self._update_errors with an argument e.
+
+    def save(self, commit=True):
+#ANNOTATION: define the method save with 2 arguments: self and commit set to boolean True.
+        """
+        Saves this ``form``'s cleaned_data into model instance
+        ``self.instance``.
+
+        If commit=True, then the changes to ``instance`` will be saved to the
+        database. Returns ``instance``.
+        """
+#ANNOTATION: docstring
+        if self.instance.pk is None:
+#ANNOTATION: if self.instance.pk is None,
+            fail_message = 'created'
+#ANNOTATION: fail_message is a string 'created'.
+        else:
+#ANNOTATION: if not,
+            fail_message = 'changed'
+#ANNOTATION: fail_message is a string changed'.
+        return save_instance(self, self.instance, self._meta.fields,
+                             fail_message, commit, self._meta.exclude,
+                             construct=False)
+#ANNOTATION: call the function with 7 arguments: self, self.instance, self._meta.fields, fail_message, commit, self._meta.exclude,
+#ANNOTATION: and construct as boolean False, return the result.
+
+    save.alters_data = True
+#ANNOTATION: save.alters_data is boolean True.
+
+
+class ModelForm(six.with_metaclass(ModelFormMetaclass, BaseModelForm)):
+#ANNOTATION: derive the class ModelForm from the base class in the return value of the method six.with_metaclass, called with 2 arguments:
+#ANNOTATION: ModelFormMetaclass and BaseModelForm.
+    pass
+#ANNOTATION: do nothing.
+
+
+def modelform_factory(model, form=ModelForm, fields=None, exclude=None,
+                      formfield_callback=None, widgets=None, localized_fields=None,
+                      labels=None, help_texts=None, error_messages=None):
+#ANNOTATION: define the function modelform_factory with 10 arguments: model, form set to ModelForm, fields set to None, exclude set to None,
+#ANNOTATION: formfield_callback set to None, widgets set to None, localized_fields set to None, labels set to None, help_texts set to None,
+#ANNOTATION: and error_messages set to None.
+    """
+    Returns a ModelForm containing form fields for the given model.
+
+    ``fields`` is an optional list of field names. If provided, only the named
+    fields will be included in the returned fields. If omitted or '__all__',
+    all fields will be used.
+
+    ``exclude`` is an optional list of field names. If provided, the named
+    fields will be excluded from the returned fields, even if they are listed
+    in the ``fields`` argument.
+
+    ``widgets`` is a dictionary of model field names mapped to a widget.
+
+    ``localized_fields`` is a list of names of fields which should be localized.
+
+    ``formfield_callback`` is a callable that takes a model field and returns
+    a form field.
+
+    ``labels`` is a dictionary of model field names mapped to a label.
+
+    ``help_texts`` is a dictionary of model field names mapped to a help text.
+
+    ``error_messages`` is a dictionary of model field names mapped to a
+    dictionary of error messages.
+    """
+#ANNOTATION: docstring
+    # Create the inner Meta class. FIXME: ideally, we should be able to
+    # construct a ModelForm without creating and passing in a temporary
+    # inner class.
+
+    # Build up a list of attributes that the Meta object will have.
+    attrs = {'model': model}
+#ANNOTATION: attrs is a dictionary with model for 'model'.
+    if fields is not None:
+#ANNOTATION: if fields is not None,
+        attrs['fields'] = fields
+#ANNOTATION: substitute fields for value under the 'fields' key of attrs dictionary.
+    if exclude is not None:
+#ANNOTATION: if exclude is not None,
+        attrs['exclude'] = exclude
+#ANNOTATION: substitute exclude for value under the 'exclude' key of attrs dictionary.
+    if widgets is not None:
+#ANNOTATION: if widgets is not None,
+        attrs['widgets'] = widgets
+#ANNOTATION: substitute widgets for value under the 'widgets' key of attrs dictionary.
+    if localized_fields is not None:
+#ANNOTATION: if localized_fields is not None,
+        attrs['localized_fields'] = localized_fields
+#ANNOTATION: substitute localized_fields for value under the 'localized_fields' key of attrs dictionary.
+    if labels is not None:
+#ANNOTATION: if labels is not None,
+        attrs['labels'] = labels
+#ANNOTATION: substitute labels for value under the 'labels' key of attrs dictionary.
+    if help_texts is not None:
+#ANNOTATION: if help_texts is not None,
+        attrs['help_texts'] = help_texts
+#ANNOTATION: substitute help_texts for value under the 'help_texts' key of attrs dictionary.
+    if error_messages is not None:
+#ANNOTATION: if error_messages is not None,
+        attrs['error_messages'] = error_messages
+#ANNOTATION: substitute error_messages for value under the 'error_messages' key of attrs dictionary.
+
+    # If parent form class already has an inner Meta, the Meta we're
+    # creating needs to inherit from the parent's inner meta.
+    parent = (object,)
+#ANNOTATION: parent is a tuple with 1 element, object.
+    if hasattr(form, 'Meta'):
+#ANNOTATION: if form has an attribute 'Meta',
+        parent = (form.Meta, object)
+#ANNOTATION: parent is a tuple with 2 arguments: form.Meta and object.
+    Meta = type(str('Meta'), parent, attrs)
+#ANNOTATION: Meta is an instance of class with name 'Meta', parent base class and fields attrs.
+
+    # Give this new form class a reasonable name.
+    class_name = model.__name__ + str('Form')
+#ANNOTATION: append string 'Form' to model.__name__, substitute the result for class_name.
+
+    # Class attributes for the new form class.
+    form_class_attrs = {
+        'Meta': Meta,
+        'formfield_callback': formfield_callback
+    }
+#ANNOTATION: form_class_attrs is a dictionary with 2 entries: Meta for 'Meta' and formfield_callback for 'formfield_callback'.
+
+    if (getattr(Meta, 'fields', None) is None and
+            getattr(Meta, 'exclude', None) is None):
+#ANNOTATION: if 'fields' attribute of Meta object is None and 'exclude' attribute of Meta object is None, 
+        raise ImproperlyConfigured(
+            "Calling modelform_factory without defining 'fields' or "
+            "'exclude' explicitly is prohibited."
+        )
+#ANNOTATION: raise an ImproperlyConfigured with an argument string "Calling modelform_factory without defining 'fields' or 'exclude' explicitly is prohibited."
+
+    # Instatiate type(form) in order to use the same metaclass as form.
+    return type(form)(class_name, (form,), form_class_attrs)
+#ANNOTATION: get the type of form object, return an instance of resulting class created with 3 arguments: class_name, tuple with an element form,
+#ANNOTATION: and form_class_attrs.
+
+
+# ModelFormSets ##############################################################
+
+class BaseModelFormSet(BaseFormSet):
+#ANNOTATION: derive the class BaseModelFormSet from the BaseFormSet base class.
+    """
+    A ``FormSet`` for editing a queryset and/or adding new objects to it.
+    """
+#ANNOTATION: docstring
+    model = None
+#ANNOTATION: model is None.
+
+    def __init__(self, data=None, files=None, auto_id='id_%s', prefix=None,
+                 queryset=None, **kwargs):
+#ANNOTATION: define the method __init__ with 7 arguments: self, data set to None, files set to None, auto_id set to string 'id_%s', 
+#ANNOTATION: prefix set to None, queryset set to None and unpacked dictionary kwargs.
+        self.queryset = queryset
+#ANNOTATION: substitute queryset for self.queryset.
+        self.initial_extra = kwargs.pop('initial', None)
+#ANNOTATION: remove entry under 'initial' key of the kwargs dictionary, substitute it for self.initial_extra if it exists, 
+#ANNOTATION: if not self.initial_extra is None.
+        defaults = {'data': data, 'files': files, 'auto_id': auto_id, 'prefix': prefix}
+#ANNOTATION: defaults is a dictionary with 4 entries: data for 'data', files for 'files', auto_id for 'auto_id' and prefix for 'prefix'.
+        defaults.update(kwargs)
+#ANNOTATION: update defaults dictionary with kwargs.
+        super(BaseModelFormSet, self).__init__(**defaults)
+#ANNOTATION: call the method __init__ from the base class of the class BaseModelFormSet, with an argument unpacked dictionary defaults.
+
+    def initial_form_count(self):
+#ANNOTATION: define the method initial_form_count with an argument self.
+        """Returns the number of forms that are required in this FormSet."""
+#ANNOTATION: docstring
+        if not (self.data or self.files):
+#ANNOTATION: if self.data and self.files are both False,
+            return len(self.get_queryset())
+#ANNOTATION: call the method self.get_queryset, return the length of the result.
+        return super(BaseModelFormSet, self).initial_form_count()
+#ANNOTATION: call the method initial_form_count from the base class of the class BaseModelFormSet, return the result.
+
+    def _existing_object(self, pk):
+#ANNOTATION: define the method _existing_object with 2 arguments: self and pk.
+        if not hasattr(self, '_object_dict'):
+#ANNOTATION: if self has an attribute '_object_dict',
+            self._object_dict = dict((o.pk, o) for o in self.get_queryset())
+#ANNOTATION: call the function dict with an argument tuple with 2 elements: o.pk and o, for every o in result of the method self.get_queryset,
+#ANNOTATION: substitute the result for self._object_dict.
+        return self._object_dict.get(pk)
+#ANNOTATION: return the value under the pk key of self._object_dict dictionary.
+
+    def _get_to_python(self, field):
+#ANNOTATION: define the method _get_to_python with 2 arguments: self and field.
+        """
+        If the field is a related field, fetch the concrete field's (that
+        is, the ultimate pointed-to field's) get_prep_value.
+        """
+#ANNOTATION: docstring
+        while field.rel is not None:
+#ANNOTATION: while field.rel is not None,
+            field = field.rel.get_related_field()
+#ANNOTATION: call the method field.rel.get_related_field, substitute the result for field.
+        return field.to_python
+#ANNOTATION: return field.to_python.
+
+    def _construct_form(self, i, **kwargs):
+#ANNOTATION: define the method _construct_form with 3 arguments: self, i and unpacked dictionary kwargs.
+        if self.is_bound and i < self.initial_form_count():
+#ANNOTATION: if self.is_bound is true and i is smaller than self.initial_form_count,
+            pk_key = "%s-%s" % (self.add_prefix(i), self.model._meta.pk.name)
+#ANNOTATION: pk_key is a string "%s-%s", where '%s' is replaced with: result of the method self.add_prefix called with an argument i,
+#ANNOTATION: and self.model._meta.pk.name.
+            pk = self.data[pk_key]
+#ANNOTATION: substitute the value under the pk_key key of the self.data dictionary for pk.
+            pk_field = self.model._meta.pk
+#ANNOTATION: substitute self.model._meta.pk for pk_field.
+            to_python = self._get_to_python(pk_field)
+#ANNOTATION: call the method self._get_to_python with an argument pk_field, substitute the result for to_python.
+            pk = to_python(pk)
+#ANNOTATION: call the function to_python with an argument pk, substitute the result for pk.
+            kwargs['instance'] = self._existing_object(pk)
+#ANNOTATION: call the method self._existing_object with an argument pk, substitute the result for value under the 'instance' key of kwargs.
+        if i < self.initial_form_count() and 'instance' not in kwargs:
+#ANNOTATION: if i is smaller than result of the method self.initial_form_count and key 'instance' is not contained in kwargs,
+            kwargs['instance'] = self.get_queryset()[i]
+#ANNOTATION: call the method self.get_queryset, substitute i-th element of the result for value under the 'instance' key of kwargs dictionary.
+        if i >= self.initial_form_count() and self.initial_extra:
+#ANNOTATION:  if i is greater or equal to the result of the method self.initial_form_count and self.initial_extra is true,
+            # Set initial values for extra forms
+            try:
+#ANNOTATION: try,
+                kwargs['initial'] = self.initial_extra[i - self.initial_form_count()]
+#ANNOTATION: subtract result of the method self.initial_form_count from i, use the result as an index to get the element from self.initial_extra,
+#ANNOTATION: substitute it for value under the 'initial' key of kwargs dictionary.
+            except IndexError:
+#ANNOTATION: if IndexError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+        return super(BaseModelFormSet, self)._construct_form(i, **kwargs)
+#ANNOTATION: call the method _construct_form from the base class of the class BaseModelFormSet, with 2 arguments: i and unpacked dictionary kwargs.
+
+    def get_queryset(self):
+#ANNOTATION: define the method get_queryset with an argument self.
+        if not hasattr(self, '_queryset'):
+#ANNOTATION: if self doesnt have '_queryset' attribute,
+            if self.queryset is not None:
+#ANNOTATION: if self.queryset is not None,
+                qs = self.queryset
+#ANNOTATION: substitute self.queryset for qs.
+            else:
+#ANNOTATION: if not,
+                qs = self.model._default_manager.get_queryset()
+#ANNOTATION: call the method self.model._default_manager.get_queryset with an argument qs.
+
+            # If the queryset isn't already ordered we need to add an
+            # artificial ordering here to make sure that all formsets
+            # constructed from this queryset have the same form order.
+            if not qs.ordered:
+#ANNOTATION: if qs.ordered is false,
+                qs = qs.order_by(self.model._meta.pk.name)
+#ANNOTATION: call the method qs.order_by with argument self.model._meta.pk.name, substitute the result for qs.
+
+            # Removed queryset limiting here. As per discussion re: #13023
+            # on django-dev, max_num should not prevent existing
+            # related objects/inlines from being displayed.
+            self._queryset = qs
+#ANNOTATION: substitute qs for self._queryset.
+        return self._queryset
+#ANNOTATION: return self._queryset.
+
+    def save_new(self, form, commit=True):
+#ANNOTATION: define the method save_new with 3 arguments: self, form and commit set to boolean True.
+        """Saves and returns a new model instance for the given form."""
+#ANNOTATION: docstring
+        return form.save(commit=commit)
+#ANNOTATION: call the method form.save with an argument commit as commit, return the result.
+
+    def save_existing(self, form, instance, commit=True):
+#ANNOTATION: define the method save_existing with 4 arguments: self, form, instance and commit set to boolean True.
+        """Saves and returns an existing model instance for the given form."""
+#ANNOTATION: docstring
+        return form.save(commit=commit)
+#ANNOTATION: call the method form.save with an argument commit as commit, return the result.
+
+    def save(self, commit=True):
+#ANNOTATION: define the method save with 2 arguments: self and commit set to boolean True.
+        """Saves model instances for every form, adding and changing instances
+        as necessary, and returns the list of instances.
+        """
+#ANNOTATION: docstring
+        if not commit:
+#ANNOTATION: if commit is true,
+            self.saved_forms = []
+#ANNOTATION: self.saved_forms is an empty list.
+
+            def save_m2m():
+#ANNOTATION: define the function save_m2m.
+                for form in self.saved_forms:
+#ANNOTATION: for every form in self.saved_forms,
+                    form.save_m2m()
+#ANNOTATION: call the function form.save_m2m.
+            self.save_m2m = save_m2m
+#ANNOTATION: substitute save_m2m for self.save_m2m.
+        return self.save_existing_objects(commit) + self.save_new_objects(commit)
+#ANNOTATION: sum results of method self.save_existing_objects called with an argument commit and of method self.save_new_objects, 
+#ANNOTATION: called with an argument commit, return the result.
+
+    save.alters_data = True
+#ANNOTATION: save.alters_data is boolean True.
+
+    def clean(self):
+#ANNOTATION: define the method clean with an argument self.
+        self.validate_unique()
+#ANNOTATION: call the method self.validate_unique.
+
+    def validate_unique(self):
+#ANNOTATION: define the method validate_unique with an argument self.
+        # Collect unique_checks and date_checks to run from all the forms.
+        all_unique_checks = set()
+#ANNOTATION: all_unique_checks is an empty set.
+        all_date_checks = set()
+#ANNOTATION: all_date_checks is an empty set.
+        forms_to_delete = self.deleted_forms
+#ANNOTATION: substitute self.deleted_forms for forms_to_delete.
+        valid_forms = [form for form in self.forms if form.is_valid() and form not in forms_to_delete]
+#ANNOTATION: for every form in self.forms append form to a list, if function form.is_valid evaluates to true,
+#ANNOTATION: and form is not contained in forms_to_delete, substitute the resulting list for valid_forms.
+        for form in valid_forms:
+#ANNOTATION: for every form in valid_forms,
+            exclude = form._get_validation_exclusions()
+#ANNOTATION: call the method form._get_validation_exclusions, substitute the result for exclude.
+            unique_checks, date_checks = form.instance._get_unique_checks(exclude=exclude)
+#ANNOTATION: call the method form.instance._get_unique_checks with an argument exclude as exclude, substitute the result for unique_checks, #ANNOTATION: and date_checks, respectively.
+            all_unique_checks = all_unique_checks.union(set(unique_checks))
+#ANNOTATION: all_unique_checks is union of all_unique_checks set and unique_checks set.
+            all_date_checks = all_date_checks.union(set(date_checks))
+#ANNOTATION: all_date_checks is union of all_date_checks set and date_checks set.
+
+        errors = []
+#ANNOTATION: errors is an empty list.
+        # Do each of the unique checks (unique and unique_together)
+        for uclass, unique_check in all_unique_checks:
+#ANNOTATION: for every uclass, unique_check in all_unique_checks,
+            seen_data = set()
+#ANNOTATION: seen_data is an empty set.
+            for form in valid_forms:
+#ANNOTATION: for every form in valid_forms,
+                # get data for each field of each of unique_check
+                row_data = (form.cleaned_data[field]
+                            for field in unique_check if field in form.cleaned_data)
+#ANNOTATION: row_data is an generator object that returns value under the field key of form.cleaned_data dictionary,
+#ANNOTATION: for every field in unique_check, if field is contained in form.cleaned_data.
+                # Reduce Model instances to their primary key values
+                row_data = tuple(d._get_pk_val() if hasattr(d, '_get_pk_val') else d
+                                 for d in row_data)
+#ANNOTATION: create a generator that for every d in row_data, if d has an '_get_pk_val' attribute, 
+#ANNOTATION: returns the result of the call the method d._get_pk_val, if not return d, put all the generator items into a tuple row_data.
+                if row_data and None not in row_data:
+#ANNOTATION: if row_data is true and None is not contained in row_data,
+                    # if we've already seen it then we have a uniqueness failure
+                    if row_data in seen_data:
+#ANNOTATION: if row_data is contained in seen_data,
+                        # poke error messages into the right places and mark
+                        # the form as invalid
+                        errors.append(self.get_unique_error_message(unique_check))
+#ANNOTATION: call the method self.get_unique_error_message with an argument unique_check, append the result to errors.
+                        form._errors[NON_FIELD_ERRORS] = self.error_class([self.get_form_error()])
+#ANNOTATION: call the method self.error_class with an argument list with a element: result of the method self.get_form_error,
+#ANNOTATION: substitute the result for value under the NON_FIELD_ERRORS key of the form._errors dictionary.
+                        # remove the data from the cleaned_data dict since it was invalid
+                        for field in unique_check:
+#ANNOTATION: for every field in unique_check,
+                            if field in form.cleaned_data:
+#ANNOTATION: if field is contained in form.cleaned_data,
+                                del form.cleaned_data[field]
+#ANNOTATION: delete the form.cleaned_data dictionary entry under the field key.
+                    # mark the data as seen
+                    seen_data.add(row_data)
+#ANNOTATION: add row_data to seen_data set.
+        # iterate over each of the date checks now
+        for date_check in all_date_checks:
+#ANNOTATION: for every date_check in all_date_checks,
+            seen_data = set()
+#ANNOTATION: seen_data is an empty set.
+            uclass, lookup, field, unique_for = date_check
+#ANNOTATION: substitute date_check elements to uclass, lookup, field and unique_for, respectively.
+            for form in valid_forms:
+#ANNOTATION: for every form in valid_forms,
+                # see if we have data for both fields
+                if (form.cleaned_data and form.cleaned_data[field] is not None
+                        and form.cleaned_data[unique_for] is not None):
+#ANNOTATION: if form.cleaned_data is true and value under the field key of form.cleaned_data dictionary is not None, 
+#ANNOTATION: and value under the unique_for key of form.cleaned_data dictionary is not None,
+                    # if it's a date lookup we need to get the data for all the fields
+                    if lookup == 'date':
+#ANNOTATION: if lookup equals a string 'date',
+                        date = form.cleaned_data[unique_for]
+#ANNOTATION: substitute value under the unique_for key of form.cleaned_data dictionary for date.
+                        date_data = (date.year, date.month, date.day)
+#ANNOTATION: date_data is a tuple with 3 elements: date.year, date.month and date.day.
+                    # otherwise it's just the attribute on the date/datetime
+                    # object
+                    else:
+#ANNOTATION: if not,
+                        date_data = (getattr(form.cleaned_data[unique_for], lookup),)
+#ANNOTATION: date_data is a tuple with an entry: attribute lookup from the value under the unique_for key of the form.cleaned_data dictionary.
+                    data = (form.cleaned_data[field],) + date_data
+#ANNOTATION: create a tuple out of elements under the key field of the form.cleaned_data dictionary, add elements of date_data to it, 
+#ANNOTATION: substitute it for data.
+                    # if we've already seen it then we have a uniqueness failure
+                    if data in seen_data:
+#ANNOTATION: if data is contained in seen_data,
+                        # poke error messages into the right places and mark
+                        # the form as invalid
+                        errors.append(self.get_date_error_message(date_check))
+#ANNOTATION: call the method self.get_date_error_message with an argument date_check, append the result to errors.
+                        form._errors[NON_FIELD_ERRORS] = self.error_class([self.get_form_error()])
+#ANNOTATION: call the method self.error_class with an argument list with one element, return value of the method self.get_form_error,
+#ANNOTATION: substitute the result for the value under the NON_FIELD_ERRORS key of form._errors dictionary.
+                        # remove the data from the cleaned_data dict since it was invalid
+                        del form.cleaned_data[field]
+#ANNOTATION: delete entry from form.cleaned_data dictionary under the field key.
+                    # mark the data as seen
+                    seen_data.add(data)
+#ANNOTATION: add data to seen_data set.
+
+        if errors:
+#ANNOTATION: if errors is true,
+            raise ValidationError(errors)
+#ANNOTATION: raise an ValidationError exception with an argument errors.
+
+    def get_unique_error_message(self, unique_check):
+#ANNOTATION: define the method get_unique_error_message with 2 arguments: self and unique_check.
+        if len(unique_check) == 1:
+#ANNOTATION: if length of unique_check equals integer 1,
+            return ugettext("Please correct the duplicate data for %(field)s.") % {
+                "field": unique_check[0],
+            }
+#ANNOTATION: call the function ugettext with an argument string "Please correct the duplicate data for %(field)s.", 
+#ANNOTATION: where '%(field)s' is replaced with first element of unique_check, return the result.
+        else:
+#ANNOTATION: if not,
+            return ugettext("Please correct the duplicate data for %(field)s, "
+                "which must be unique.") % {
+                "field": get_text_list(unique_check, six.text_type(_("and"))),
+            }
+#ANNOTATION: call the function ugettext with an argument string "Please correct the duplicate data for %(field)s, which must be unique.",
+#ANNOTATION: where '%(field)s' is replaced with return value of the get_text_list function called with 2 arguments:
+#ANNOTATION: unique_check and return value of the function six.text_type called with return value of the function _ with an argument string 'and',
+#ANNOTATION: return the result.
+
+    def get_date_error_message(self, date_check):
+#ANNOTATION: define the method get_date_error_message with 2 arguments: self and date_check.
+        return ugettext("Please correct the duplicate data for %(field_name)s "
+            "which must be unique for the %(lookup)s in %(date_field)s.") % {
+            'field_name': date_check[2],
+            'date_field': date_check[3],
+            'lookup': six.text_type(date_check[1]),
+        }
+#ANNOTATION: call the function ugettext with an argument string "Please correct the duplicate data for %(field_name)s which must be unique for,
+#ANNOTATION: the %(lookup)s in %(date_field)s.", where '%(field_name)s' is replaced with third element of data_check,
+#ANNOTATION: '%(date_field)s' is replaced with fourth element of date_check and '%(lookup)s' is replaced with result of the function,
+#ANNOTATION: six.text_type called with second element of date_check as an argument, return the result.
+
+    def get_form_error(self):
+#ANNOTATION: define the method get_form_error with an argument self.
+        return ugettext("Please correct the duplicate values below.")
+#ANNOTATION: call the function ugettext with an argument string "Please correct the duplicate values below.", return the result.
+
+    def save_existing_objects(self, commit=True):
+#ANNOTATION: define the method save_existing_objects with 2 arguments: self and commit set to boolean True.
+        self.changed_objects = []
+#ANNOTATION: self.changed_objects is an empty list.
+        self.deleted_objects = []
+#ANNOTATION: self.deleted_objects is an empty list.
+        if not self.initial_forms:
+#ANNOTATION: if self.initial_forms is false,
+            return []
+#ANNOTATION: return an empty list.
+
+        saved_instances = []
+#ANNOTATION: saved_instances is an empty list.
+        forms_to_delete = self.deleted_forms
+#ANNOTATION: substitute self.deleted_forms for forms_to_delete.
+        for form in self.initial_forms:
+#ANNOTATION: for every form in self.initial_forms,
+            obj = form.instance
+#ANNOTATION: substitute form.instance for obj.
+            if form in forms_to_delete:
+#ANNOTATION: if form is contained in forms_to_delete,
+                # If the pk is None, it means that the object can't be
+                # deleted again. Possible reason for this is that the
+                # object was already deleted from the DB. Refs #14877.
+                if obj.pk is None:
+#ANNOTATION: if obj.pk is None,
+                    continue
+#ANNOTATION: skip this loop iteration.
+                self.deleted_objects.append(obj)
+#ANNOTATION: append obj to self.deleted_objects list.
+                if commit:
+#ANNOTATION: if commit is true,
+                    obj.delete()
+#ANNOTATION: call the method obj.delete.
+            elif form.has_changed():
+#ANNOTATION: otherwise if form.has_changed method evaluates to true,
+                self.changed_objects.append((obj, form.changed_data))
+#ANNOTATION: append a tuple with 2 elements: obj and form.changed_data to self.changed_objects.
+                saved_instances.append(self.save_existing(form, obj, commit=commit))
+#ANNOTATION: call the method self.save_existing with 3 arguments: form, obj and commit as commit, append the result to saved_instances.
+                if not commit:
+#ANNOTATION: if commit is false,
+                    self.saved_forms.append(form)
+#ANNOTATION: append form to self.saved_forms.
+        return saved_instances
+#ANNOTATION: return saved_instances.
+
+    def save_new_objects(self, commit=True):
+#ANNOTATION: define the method save_new_objects with 2 arguments: self and commit set to boolean True.
+        self.new_objects = []
+#ANNOTATION: self.new_objects is an empty list.
+        for form in self.extra_forms:
+#ANNOTATION: for every form in self.extra_forms,
+            if not form.has_changed():
+#ANNOTATION: if function form.has_changed evaluates to false,
+                continue
+#ANNOTATION: skip this loop iteration.
+            # If someone has marked an add form for deletion, don't save the
+            # object.
+            if self.can_delete and self._should_delete_form(form):
+#ANNOTATION: if self.can_delete is true and call to the function self._should_delete_form with an argument form evaluates to true,
+                continue
+#ANNOTATION: skip this loop iteration.
+            self.new_objects.append(self.save_new(form, commit=commit))
+#ANNOTATION: call the method self.save_new with 2 arguments: form and commit as commit, append the result to self.new_objects.
+            if not commit:
+#ANNOTATION: if commit is false,
+                self.saved_forms.append(form)
+#ANNOTATION: append form to self.saved_forms.
+        return self.new_objects
+#ANNOTATION: return self.new_objects.
+
+    def add_fields(self, form, index):
+#ANNOTATION: define the method add_fields with 2 arguments: self, form and index.
+        """Add a hidden field for the object's primary key."""
+#ANNOTATION: docstring
+        from django.db.models import AutoField, OneToOneField, ForeignKey
+#ANNOTATION: from django.db.models import AutoField, OneToOneField and ForeignKey.
+        self._pk_field = pk = self.model._meta.pk
+#ANNOTATION: assign self.model._meta.pk to self._pk_field and pk.
+        # If a pk isn't editable, then it won't be on the form, so we need to
+        # add it here so we can tell which object is which when we get the
+        # data back. Generally, pk.editable should be false, but for some
+        # reason, auto_created pk fields and AutoField's editable attribute is
+        # True, so check for that as well.
+
+        def pk_is_not_editable(pk):
+#ANNOTATION: define the method pk_is_not_editable with an argument pk.
+            return ((not pk.editable) or (pk.auto_created or isinstance(pk, AutoField))
+                or (pk.rel and pk.rel.parent_link and pk_is_not_editable(pk.rel.to._meta.pk)))
+#ANNOTATION: if pk.editable is true, or pk.auto_created is true or pk is an instance of AutoField class, or if pk.rel is true,
+#ANNOTATION: and pk.rel.parent_link is true and function pk_is_not_editable called with an argument pk.rel.to._meta.pk evaluates to true,
+        if pk_is_not_editable(pk) or pk.name not in form.fields:
+#ANNOTATION: if function pk_is_not_editable called with an argument pk evaluates to true, or pk.name is not contained in form.fields,
+            if form.is_bound:
+#ANNOTATION: if form.is_bound is true,
+                pk_value = form.instance.pk
+#ANNOTATION: substitute form.instance.pk for pk_value.
+            else:
+#ANNOTATION: if not,
+                try:
+#ANNOTATION: try,
+                    if index is not None:
+#ANNOTATION: if index is not None,
+                        pk_value = self.get_queryset()[index].pk
+#ANNOTATION: call the method self.get_queryset, substitute field pk under the result at the index index for pk_value.
+                    else:
+#ANNOTATION: if not,
+                        pk_value = None
+#ANNOTATION: pk_value is None.
+                except IndexError:
+#ANNOTATION: if IndexError exception is caught,
+                    pk_value = None
+#ANNOTATION: pk_value is None.
+            if isinstance(pk, OneToOneField) or isinstance(pk, ForeignKey):
+#ANNOTATION: if pk is an instance of OneToOneField or ForeignKey classes,
+                qs = pk.rel.to._default_manager.get_queryset()
+#ANNOTATION: call the method pk.rel.to._default_manager.get_queryset, substitute the result for qs.
+            else:
+#ANNOTATION: if not,
+                qs = self.model._default_manager.get_queryset()
+#ANNOTATION: call the method self.model._default_manager.get_queryset with an argument qs.
+            qs = qs.using(form.instance._state.db)
+#ANNOTATION: call the method qs.using with an argument form.instance._state.db, substitute the result for qs.
+            if form._meta.widgets:
+#ANNOTATION: if form._meta.widgets is true,
+                widget = form._meta.widgets.get(self._pk_field.name, HiddenInput)
+#ANNOTATION: get the value under self._pk_field.name key of form._meta.widgets dictionary, if it exists substitute it for widget, if not,
+#ANNOTATION: widget is an instance of HiddenInput class. 
+            else:
+#ANNOTATION: if not,
+                widget = HiddenInput
+#ANNOTATION: widget is an instance of HiddenInput class
+            form.fields[self._pk_field.name] = ModelChoiceField(qs, initial=pk_value, required=False, widget=widget)
+#ANNOTATION: value under the self._pk_field.name key of form.fields dictionary is an instance of ModelChoiceField class, 
+#ANNOTATION: created with 4 arguments: qs, initial as pk_value, required as boolean False and widget as widget.
+        super(BaseModelFormSet, self).add_fields(form, index)
+#ANNOTATION: call the method add_fields from the base class of the class BaseModelFormSet, with 2 arguments: form and index.
+
+
+def modelformset_factory(model, form=ModelForm, formfield_callback=None,
+                         formset=BaseModelFormSet, extra=1, can_delete=False,
+                         can_order=False, max_num=None, fields=None, exclude=None,
+                         widgets=None, validate_max=False, localized_fields=None,
+                         labels=None, help_texts=None, error_messages=None,
+                         min_num=None, validate_min=False):
+#ANNOTATION: define the function modelformset_factory with 18 arguments: model, form set to ModelForm, formfield_callback set to None,
+#ANNOTATION: formset set to BaseModelFormSet, extra set to integer 1, can_delete set to boolean False, can_order set to boolean False,
+#ANNOTATION: max_num set to None, fields set to None, exclude set to None, widgets set to None, validate_max set to boolean False,
+#ANNOTATION: localized_fields set to None, labels set to None, help_texts set to None, error_messages set to None, min_num set to None,
+#ANNOTATION: and validate_min set to boolean False.
+    """
+    Returns a FormSet class for the given Django model class.
+    """
+#ANNOTATION: docstring
+    meta = getattr(form, 'Meta', None)
+#ANNOTATION: get 'Meta' attribute from form object, if it exists substitute it for meta, if not meta is None.
+    if meta is None:
+#ANNOTATION: if meta is None,
+        meta = type(str('Meta'), (object,), {})
+#ANNOTATION: meta is an instance of a class named 'Meta', derived from the object base class, without any fields.
+    if (getattr(meta, 'fields', fields) is None and
+            getattr(meta, 'exclude', exclude) is None):
+#ANNOTATION: if 'fields' attribute of meta is None, or if it doesnt exists if fields is None and if 'exclude' attribute of meta is None, 
+#ANNOTATION: or if it doesnt exists if exclude is None.
+        raise ImproperlyConfigured(
+            "Calling modelformset_factory without defining 'fields' or "
+            "'exclude' explicitly is prohibited."
+        )
+#ANNOTATION: raise an ImproperlyConfigured with an argument string "Calling modelformset_factory without defining 'fields' or 'exclude',
+#ANNOTATION: explicitly is prohibited."
+
+    form = modelform_factory(model, form=form, fields=fields, exclude=exclude,
+                             formfield_callback=formfield_callback,
+                             widgets=widgets, localized_fields=localized_fields,
+                             labels=labels, help_texts=help_texts, error_messages=error_messages)
+#ANNOTATION: call the function modelform_factory with 10 arguments: model, form as form, fields as fields, exclude as exclude,
+#ANNOTATION: formfield_callback as formfield_callback, widgets as widgets, localized_fields as localized_fields, labels as labels, 
+#ANNOTATION: help_texts as help_texts and error_messages as error_messages, substitute the result for form.
+    FormSet = formset_factory(form, formset, extra=extra, min_num=min_num, max_num=max_num,
+                              can_order=can_order, can_delete=can_delete,
+                              validate_min=validate_min, validate_max=validate_max)
+#ANNOTATION: call the function formset_factory with 10 arguments: form, formset, extra as extra, min_num as min_num, max_num as max_num,
+#ANNOTATION: can_order as can_order, can_delete as can_delete, validate_min as validate_min, validate_max as validate_max,
+#ANNOTATION: substitute the result for form.
+    FormSet.model = model
+#ANNOTATION: substitute model for FormSet.model.
+    return FormSet
+#ANNOTATION: return FormSet.
+
+
+# InlineFormSets #############################################################
+
+class BaseInlineFormSet(BaseModelFormSet):
+#ANNOTATION: derive the class BaseInlineFormSet from the BaseModelFormSet base class.
+    """A formset for child objects related to a parent."""
+#ANNOTATION: docstring
+    def __init__(self, data=None, files=None, instance=None,
+                 save_as_new=False, prefix=None, queryset=None, **kwargs):
+#ANNOTATION: define the method __init__ with 8 arguments: self, data set to None, files set to None, instance set to None,
+#ANNOTATION: save_as_new set to boolean False, prefix set to None, queryset set to None and unpacked dictionary kwargs.
+        if instance is None:
+#ANNOTATION: if instance is None,
+            self.instance = self.fk.rel.to()
+#ANNOTATION: call the method self.fk.rel.to, substitute the result for self.instance.
+        else:
+#ANNOTATION: if not,
+            self.instance = instance
+#ANNOTATION: substitute instance for self.instance.
+        self.save_as_new = save_as_new
+#ANNOTATION: substitute save_as_new for self.save_as_new.
+        if queryset is None:
+#ANNOTATION: if queryset is None,
+            queryset = self.model._default_manager
+#ANNOTATION: substitute self.model._default_manager for queryset.
+        if self.instance.pk is not None:
+#ANNOTATION: if self.instance.pk is not None,
+            qs = queryset.filter(**{self.fk.name: self.instance})
+#ANNOTATION: call the method queryset.filter with an argument unpacked dictionary containing self.instance for self.fk.name, substitute the result for qs.
+        else:
+#ANNOTATION: if not,
+            qs = queryset.none()
+#ANNOTATION: call the method queryset.none, substitute it for qs.
+        super(BaseInlineFormSet, self).__init__(data, files, prefix=prefix,
+                                                queryset=qs, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class BaseInlineFormSet, with 5 arguments: data, files, prefix set to prefix,
+#ANNOTATION: queryset set to qs and unpacked dictionary kwargs.
+
+    def initial_form_count(self):
+#ANNOTATION: define the method initial_form_count with an argument self.
+        if self.save_as_new:
+#ANNOTATION: if self.save_as_new is true,
+            return 0
+#ANNOTATION: return integer 0.
+        return super(BaseInlineFormSet, self).initial_form_count()
+#ANNOTATION: call the method initial_form_count from the base class of the class BaseInlineFormSet, return the result.
+
+    def _construct_form(self, i, **kwargs):
+#ANNOTATION: define the method _construct_form with 3 arguments: self, i and unpacked dictionary kwargs.
+        form = super(BaseInlineFormSet, self)._construct_form(i, **kwargs)
+#ANNOTATION: call the method _construct_form from the base class of the class BaseInlineFormSet, with 2 arguments: i, 
+#ANNOTATION: and unpacked dictionary kwargs, substitute the result for form.
+        if self.save_as_new:
+#ANNOTATION: if self.save_as_new is true,
+            # Remove the primary key from the form's data, we are only
+            # creating new instances
+            form.data[form.add_prefix(self._pk_field.name)] = None
+#ANNOTATION: call the method form.add_prefix with an argument self._pk_field.name, 
+#ANNOTATION: use the result as an key to get the value of the form.data dictionary, assign it value None.
+
+            # Remove the foreign key from the form's data
+            form.data[form.add_prefix(self.fk.name)] = None
+#ANNOTATION: call the method form.add_prefix with an argument self.fk.name, 
+#ANNOTATION: use the result as an key to get the value of the form.data dictionary, assign it value None.
+
+        # Set the fk value here so that the form can do its validation.
+        setattr(form.instance, self.fk.get_attname(), self.instance.pk)
+#ANNOTATION: use return value of the self.fk.get_attname as the name of the attribute of form.instance object to set, set it to self.instance.pk.
+        return form
+#ANNOTATION: return form.
+
+    @classmethod
+#ANNOTATION: classmethod decorator,
+    def get_default_prefix(cls):
+#ANNOTATION: define the method get_default_prefix with an argument cls.
+        from django.db.models.fields.related import RelatedObject
+#ANNOTATION: from django.db.models.fields.related import RelatedObject into default namespace.
+        return RelatedObject(cls.fk.rel.to, cls.model, cls.fk).get_accessor_name().replace('+', '')
+#ANNOTATION: instantiate RelatedObject class with 3 arguments: cls.fk.rel.to, cls.model and cls.fk, 
+#ANNOTATION: call the method get_accessor_name on the result, substitute all occurrences of '+' in the result with an empty string, return it.
+
+    def save_new(self, form, commit=True):
+#ANNOTATION: define the method save_new with 3 arguments: self, form and commit set to boolean True.
+        # Use commit=False so we can assign the parent key afterwards, then
+        # save the object.
+        obj = form.save(commit=False)
+#ANNOTATION: call the method form.save, with an argument commit set to boolean False, substitute the result for obj.
+        pk_value = getattr(self.instance, self.fk.rel.field_name)
+#ANNOTATION: get self.instance
+        setattr(obj, self.fk.get_attname(), getattr(pk_value, 'pk', pk_value))
+#ANNOTATION: get attribute 'pk' of the pk_value object, if it doesnt exists use pk_value, set to it self.fk.get_attname return value attribute,
+#ANNOTATION: of the obj object.
+        if commit:
+#ANNOTATION: if commit is true,
+            obj.save()
+#ANNOTATION: call the method obj.save.
+        # form.save_m2m() can be called via the formset later on if commit=False
+        if commit and hasattr(form, 'save_m2m'):
+#ANNOTATION: if commit is true and form has an attribute 'save_m2m',
+            form.save_m2m()
+#ANNOTATION: call the method form.save_m2m.
+        return obj
+#ANNOTATION: return obj.
+
+    def add_fields(self, form, index):
+#ANNOTATION: define the method add_fields with 3 arguments: self, form and index.
+        super(BaseInlineFormSet, self).add_fields(form, index)
+#ANNOTATION: call the method add_fields from the base class of the class BaseInlineFormSet, with 2 arguments: form and index.
+        if self._pk_field == self.fk:
+#ANNOTATION: if self._pk_field equals self.fk,
+            name = self._pk_field.name
+#ANNOTATION: substitute self._pk_field.name for name.
+            kwargs = {'pk_field': True}
+#ANNOTATION: kwargs is a dictionary with boolean True for 'pk_field'.
+        else:
+#ANNOTATION: if not,
+            # The foreign key field might not be on the form, so we poke at the
+            # Model field to get the label, since we need that for error messages.
+            name = self.fk.name
+#ANNOTATION: substitute self.fk.name for name.
+            kwargs = {
+                'label': getattr(form.fields.get(name), 'label', capfirst(self.fk.verbose_name))
+            }
+#ANNOTATION: kwargs is a dictionary with an entry: attribute 'label' of the object under the name key of the form.fields dictionary for 'label',
+#ANNOTATION: if it doesnt exists return value of the function capfirst with an argument self.fk.verbose_name for 'label'.
+            if self.fk.rel.field_name != self.fk.rel.to._meta.pk.name:
+#ANNOTATION: if self.fk.rel.field_name is not equal to self.fk.rel.to._meta.pk.name,
+                kwargs['to_field'] = self.fk.rel.field_name
+#ANNOTATION: substitute self.fk.rel.field_name for value under the 'to_field' key of the kwargs dictionary.
+
+        form.fields[name] = InlineForeignKeyField(self.instance, **kwargs)
+#ANNOTATION: value under the name key of the form.fields dictionary is an instance of InlineForeignKeyField created with 2 arguments:
+#ANNOTATION: self.instance and unpacked dictionary kwargs.
+
+        # Add the generated field to form._meta.fields if it's defined to make
+        # sure validation isn't skipped on that field.
+        if form._meta.fields:
+#ANNOTATION: if form._meta.fields is true,
+            if isinstance(form._meta.fields, tuple):
+#ANNOTATION: if form._meta.fields is an instance of tuple type,
+                form._meta.fields = list(form._meta.fields)
+#ANNOTATION: form._meta.fields is a list created out of form._meta.fields elements. 
+            form._meta.fields.append(self.fk.name)
+#ANNOTATION: append self.fk.name to form._meta.fields.
+
+    def get_unique_error_message(self, unique_check):
+#ANNOTATION: define the method get_unique_error_message with 2 arguments: self and unique_check.
+        unique_check = [field for field in unique_check if field != self.fk.name]
+#ANNOTATION: unique_check is a list with elements field, for every field in unique_check if field is not equal to self.fk.name.
+        return super(BaseInlineFormSet, self).get_unique_error_message(unique_check)
+#ANNOTATION: call the method get_unique_error_message from the base class of the class BaseInlineFormSet, with an argument unique_check, return the result.
+
+
+def _get_foreign_key(parent_model, model, fk_name=None, can_fail=False):
+#ANNOTATION: define the function _get_foreign_key with 4 arguments: parent_model, model, fk_name set to None and can_fail set to boolean False.
+    """
+    Finds and returns the ForeignKey from model to parent if there is one
+    (returns None if can_fail is True and no such field exists). If fk_name is
+    provided, assume it is the name of the ForeignKey field. Unless can_fail is
+    True, an exception is raised if there is no ForeignKey from model to
+    parent_model.
+    """
+#ANNOTATION: docstring
+    # avoid circular import
+    from django.db.models import ForeignKey
+#ANNOTATION: from django.db.models import ForeignKey.
+    opts = model._meta
+#ANNOTATION: substitute model._meta for opts.
+    if fk_name:
+#ANNOTATION: if fk_name is true,
+        fks_to_parent = [f for f in opts.fields if f.name == fk_name]
+#ANNOTATION: fks_to_parent is a list containing f, for every f in opts.fields if f.name equals fk_name.
+        if len(fks_to_parent) == 1:
+#ANNOTATION: if length of fks_to_parent equals integer 1. 
+            fk = fks_to_parent[0]
+#ANNOTATION: substitute first element of fks_to_parent for fk.
+            if not isinstance(fk, ForeignKey) or \
+                    (fk.rel.to != parent_model and
+                     fk.rel.to not in parent_model._meta.get_parent_list()):
+#ANNOTATION: if fk is not an instance of ForeignKey class, or fk.rel.to is not equal to parent_model,
+#ANNOTATION: and fk.rel.to is not contained in result of the call to the method parent_model._meta.get_parent_list.
+                raise ValueError(
+                    "fk_name '%s' is not a ForeignKey to '%s.%'."
+                    % (fk_name, parent_model._meta.app_label, parent_model._meta.object_name))
+#ANNOTATION: raise an ValueError with an argument string "fk_name '%s' is not a ForeignKey to '%s.%'.", where '%s' is replaced with,
+#ANNOTATION: fk_name, parent_model._meta.app_label and parent_model._meta.object_name, respectively.
+        elif len(fks_to_parent) == 0:
+#ANNOTATION: otherwise if length of fks_to_parent is zero,
+            raise ValueError(
+                "'%s.%s' has no field named '%s'."
+                % (model._meta.app_label, model._meta.object_name, fk_name))
+#ANNOTATION: raise an ValueError with an argument string "'%s.%s' has no field named '%s'.", where '%s' is replaced with,
+#ANNOTATION: model._meta.app_label, model._meta.object_name, fk_name, respectively.
+    else:
+#ANNOTATION: if not,
+        # Try to discover what the ForeignKey from model to parent_model is
+        fks_to_parent = [
+            f for f in opts.fields
+            if isinstance(f, ForeignKey)
+            and (f.rel.to == parent_model
+                or f.rel.to in parent_model._meta.get_parent_list())
+        ]
+#ANNOTATION: fks_to_parent is a list containing f for every f in opts.fields, only if f is an instance of ForeignKey,
+#ANNOTATION: and, if f.rel.toequals parent_model or f.rel.to is contained in result of the call to the method parent_model._meta.get_parent_list.
+        if len(fks_to_parent) == 1:
+#ANNOTATION: if length of fks_to_parent is integer 1,
+            fk = fks_to_parent[0]
+#ANNOTATION: substitute first element of fks_to_parent for fk.
+        elif len(fks_to_parent) == 0:
+#ANNOTATION: otherwise if length of fks_to_parent is zero,
+            if can_fail:
+#ANNOTATION: if can_fail is true,
+                return
+#ANNOTATION: return nothing.
+            raise ValueError(
+                "'%s.%s' has no ForeignKey to '%s.%s'."
+                % (model._meta.app_label, model._meta.object_name, parent_model._meta.app_label, parent_model._meta.object_name))
+#ANNOTATION: raise an ValueError with an argument string "'%s.%s' has no ForeignKey to '%s.%s'.", where '%s' is replaced with,
+#ANNOTATION: model._meta.app_label, model._meta.object_name, parent_model._meta.app_label, parent_model._meta.object_name, respectively.
+        else:
+#ANNOTATION: if not,
+            raise ValueError(
+                "'%s.%s' has more than one ForeignKey to '%s.%s'."
+                % (model._meta.app_label, model._meta.object_name, parent_model._meta.app_label, parent_model._meta.object_name))
+#ANNOTATION: raise an ValueError with an argument string "'%s.%s' has more than one ForeignKey to '%s.%s'.", where '%s' is replaced with,
+#ANNOTATION: model._meta.app_label, model._meta.object_name, parent_model._meta.app_label, parent_model._meta.object_name, respectively.
+    return fk
+#ANNOTATION: return fk.
+
+
+def inlineformset_factory(parent_model, model, form=ModelForm,
+                          formset=BaseInlineFormSet, fk_name=None,
+                          fields=None, exclude=None, extra=3, can_order=False,
+                          can_delete=True, max_num=None, formfield_callback=None,
+                          widgets=None, validate_max=False, localized_fields=None,
+                          labels=None, help_texts=None, error_messages=None,
+                          min_num=None, validate_min=False):
+#ANNOTATION: define the function inlineformset_factory with 20 arguments: parent_model, model, form set to ModelForm, 
+#ANNOTATION: formset set to BaseInlineFormSet, fk_name set to None, fields set to None, exclude set to None, extra set to integer 3, 
+#ANNOTATION: can_order set to boolean False, can_delete set to boolean True, max_num set to None, formfield_callback set to None,
+#ANNOTATION: widgets set to None, validate_max set to boolean False, localized_fields set to None, labels set to None, help_texts set to None,
+#ANNOTATION: error_messages set to None, min_num set to None, validate_min set to boolean False.
+    """
+    Returns an ``InlineFormSet`` for the given kwargs.
+
+    You must provide ``fk_name`` if ``model`` has more than one ``ForeignKey``
+    to ``parent_model``.
+    """
+#ANNOTATION: docstring
+    fk = _get_foreign_key(parent_model, model, fk_name=fk_name)
+#ANNOTATION: call the function _get_foreign_key with 3 arguments: parent_model, model and fk_name=fk_name, substitute the result for fk.
+    # enforce a max_num=1 when the foreign key to the parent model is unique.
+    if fk.unique:
+#ANNOTATION: if fk.unique is boolean true,
+        max_num = 1
+#ANNOTATION: max_num is integer 1.
+    kwargs = {
+        'form': form,
+        'formfield_callback': formfield_callback,
+        'formset': formset,
+        'extra': extra,
+        'can_delete': can_delete,
+        'can_order': can_order,
+        'fields': fields,
+        'exclude': exclude,
+        'min_num': min_num,
+        'max_num': max_num,
+        'widgets': widgets,
+        'validate_min': validate_min,
+        'validate_max': validate_max,
+        'localized_fields': localized_fields,
+        'labels': labels,
+        'help_texts': help_texts,
+        'error_messages': error_messages,
+    }
+#ANNOTATION: kwargs is a dictionary with 17 entries: form for 'form', formfield_callback for 'formfield_callback', formset for 'formset',
+#ANNOTATION: extra for 'extra', can_delete for 'can_delete', can_order for 'can_order', fields for 'fields', exclude for 'exclude',
+#ANNOTATION: min_num for 'min_num', max_num for 'max_num', widgets for 'widgets', validate_min for 'validate_min', 
+#ANNOTATION: validate_max for 'validate_max', localized_fields for 'localized_fields', labels for 'labels', help_texts for 'help_texts',
+#ANNOTATION: and error_messages for 'error_messages'.
+    FormSet = modelformset_factory(model, **kwargs)
+#ANNOTATION: call the function modelformset_factory with 2 arguments: model and unpacked dictionary kwargs, substitute the result for FormSet.
+    FormSet.fk = fk
+#ANNOTATION: substitute fk for FormSet.fk.
+    return FormSet
+#ANNOTATION: return FormSet.
+
+
+# Fields #####################################################################
+
+class InlineForeignKeyField(Field):
+#ANNOTATION: derive the class InlineForeignKeyField from the Field base class.
+    """
+    A basic integer field that deals with validating the given value to a
+    given parent instance in an inline.
+    """
+#ANNOTATION: docstring
+    widget = HiddenInput
+#ANNOTATION: substitute HiddenInput for widget.
+    default_error_messages = {
+        'invalid_choice': _('The inline foreign key did not match the parent instance primary key.'),
+    }
+#ANNOTATION: default_error_messages is an dictionary with an entry: return value of the function _ called with an argument,
+#ANNOTATION: string 'The inline foreign key did not match the parent instance primary key.' for 'invalid_choice'.
+
+    def __init__(self, parent_instance, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 4 arguments: self, parent_instance, unpacked list args and unpacked dictionary kwargs.
+        self.parent_instance = parent_instance
+#ANNOTATION: substitute parent_instance for self.parent_instance.
+        self.pk_field = kwargs.pop("pk_field", False)
+#ANNOTATION: remove element from kwargs dictionary under the key 'pk_field', substitute it for self.pk_field if it exists,
+#ANNOTATION: if not self.pk_field is boolean False.
+        self.to_field = kwargs.pop("to_field", None)
+#ANNOTATION: remove element from kwargs dictionary under the key 'to_field', substitute it for self.to_field if it exists,
+#ANNOTATION: if not self.to_field is None.
+        if self.parent_instance is not None:
+#ANNOTATION: if self.parent_instance is not None,
+            if self.to_field:
+#ANNOTATION: if self.to_field is true,
+                kwargs["initial"] = getattr(self.parent_instance, self.to_field)
+#ANNOTATION: get self.to_field attribute of self.parent_instance object, substitute it for value under the 'initial' key of the kwargs dictionary.
+            else:
+#ANNOTATION: if not,
+                kwargs["initial"] = self.parent_instance.pk
+#ANNOTATION: substitute self.parent_instance.pk for value under the 'initial' key of the kwargs dictionary.
+        kwargs["required"] = False
+#ANNOTATION: value under the 'required' key of the kwargs dictionary is boolean False.
+        super(InlineForeignKeyField, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class InlineForeignKeyField, with 2 arguments unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+
+    def clean(self, value):
+#ANNOTATION: define the method clean with 2 arguments: self and value.
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            if self.pk_field:
+#ANNOTATION: if self.pk_field,
+                return None
+#ANNOTATION: return None.
+            # if there is no value act as we did before.
+            return self.parent_instance
+#ANNOTATION: return self.parent_instance.
+        # ensure the we compare the values as equal types.
+        if self.to_field:
+#ANNOTATION: if self.to_field is true,
+            orig = getattr(self.parent_instance, self.to_field)
+#ANNOTATION: get self.to_field attribute of self.parent_instance, substitute it for orig.
+        else:
+#ANNOTATION: if not,
+            orig = self.parent_instance.pk
+#ANNOTATION: substitute self.parent_instance.pk for orig.
+        if force_text(value) != force_text(orig):
+#ANNOTATION: if return values of the function force_text called two times with 1 argument, with value, and with orig, are equal,
+            raise ValidationError(self.error_messages['invalid_choice'], code='invalid_choice')
+#ANNOTATION: raise an ValidationError with 2 arguments: self.error_messages dictionary value under the 'invalid_choice' key,
+#ANNOTATION: and code set to a string 'invalid_choice'.
+        return self.parent_instance
+#ANNOTATION: return self.parent_instance.
+
+    def _has_changed(self, initial, data):
+#ANNOTATION: define the method _has_changed with 3 arguments: self, initial and data.
+        return False
+#ANNOTATION: return boolean False.
+
+
+class ModelChoiceIterator(object):
+#ANNOTATION: derive the class ModelChoiceIterator from object base class.
+    def __init__(self, field):
+#ANNOTATION: define the method __init__ with 2 arguments: self and field.
+        self.field = field
+#ANNOTATION: substitute field for self.field.
+        self.queryset = field.queryset
+#ANNOTATION: substitute field.queryset for self.queryset.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        if self.field.empty_label is not None:
+#ANNOTATION: if self.field.empty_label is not None,
+            yield ("", self.field.empty_label)
+#ANNOTATION: yield a tuple with 2 elements: an empty string and self.field.empty_label. 
+        if self.field.cache_choices:
+#ANNOTATION: if self.field.cache_choices is true,
+            if self.field.choice_cache is None:
+#ANNOTATION: if self.field.choice_cache is None,
+                self.field.choice_cache = [
+                    self.choice(obj) for obj in self.queryset.all()
+                ]
+#ANNOTATION: self.field.choice_cache is a list containing results of the method self.choice called with an argument obj,
+#ANNOTATION: for every obj in result of the method self.queryset.all.
+            for choice in self.field.choice_cache:
+#ANNOTATION: for every choice in self.field.choice_cache,
+                yield choice
+#ANNOTATION: yield choice.
+        else:
+#ANNOTATION: if not,
+            for obj in self.queryset.all():
+#ANNOTATION: for every obj in result of the call to the method self.queryset.all,
+                yield self.choice(obj)
+#ANNOTATION: call the method self.choice with an argument obj, yield the result.
+
+    def __len__(self):
+#ANNOTATION: define the method __len__ with an argument self.
+        return (len(self.queryset) +
+            (1 if self.field.empty_label is not None else 0))
+#ANNOTATION: sum length of self.quertset and integer 1 if self.field.empty_label is not None, or integer 0 if not, return the result. 
+
+    def choice(self, obj):
+#ANNOTATION: define the method choice with 2 arguments: self and obj.
+        return (self.field.prepare_value(obj), self.field.label_from_instance(obj))
+#ANNOTATION: return a tuple with 2 elements: result of the method self.field.prepare_value called with an argument obj,
+#ANNOTATION: and result of the method self.field.label_from_instance, called with an argument obj.
+
+
+class ModelChoiceField(ChoiceField):
+#ANNOTATION: derive the class ModelChoiceField from the ChoiceField base class.
+    """A ChoiceField whose choices are a model QuerySet."""
+#ANNOTATION: docstring
+    # This class is a subclass of ChoiceField for purity, but it doesn't
+    # actually use any of ChoiceField's implementation.
+    default_error_messages = {
+        'invalid_choice': _('Select a valid choice. That choice is not one of'
+                            ' the available choices.'),
+    }
+#ANNOTATION: default_error_messages is a dictionary with an entry, result of the call to the function _ with an argument,
+#ANNOTATION: string 'Select a valid choice. That choice is not one of the available choices.' for 'invalid_choice'.
+
+    def __init__(self, queryset, empty_label="---------", cache_choices=None,
+                 required=True, widget=None, label=None, initial=None,
+                 help_text='', to_field_name=None, limit_choices_to=None,
+                 *args, **kwargs):
+#ANNOTATION: define the method __init__ with 13 arguments: self, queryset, empty_label set to a string  "---------", cache_choices set to None,
+#ANNOTATION: required set to boolean True, widget set to None, label set to None, initial set to None, help_text set to an empty string,
+#ANNOTATION: to_field_name set to None, limit_choices_to set to None, unpacked list args and unpacked dictionary kwargs.
+        if required and (initial is not None):
+#ANNOTATION: if required is true and initial is not None,
+            self.empty_label = None
+#ANNOTATION: self.empty_label is None.
+        else:
+#ANNOTATION: if not,
+            self.empty_label = empty_label
+#ANNOTATION: substitute empty_label for self.empty_label.
+        if cache_choices is not None:
+#ANNOTATION: if cache_choices is not None,
+            warnings.warn("cache_choices has been deprecated and will be "
+                "removed in Django 1.9.",
+                RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the function warnings.warn with 3 arguments: string "cache_choices has been deprecated and will be removed in Django 1.9.",
+#ANNOTATION: RemovedInDjango19Warning and stacklevel set to integer 2.
+        else:
+#ANNOTATION: if not,
+            cache_choices = False
+#ANNOTATION: substitute boolean False for cache_choices.
+        self.cache_choices = cache_choices
+#ANNOTATION: substitute cache_choices for self.cache_choices.
+
+        # Call Field instead of ChoiceField __init__() because we don't need
+        # ChoiceField.__init__().
+        Field.__init__(self, required, widget, label, initial, help_text,
+                       *args, **kwargs)
+#ANNOTATION: call the method Field.__init__ with 8 arguments: self, required, widget, label, initial, help_text, unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+        self.queryset = queryset
+#ANNOTATION: substitute queryset for self.queryset.
+        self.limit_choices_to = limit_choices_to   # limit the queryset later.
+#ANNOTATION: substitute limit_choices_to for self.limit_choices_to.
+        self.choice_cache = None
+#ANNOTATION: self.choice_cache is None.
+        self.to_field_name = to_field_name
+#ANNOTATION: substitute to_field_name for self.to_field_name
+
+    def __deepcopy__(self, memo):
+#ANNOTATION: define the method __deepcopy__ with 2 arguments: self and memo.
+        result = super(ChoiceField, self).__deepcopy__(memo)
+#ANNOTATION: call the method __deepcopy__ from the base class of the class ChoiceField, with an argument memo, substitute the result for result.
+        # Need to force a new ModelChoiceIterator to be created, bug #11183
+        result.queryset = result.queryset
+#ANNOTATION: substitute result.queryset for result.queryset.
+        return result
+#ANNOTATION: return result.
+
+    def _get_queryset(self):
+#ANNOTATION: define the method _get_queryset with an argument self.
+        return self._queryset
+#ANNOTATION: return self._queryset.
+
+    def _set_queryset(self, queryset):
+#ANNOTATION: define the method _set_queryset with 2 arguments: self and queryset.
+        self._queryset = queryset
+#ANNOTATION: substitute queryset for self._queryset.
+        self.widget.choices = self.choices
+#ANNOTATION: substitute self.choices for self.widget.choices.
+
+    queryset = property(_get_queryset, _set_queryset)
+#ANNOTATION: queryset is an property object of this class, with _get_queryset getter and _set_queryset setter functions.
+
+    # this method will be used to create object labels by the QuerySetIterator.
+    # Override it to customize the label.
+    def label_from_instance(self, obj):
+#ANNOTATION: define the method label_from_instance with 2 arguments: self and obj.
+        """
+        This method is used to convert objects into strings; it's used to
+        generate the labels for the choices presented by this object. Subclasses
+        can override this method to customize the display of the choices.
+        """
+#ANNOTATION: docstring
+        return smart_text(obj)
+#ANNOTATION: call the function smart_text with an argument obj, return the result.
+
+    def _get_choices(self):
+#ANNOTATION: define the method _get_choices with an argument self.
+        # If self._choices is set, then somebody must have manually set
+        # the property self.choices. In this case, just return self._choices.
+        if hasattr(self, '_choices'):
+#ANNOTATION: if self has an attribute '_choices',
+            return self._choices
+#ANNOTATION: return self._choices.
+
+        # Otherwise, execute the QuerySet in self.queryset to determine the
+        # choices dynamically. Return a fresh ModelChoiceIterator that has not been
+        # consumed. Note that we're instantiating a new ModelChoiceIterator *each*
+        # time _get_choices() is called (and, thus, each time self.choices is
+        # accessed) so that we can ensure the QuerySet has not been consumed. This
+        # construct might look complicated but it allows for lazy evaluation of
+        # the queryset.
+        return ModelChoiceIterator(self)
+#ANNOTATION: return an instance of ModelChoiceIterator class, created with an argument self.
+
+    choices = property(_get_choices, ChoiceField._set_choices)
+#ANNOTATION: choices is an property property object of this class, with _get_choices getter and ChoiceField._set_choices setter functions.
+
+    def prepare_value(self, value):
+#ANNOTATION: define the method prepare_value with 2 arguments: self and value.
+        if hasattr(value, '_meta'):
+#ANNOTATION: if value has an attribute '_meta',
+            if self.to_field_name:
+#ANNOTATION: if self.to_field_name is true,
+                return value.serializable_value(self.to_field_name)
+#ANNOTATION: call the method value.serializable_value with an argument self.to_field_name, return the result.
+            else:
+#ANNOTATION: if not,
+                return value.pk
+#ANNOTATION: return value.pk.
+        return super(ModelChoiceField, self).prepare_value(value)
+#ANNOTATION: call the method prepare_value from the base class of the class ModelChoiceField, with an argument value, return the result.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with 2 arguments: self and value.
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            return None
+#ANNOTATION: return None.
+        try:
+#ANNOTATION: try,
+            key = self.to_field_name or 'pk'
+#ANNOTATION: substitute self.to_field_name, if exists, for key, if not substitute string 'pk' for key.
+            value = self.queryset.get(**{key: value})
+#ANNOTATION: call the method self.queryset.get with an argument, unpacked dictionary with an element: value for key, substitute the result for value.
+        except (ValueError, self.queryset.model.DoesNotExist):
+#ANNOTATION: if ValueError or self.queryset.model.DoesNotExist exception is caught,
+            raise ValidationError(self.error_messages['invalid_choice'], code='invalid_choice')
+#ANNOTATION: raise an ValidationError exception with 2 arguments: value under the 'invalid_choice' key of the self.error_messages dictionary,
+#ANNOTATION: code set to a string 'invalid_choice'.
+        return value
+#ANNOTATION: return value.
+
+    def validate(self, value):
+#ANNOTATION: define the method validate with 2 arguments: self and value.
+        return Field.validate(self, value)
+#ANNOTATION: call the method Field.validate with 2 arguments: self and value, return the result.
+
+    def _has_changed(self, initial, data):
+#ANNOTATION: define the method _has_changed with 3 arguments: self, initial and data.
+        initial_value = initial if initial is not None else ''
+#ANNOTATION: if initial is not None, substitute initial for initial_value, otherwise initial_value is an empty string.
+        data_value = data if data is not None else ''
+#ANNOTATION: if data is not None, substitute data for initial_value, otherwise data_value is an empty string.
+        return force_text(self.prepare_value(initial_value)) != force_text(data_value)
+#ANNOTATION: call the method self.prepare_value with an argument initial_value, use it as the argument for the call to the function force_text,
+#ANNOTATION: if the result is equal to the result of the call to the function force_text with data_value as an argument, return boolean True,
+#ANNOTATION: otherwise return boolean False.
+
+
+class ModelMultipleChoiceField(ModelChoiceField):
+#ANNOTATION: derive the class ModelMultipleChoiceField from the ModelChoiceField base class.
+    """A MultipleChoiceField whose choices are a model QuerySet."""
+#ANNOTATION: docstring
+    widget = SelectMultiple
+#ANNOTATION: substitute SelectMultiple for widget.
+    hidden_widget = MultipleHiddenInput
+#ANNOTATION: substitute MultipleHiddenInput for hidden_widget.
+    default_error_messages = {
+        'list': _('Enter a list of values.'),
+        'invalid_choice': _('Select a valid choice. %(value)s is not one of the'
+                            ' available choices.'),
+        'invalid_pk_value': _('"%(pk)s" is not a valid value for a primary key.')
+    }
+#ANNOTATION: default_error_messages is an dictionary with 3 entries: return value of the function _ called with an argument,
+#ANNOTATION: string 'Enter a list of values.' for 'list', return value of the function _ called with an argument,
+#ANNOTATION: string 'Select a valid choice. %(value)s is not one of the available choices.' for 'invalid_choice',
+#ANNOTATION: and return value of the function _ called with an argument string '"%(pk)s" is not a valid value for a primary key.' for 'invalid_pk_value'.
+
+    def __init__(self, queryset, cache_choices=None, required=True,
+                 widget=None, label=None, initial=None,
+                 help_text='', *args, **kwargs):
+#ANNOTATION: define the method __init__ with 10 arguments: self, queryset, cache_choices set to None, required set to boolean True,
+#ANNOTATION: widget set to None, label set to None, initial set to None, help_text set to an empty strign, 
+#ANNOTATION: unpacked list args and unpacked dictionary kwargs.
+        super(ModelMultipleChoiceField, self).__init__(queryset, None,
+            cache_choices, required, widget, label, initial, help_text,
+            *args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class ModelMultipleChoiceField, with 10 arguments: queryset, None, 
+#ANNOTATION: cache_choices, required, widget, label, initial, help_text, unpacked list args and unpacked dictionary kwargs.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with 2 arguments: self and value.
+        if not value:
+#ANNOTATION: if value is false,
+            return []
+#ANNOTATION: return an empty list.
+        to_py = super(ModelMultipleChoiceField, self).to_python
+#ANNOTATION: instantiate base class of the class ModelMultipleChoiceField, substitute filed to_python of the  result for to_py.
+        return [to_py(val) for val in value]
+#ANNOTATION: return a list containing return values of the function to_py called with an argument val, for every val in value.
+
+    def clean(self, value):
+#ANNOTATION: define the method clean with 2 arguments: self and value.
+        if self.required and not value:
+#ANNOTATION: if self.required is true and value is false,
+            raise ValidationError(self.error_messages['required'], code='required')
+#ANNOTATION: raise an ValidationError with 2 arguments: dictionary self.error_messages value under the key 'required', 
+#ANNOTATION: and code set to string 'required.
+        elif not self.required and not value:
+#ANNOTATION: otherwise if self.required is false and value is false,
+            return self.queryset.none()
+#ANNOTATION: call the method self.queryset.none, return the result.
+        if not isinstance(value, (list, tuple)):
+#ANNOTATION: if value is not an instance of list or tuple types,
+            raise ValidationError(self.error_messages['list'], code='list')
+#ANNOTATION: raise an ValidationError with 2 arguments: dictionary self.error_messages value under the key 'list', 
+#ANNOTATION: and code set to string 'list.
+        key = self.to_field_name or 'pk'
+#ANNOTATION: substitute self.to_field_name, if true, for key, or if not, substitute string 'pk' for key.
+        for pk in value:
+#ANNOTATION: for every pk in value,
+            try:
+#ANNOTATION: try,
+                self.queryset.filter(**{key: pk})
+#ANNOTATION: call the method self.queryset.filter with an argument, unpacked dictionary with an entry: pk for key.
+            except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+                raise ValidationError(
+                    self.error_messages['invalid_pk_value'],
+                    code='invalid_pk_value',
+                    params={'pk': pk},
+                )
+#ANNOTATION: raise an ValidationError with 3 arguments: dictionary self.error_messages value under the key 'invalid_pk_value', 
+#ANNOTATION: code set to string 'invalid_pk_value and params with an entry: pk for 'pk'.
+        qs = self.queryset.filter(**{'%s__in' % key: value})
+#ANNOTATION: call the method self.queryset.filter with an argument, unpacked dictionary with an entry: value for string '__in' appended to key,
+#ANNOTATION: substitute the result for qs.
+        pks = set(force_text(getattr(o, key)) for o in qs)
+#ANNOTATION: pks is a set containing results of the call to the function force_text with an argument, key attribute of the o object,
+#ANNOTATION: for every o in opts.
+        for val in value:
+#ANNOTATION: for every val in value,
+            if force_text(val) not in pks:
+#ANNOTATION: call the function force_text with an argument val, if the result is not contained in pks,
+                raise ValidationError(
+                    self.error_messages['invalid_choice'],
+                    code='invalid_choice',
+                    params={'value': val},
+                )
+#ANNOTATION: raise an ValidationError with 3 arguments: dictionary self.error_messages value under the key 'invalid_choice',
+#ANNOTATION: code set to string 'invalid_choice' and params as a dictionary with an entry, val for 'value'.
+        # Since this overrides the inherited ModelChoiceField.clean
+        # we run custom validators here
+        self.run_validators(value)
+#ANNOTATION: call the method self.run_validators with an argument value.
+        return qs
+#ANNOTATION: return qs.
+
+    def prepare_value(self, value):
+#ANNOTATION: define the method prepare_value with 2 arguments: self and value.
+        if (hasattr(value, '__iter__') and
+                not isinstance(value, six.text_type) and
+                not hasattr(value, '_meta')):
+#ANNOTATION: if value has an attribute '__iter__' and value is not an instance of six.text_type and value doesnt have an attribute '_meta', 
+            return [super(ModelMultipleChoiceField, self).prepare_value(v) for v in value]
+#ANNOTATION: call the method prepare_value from the base class of the class ModelMultipleChoiceField, with an argument v,
+#ANNOTATION: for every v in value, return the list of results.
+        return super(ModelMultipleChoiceField, self).prepare_value(value)
+#ANNOTATION: call the method prepare_value the base class of the class ModelMultipleChoiceField, with an argument value, return the result.
+
+    def _has_changed(self, initial, data):
+#ANNOTATION: define the method _has_changed with 3 arguments: self, initial and data.
+        if initial is None:
+#ANNOTATION: if initial is None,
+            initial = []
+#ANNOTATION: initial is an empty list.
+        if data is None:
+#ANNOTATION: if data is None,
+            data = []
+#ANNOTATION: data is an empty list.
+        if len(initial) != len(data):
+#ANNOTATION: if lengths of initial and data are equal,
+            return True
+#ANNOTATION: return boolean True.
+        initial_set = set(force_text(value) for value in self.prepare_value(initial))
+#ANNOTATION: initial_set is set created out of return values of the function force_text called with an argument value, 
+#ANNOTATION: for every value in result of the method self.prepare_value called with an argument initial.
+        data_set = set(force_text(value) for value in data)
+#ANNOTATION: data_set is set created out of return values of the function force_text called with an argument value, 
+#ANNOTATION: for every value in data.
+        return data_set != initial_set
+#ANNOTATION: if data_set is not equal to initial_set return boolean True, otherwise return boolean False.
+
+
+def modelform_defines_fields(form_class):
+#ANNOTATION: define the function modelform_defines_fields with an argument form_class.
+    return (form_class is not None and (
+            hasattr(form_class, '_meta') and
+            (form_class._meta.fields is not None or
+             form_class._meta.exclude is not None)
+            ))
+#ANNOTATION: only if form_class is not None, and if form_class has an attribute '_meta' and form_class._meta.fields is not None,
+#ANNOTATION: or form_class._meta.exclude is not None, return boolean True, otherwise return boolean False.

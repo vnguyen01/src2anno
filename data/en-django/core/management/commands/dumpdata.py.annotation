@@ -1,0 +1,440 @@
+import warnings
+#ANNOTATION: import module warnings.
+
+from collections import OrderedDict
+#ANNOTATION: from collections import OrderedDict into default name space.
+
+from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+from django.core import serializers
+#ANNOTATION: from django.core import serializers into default name space.
+from django.db import router, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import router and DEFAULT_DB_ALIAS into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand base class.
+    help = ("Output the contents of the database as a fixture of the given "
+            "format (using each model's default manager unless --all is "
+            "specified).")
+#ANNOTATION: help is a tuple containing a string "Output the contents of the database as a fixture of the given "
+#ANNOTATION: "format (using each model's default manager unless --all is specified).".
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with arguments self and parser.
+        parser.add_argument('args', metavar='app_label[.ModelName]', nargs='*',
+            help='Restricts dumped data to the specified app_label or app_label.ModelName.')
+#ANNOTATION: call the method parser.add_argument with 4 arguments: string 'args', metavar set to string 'app_label[.ModelName]', 
+#ANNOTATION: nargs set to '*' and help is a string 'Restricts dumped data to the specified app_label or app_label.ModelName.'.
+        parser.add_argument('--format', default='json', dest='format',
+            help='Specifies the output serialization format for fixtures.')
+#ANNOTATION: call the method parser.add_argument with 4 arguments: string '--format', default set to string 'json', 
+#ANNOTATION: dest set to 'format' and help is a string 'Specifies the output serialization format for fixtures.'.
+        parser.add_argument('--indent', default=None, dest='indent', type=int,
+            help='Specifies the indent level to use when pretty-printing output.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--indent', default set to None, dest set to 'indent',
+#ANNOTATION: type set to int and help is a string 'Specifies the indent level to use when pretty-printing output.'.
+        parser.add_argument('--database', action='store', dest='database',
+            default=DEFAULT_DB_ALIAS,
+            help='Nominates a specific database to dump fixtures from. '
+                 'Defaults to the "default" database.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--database', default set to string 'store', dest set to 'database',
+#ANNOTATION: add set to DEFAULT_DB_ALIAS and help is 'Nominates a specific database to dump fixtures from. Defaults to the "default" database.'.
+        parser.add_argument('-e', '--exclude', dest='exclude', action='append', default=[],
+            help='An app_label or app_label.ModelName to exclude '
+                 '(use multiple --exclude to exclude multiple apps/models).')
+#ANNOTATION: call the method parser.add_argument with 6 arguments: string '-e', string '--exclude', dest set to 'exclude', action set to 'append',
+#ANNOTATION: default is a an empty list and help is a string '(use multiple --exclude to exclude multiple apps/models).'.
+        parser.add_argument('-n', '--natural', action='store_true', dest='use_natural_keys', default=False,
+            help='Use natural keys if they are available (deprecated: use --natural-foreign instead).')
+#ANNOTATION: call the method parser.add_argument with 6 arguments: string '-n', string '--natural', action is string 'store_true', dest is string 'use_natural_keys',
+#ANNOTATION: default is boolean False and help is a string 'Use natural keys if they are available (deprecated: use --natural-foreign instead).'.
+        parser.add_argument('--natural-foreign', action='store_true', dest='use_natural_foreign_keys', default=False,
+            help='Use natural foreign keys if they are available.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--natural-foreign', action set to string 'store_true', 
+#ANNOTATION: dest is string 'use_natural_foreign_keys', default is boolean False and help is a string 'Use natural foreign keys if they are available.'.
+        parser.add_argument('--natural-primary', action='store_true', dest='use_natural_primary_keys', default=False,
+            help='Use natural primary keys if they are available.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--natural-primary', action set to 'store_true',
+#ANNOTATION: dest is 'use_natural_primary_keys', default is boolean False and help is a string 'Use natural primary keys if they are available.'.
+        parser.add_argument('-a', '--all', action='store_true', dest='use_base_manager', default=False,
+            help="Use Django's base manager to dump all models stored in the database, "
+                 "including those that would otherwise be filtered or modified by a custom manager.")
+#ANNOTATION: call the method parser.add_argument with 6 arguments: string '-a', string '--all', action set to 'store_true', 
+#ANNOTATION: dest is 'use_base_manager', default is boolean False and help is a string '(use multiple --exclude to exclude multiple apps/models).'.
+        parser.add_argument('--pks', dest='primary_keys',
+            help="Only dump objects with given primary keys. "
+                 "Accepts a comma separated list of keys. "
+                 "This option will only work when you specify one model.")
+#ANNOTATION: call the method parser.add_argument with 3 arguments: string '--pks', dest set to string 'primary_keys', 
+#ANNOTATION: and help is a string "Only dump objects with given primary keys. Accepts a comma separated list of keys. "
+#ANNOTATION: "This option will only work when you specify one model.".
+        parser.add_argument('-o', '--output', default=None, dest='output',
+            help='Specifies file to which the output is written.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '-o', string '--output', default is None, dest set to string 'output',
+#ANNOTATION: and help is a string 'Specifies file to which the output is written.'.
+
+    def handle(self, *app_labels, **options):
+#ANNOTATION: define the method handle with arguments self, unpacked list app_labels and unpacked dictionary options.
+        format = options.get('format')
+#ANNOTATION: get the value under the 'format' key of the options dictionary, substitute the result for format.
+        indent = options.get('indent')
+#ANNOTATION: get the value under the 'indent' key of the options dictionary, substitute the result for indent.
+        using = options.get('database')
+#ANNOTATION: get the value under the 'database' key of the options dictionary, substitute the result for database.
+        excludes = options.get('exclude')
+#ANNOTATION: get the value under the 'exclude' key of the options dictionary, substitute the result for exclude.
+        output = options.get('output')
+#ANNOTATION: get the value under the 'output' key of the options dictionary, substitute the result for output.
+        show_traceback = options.get('traceback')
+#ANNOTATION: get the value under the 'traceback' key of the options dictionary, substitute the result for traceback.
+        use_natural_keys = options.get('use_natural_keys')
+#ANNOTATION: get the value under the 'use_natural_keys' key of the options dictionary, substitute the result for use_natural_keys.
+        if use_natural_keys:
+#ANNOTATION: if use_natural_keys is true,
+            warnings.warn("``--natural`` is deprecated; use ``--natural-foreign`` instead.",
+                RemovedInDjango19Warning)
+#ANNOTATION: call the function warnings.warn with an argument string "``--natural`` is deprecated; use ``--natural-foreign`` instead.", 
+#ANNOTATION: and RemovedInDjango19Warning.
+        use_natural_foreign_keys = options.get('use_natural_foreign_keys') or use_natural_keys
+#ANNOTATION: get the value under the ' use_natural_foreign_keys' key of the options dictionary, substitute the result for  use_natural_foreign_keys.
+        use_natural_primary_keys = options.get('use_natural_primary_keys')
+#ANNOTATION: get the value under the 'use_natural_primary_keys' key of the options dictionary, substitute the result for use_natural_primary_keys.
+        use_base_manager = options.get('use_base_manager')
+#ANNOTATION: get the value under the 'use_base_manager' key of the options dictionary, substitute the result for use_base_manager.
+        pks = options.get('primary_keys')
+#ANNOTATION: get the value under the 'primary_keys' key of the options dictionary, substitute the result for pks.
+
+        if pks:
+#ANNOTATION: if pks is true,
+            primary_keys = pks.split(',')
+#ANNOTATION: split string pks by ',', substitute the result for primary_keys.
+        else:
+#ANNOTATION: if not,
+            primary_keys = []
+#ANNOTATION: primary_keys is an empty list.
+
+        excluded_apps = set()
+#ANNOTATION: excluded_apps is an empty set.
+        excluded_models = set()
+#ANNOTATION: excluded_models is an empty set.
+        for exclude in excludes:
+#ANNOTATION: for every exclude in excludes,
+            if '.' in exclude:
+#ANNOTATION: if '.' is contained in exclude,
+                try:
+#ANNOTATION: try,
+                    model = apps.get_model(exclude)
+#ANNOTATION: call the method apps.get_model with exclude as an argument, substitute it for model.
+                except LookupError:
+#ANNOTATION: if LookupError exception is caught,
+                    raise CommandError('Unknown model in excludes: %s' % exclude)
+#ANNOTATION: raise an CommandError exception with an argument string 'Unknown model in excludes: %s', where '%s' is replaced with exclude.
+                excluded_models.add(model)
+#ANNOTATION: add model to excluded_models set.
+            else:
+#ANNOTATION: if not,
+                try:
+#ANNOTATION: try,
+                    app_config = apps.get_app_config(exclude)
+#ANNOTATION: call the method apps.get_app_config with an argument exclude, substitute the result for app_config.
+                except LookupError:
+#ANNOTATION: if LookupError exception is caught,
+                    raise CommandError('Unknown app in excludes: %s' % exclude)
+#ANNOTATION:  raise CommandError with an argument string 'Unknown app in excludes: %s', where '%s' is replaced with exclude.
+                excluded_apps.add(app_config)
+#ANNOTATION: add app_config to excluded_apps set.
+
+        if len(app_labels) == 0:
+#ANNOTATION: if length of app_labels equals integer 0,
+            if primary_keys:
+#ANNOTATION: if primary_keys is true,
+                raise CommandError("You can only use --pks option with one model")
+#ANNOTATION: raise an CommandError exception with an argument string "You can only use --pks option with one model".
+            app_list = OrderedDict((app_config, None)
+                for app_config in apps.get_app_configs()
+                if app_config.models_module is not None and app_config not in excluded_apps)
+#ANNOTATION: app_list is an instance of OrderedDict class, created with an argument a tuple containing elements: app_config and None, 
+#ANNOTATION: for every app_config in return value of the method apps.get_app_configs, only if app_config.models_module is not None,
+#ANNOTATION: and app_config is not contained in excluded_apps.
+        else:
+#ANNOTATION: if not,
+            if len(app_labels) > 1 and primary_keys:
+#ANNOTATION: if length of app_labels is greater than integer 1 and primary_keys is true,
+                raise CommandError("You can only use --pks option with one model")
+#ANNOTATION: raise an CommandError exception with an argument string "You can only use --pks option with one model".
+            app_list = OrderedDict()
+#ANNOTATION: app_list is an instance of a class OrderedDict.
+            for label in app_labels:
+#ANNOTATION: for every label in app_labels,
+                try:
+#ANNOTATION: try,
+                    app_label, model_label = label.split('.')
+#ANNOTATION: split label by '.', assign the result to app_label and model_label, respectively.
+                    try:
+#ANNOTATION: try,
+                        app_config = apps.get_app_config(app_label)
+#ANNOTATION: call the method apps.get_app_config with an argument app_label, substitute the result for app_config.
+                    except LookupError:
+#ANNOTATION: if LookupError exception is caught,
+                        raise CommandError("Unknown application: %s" % app_label)
+#ANNOTATION: raise CommandError with an argument string 'Unknown app in excludes: %s', where '%s' is replaced with exclude.
+                    if app_config.models_module is None or app_config in excluded_apps:
+#ANNOTATION:  if app_config.models_module is None or app_config is contained in excluded_apps,
+                        continue
+#ANNOTATION: skip this loop iteration.
+                    try:
+#ANNOTATION: try,
+                        model = app_config.get_model(model_label)
+#ANNOTATION: call the method app_config.get_model with an argument model_label, substitute the result for model.
+                    except LookupError:
+#ANNOTATION: if LookupError exception is caught,
+                        raise CommandError("Unknown model: %s.%s" % (app_label, model_label))
+#ANNOTATION: raise CommandError with an argument string 'Unknown model: %s', where '%s' is replaced with app_label and model_label, respectively.
+
+                    app_list_value = app_list.setdefault(app_config, [])
+#ANNOTATION: call the method app_list.setdefault with 2 arguments app_config and an empty list, substitute the result for app_list_value.
+
+                    # We may have previously seen a "all-models" request for
+                    # this app (no model qualifier was given). In this case
+                    # there is no need adding specific models to the list.
+                    if app_list_value is not None:
+#ANNOTATION: if app_list_value is not None,
+                        if model not in app_list_value:
+#ANNOTATION: if mode is not contained in app_list_value,
+                            app_list_value.append(model)
+#ANNOTATION: append model to app_list_value.
+                except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+                    if primary_keys:
+#ANNOTATION: if primary_keys is true,
+                        raise CommandError("You can only use --pks option with one model")
+#ANNOTATION: raise an CommandError exception with an argument string "You can only use --pks option with one model".
+                    # This is just an app - no model qualifier
+                    app_label = label
+#ANNOTATION: substitute label for app_label.
+                    try:
+#ANNOTATION: try,
+                        app_config = apps.get_app_config(app_label)
+#ANNOTATION: call the method apps.get_app_config with an argument app_label, substitute the result for app_config. 
+                    except LookupError:
+#ANNOTATION: if LookupError exception is caught,
+                        raise CommandError("Unknown application: %s" % app_label)
+#ANNOTATION: raise CommandError with an argument string 'Unknown application: %s', where '%s' is replaced with app_label.
+                    if app_config.models_module is None or app_config in excluded_apps:
+#ANNOTATION: if app_config.models_module is None or app_config is contained in excluded_apps
+                        continue
+#ANNOTATION: skip this loop iteration.
+                    app_list[app_config] = None
+#ANNOTATION: value under the app_config key of the app_list is None.
+
+        # Check that the serialization format exists; this is a shortcut to
+        # avoid collating all the objects and _then_ failing.
+        if format not in serializers.get_public_serializer_formats():
+#ANNOTATION: if format is not contained in return value of the method serializers.get_public_serializer_formats,
+            try:
+#ANNOTATION: try,
+                serializers.get_serializer(format)
+#ANNOTATION: call the method serializers.get_serializer with an argument format.
+            except serializers.SerializerDoesNotExist:
+#ANNOTATION: if serializers.SerializerDoesNotExist exception is caught,
+                pass
+#ANNOTATION: do nothing.
+
+            raise CommandError("Unknown serialization format: %s" % format)
+#ANNOTATION: raise CommandError with an argument string 'Unknown serialization format: %s', where '%s' is replaced with format.
+
+        def get_objects():
+#ANNOTATION: define the function get_objects. 
+            # Collate the objects to be serialized.
+            for model in sort_dependencies(app_list.items()):
+#ANNOTATION: call the method app_list.items, use the result as an argument for the call to the function sort_dependencies, for every model in result,
+                if model in excluded_models:
+#ANNOTATION: if model is contained in excluded_models,
+                    continue
+#ANNOTATION: skip this loop iteration.
+                if not model._meta.proxy and router.allow_migrate(using, model):
+#ANNOTATION: if model._meta.proxy is false and return value of the function router.allow_migrate called with arguments using and model is true,
+                    if use_base_manager:
+#ANNOTATION: if use_base_manager is true,
+                        objects = model._base_manager
+#ANNOTATION: substitute model._base_manager for objects.
+                    else:
+#ANNOTATION: if not,
+                        objects = model._default_manager
+#ANNOTATION: substitute model._default_manager for objects.
+
+                    queryset = objects.using(using).order_by(model._meta.pk.name)
+#ANNOTATION: call the method objects.using with an argument using, call the method order_by on the result with an argument model._meta.pk.name, 
+#ANNOTATION: substitute the result for queryset.
+                    if primary_keys:
+#ANNOTATION: if primary_keys is true,
+                        queryset = queryset.filter(pk__in=primary_keys)
+#ANNOTATION: call the method queryset.filter with an argument pk__in set to primary_keys, substitute the result for queryset.
+                    for obj in queryset.iterator():
+#ANNOTATION: for every obj in result of the method queryset.iterator,
+                        yield obj
+#ANNOTATION: yield obj, as an return value of the generator.
+
+        try:
+#ANNOTATION: try,
+            self.stdout.ending = None
+#ANNOTATION: self.stdout.ending is None.
+            stream = open(output, 'w') if output else None
+#ANNOTATION: open the output file in writing mode if output is true, assign the file descriptor to stream, otherwise stream is None.
+            try:
+#ANNOTATION: try,
+                serializers.serialize(format, get_objects(), indent=indent,
+                        use_natural_foreign_keys=use_natural_foreign_keys,
+                        use_natural_primary_keys=use_natural_primary_keys,
+                        stream=stream or self.stdout)
+#ANNOTATION: call the method serializers.serialize with 6 arguments: format, result of the function get_objects, indent set to indent,
+#ANNOTATION: use_natural_foreign_keys set to use_natural_foreign_keys, use_natural_primary_keys set to use_natural_primary_keys,
+#ANNOTATION: and stream set to stream, if the stream is true, otherwise stream set to self.stdout.
+            finally:
+#ANNOTATION: finally perform,
+                if stream:
+#ANNOTATION: if stream is true,
+                    stream.close()
+#ANNOTATION: close the file stream.
+        except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+            if show_traceback:
+#ANNOTATION: if show_traceback is true,
+                raise
+#ANNOTATION: raise an exception.
+            raise CommandError("Unable to serialize database: %s" % e)
+#ANNOTATION: raise CommandError with an argument string "Unable to serialize database: %s", where '%s' is replaced with e.
+
+
+def sort_dependencies(app_list):
+#ANNOTATION: define the function sort_dependencies with an argument app_list. 
+    """Sort a list of (app_config, models) pairs into a single list of models.
+
+    The single list of models is sorted so that any model with a natural key
+    is serialized before a normal model, and any model with a natural key
+    dependency has it's dependencies serialized first.
+    """
+#ANNOTATION: docstring
+    # Process the list of models, and get the list of dependencies
+    model_dependencies = []
+#ANNOTATION: model_dependencies is an empty list.
+    models = set()
+#ANNOTATION: models is an empty set.
+    for app_config, model_list in app_list:
+#ANNOTATION: for every app_config and model_list in app_list,
+        if model_list is None:
+#ANNOTATION: if model_list is None,
+            model_list = app_config.get_models()
+#ANNOTATION: call the method app_config.get_models, substitute the result fr model_list.
+
+        for model in model_list:
+#ANNOTATION: for every model in model_list,
+            models.add(model)
+#ANNOTATION: add model to models set.
+            # Add any explicitly defined dependencies
+            if hasattr(model, 'natural_key'):
+#ANNOTATION: if model has an 'natural_key' attribute,
+                deps = getattr(model.natural_key, 'dependencies', [])
+#ANNOTATION: get 'dependencies' attribute of the model.natural_key, substitute it for deps, if the attribute doesnt exist, deps in an empty list. 
+                if deps:
+#ANNOTATION: if deps is true, 
+                    deps = [apps.get_model(dep) for dep in deps]
+#ANNOTATION: for every dep in deps call the method apps.get_model with an argument dep, and append the result to the list, substitute it for deps. 
+            else:
+#ANNOTATION: if not,
+                deps = []
+#ANNOTATION: deps is an empty list.
+
+            # Now add a dependency for any FK relation with a model that
+            # defines a natural key
+            for field in model._meta.fields:
+#ANNOTATION: for every field in model._meta.fields,
+                if hasattr(field.rel, 'to'):
+#ANNOTATION: if field.rel has an 'to' attribute,
+                    rel_model = field.rel.to
+#ANNOTATION: substitute field.rel.to with rel_model.
+                    if hasattr(rel_model, 'natural_key') and rel_model != model:
+#ANNOTATION: if rel_model has an attribute 'natural_key' and rel_model is not equal to model,
+                        deps.append(rel_model)
+#ANNOTATION: append rel_model to deps.
+            # Also add a dependency for any simple M2M relation with a model
+            # that defines a natural key.  M2M relations with explicit through
+            # models don't count as dependencies.
+            for field in model._meta.many_to_many:
+#ANNOTATION: for every field in model._meta.many_to_many,
+                if field.rel.through._meta.auto_created:
+#ANNOTATION: if field.rel.through._meta.auto_created is true,
+                    rel_model = field.rel.to
+#ANNOTATION: substitute field.rel.to for rel_model. 
+                    if hasattr(rel_model, 'natural_key') and rel_model != model:
+#ANNOTATION: if rel_model has an 'natural_key' attribute and rel_model is not equal to model,
+                        deps.append(rel_model)
+#ANNOTATION: append rel_model to deps.
+            model_dependencies.append((model, deps))
+#ANNOTATION: append a tuple containing 2 elements: model and deps to model_dependencies.
+
+    model_dependencies.reverse()
+#ANNOTATION: call the methof model_dependencies.reverse.
+    # Now sort the models to ensure that dependencies are met. This
+    # is done by repeatedly iterating over the input list of models.
+    # If all the dependencies of a given model are in the final list,
+    # that model is promoted to the end of the final list. This process
+    # continues until the input list is empty, or we do a full iteration
+    # over the input models without promoting a model to the final list.
+    # If we do a full iteration without a promotion, that means there are
+    # circular dependencies in the list.
+    model_list = []
+#ANNOTATION: model_list is an empty list.
+    while model_dependencies:
+#ANNOTATION: while model_dependencies is true,
+        skipped = []
+#ANNOTATION: skipped is an empty list.
+        changed = False
+#ANNOTATION: changed is boolean False.
+        while model_dependencies:
+#ANNOTATION: while model_dependencies is true,
+            model, deps = model_dependencies.pop()
+#ANNOTATION: remove first element from model_dependencies, assign it to model and deps, respectively.
+
+            # If all of the models in the dependency list are either already
+            # on the final model list, or not on the original serialization list,
+            # then we've found another model with all it's dependencies satisfied.
+            found = True
+#ANNOTATION: found is boolean True.
+            for candidate in ((d not in models or d in model_list) for d in deps):
+#ANNOTATION: for every d in deps, if d is not contained in models and d is contained in model_list add boolean True to a tuple, 
+#ANNOTATION: otherwise add boolean False, for every candidate in the result perform following,
+                if not candidate:
+#ANNOTATION: if candidate is false,
+                    found = False
+#ANNOTATION: found is boolean False.
+            if found:
+#ANNOTATION: if found is true,
+                model_list.append(model)
+#ANNOTATION: append model to model_list. 
+                changed = True
+#ANNOTATION: changed is boolean True.
+            else:
+#ANNOTATION: if not,
+                skipped.append((model, deps))
+#ANNOTATION: append a tuple containing 2 elemetns: model and deps, to skipped.
+        if not changed:
+#ANNOTATION: if changed is false,
+            raise CommandError("Can't resolve dependencies for %s in serialized app list." %
+                ', '.join('%s.%s' % (model._meta.app_label, model._meta.object_name)
+                for model, deps in sorted(skipped, key=lambda obj: obj[0].__name__))
+            )
+#ANNOTATION: raise an CommandError with argument: string "Can't resolve dependencies for %s in serialized app list.", where '%s' is replaced with:
+#ANNOTATION: model._meta.app_label and model._meta.object_name joined into a string, with separator '.', 
+#ANNOTATION: result joined into a string, separated by string ', ' for every model and deps in sorted list of elements skipped sorted by key:
+#ANNOTATION: return value of the lambda function with an argument obj, and result the __name__ field of the first element of obj.
+        model_dependencies = skipped
+#ANNOTATION: substitute skipped for model_dependencies.
+
+    return model_list
+#ANNOTATION: return model_list.

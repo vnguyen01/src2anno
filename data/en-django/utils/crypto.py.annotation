@@ -1,0 +1,302 @@
+"""
+Django's standard crypto functions and utilities.
+"""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import hmac
+#ANNOTATION: import module hmac.
+import struct
+#ANNOTATION: import module struc.
+import hashlib
+#ANNOTATION: import module hashlib.
+import binascii
+#ANNOTATION: import module binascii.
+import time
+#ANNOTATION: import module time.
+
+# Use the system PRNG if possible
+import random
+#ANNOTATION: import module random.
+try:
+#ANNOTATION: try, 
+    random = random.SystemRandom()
+#ANNOTATION: random is an instance of random.SystemRandom class.
+    using_sysrandom = True
+#ANNOTATION: using_sysrandom is boolean True.
+except NotImplementedError:
+#ANNOTATION: if NotImplementedError exception is caught,
+    import warnings
+#ANNOTATION: import warnings.
+    warnings.warn('A secure pseudo-random number generator is not available '
+                  'on your system. Falling back to Mersenne Twister.')
+#ANNOTATION: call the function warnings.warn with an argument,
+#ANNOTATION: string 'A secure pseudo-random number generator is not available on your system. Falling back to Mersenne Twister.'.
+    using_sysrandom = False
+#ANNOTATION: using_sysrandom is boolean False.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.utils.encoding import force_bytes
+#ANNOTATION: from django.utils.encoding import force_bytes into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.six.moves import xrange
+#ANNOTATION: from django.utils.six.moves import xrange into default name space.
+
+
+def salted_hmac(key_salt, value, secret=None):
+#ANNOTATION: define the function salted_hmac with 3 arguments: key_salt, value and secret set to None.
+    """
+    Returns the HMAC-SHA1 of 'value', using a key generated from key_salt and a
+    secret (which defaults to settings.SECRET_KEY).
+
+    A different key_salt should be passed in for every application of HMAC.
+    """
+#ANNOTATION: docstring
+    if secret is None:
+#ANNOTATION: if secret is None,
+        secret = settings.SECRET_KEY
+#ANNOTATION: substitute settings.SECRET_KEY for secret.
+
+    key_salt = force_bytes(key_salt)
+#ANNOTATION: call the function force_bytes with an argument key_salt, substitute the result for key_salt.
+    secret = force_bytes(secret)
+#ANNOTATION: call the function force_bytes with an argument secret, substitute the result for secret.
+
+    # We need to generate a derived key from our base key.  We can do this by
+    # passing the key_salt and our base key through a pseudo-random function and
+    # SHA1 works nicely.
+    key = hashlib.sha1(key_salt + secret).digest()
+#ANNOTATION: call the method hashlib.sha1 with an argument secret appended to key_salt, call the method digest on the result, return the result.
+
+    # If len(key_salt + secret) > sha_constructor().block_size, the above
+    # line is redundant and could be replaced by key = key_salt + secret, since
+    # the hmac module does the same thing for keys longer than the block size.
+    # However, we need to ensure that we *always* do this.
+    return hmac.new(key, msg=force_bytes(value), digestmod=hashlib.sha1)
+#ANNOTATION: call the method hmac.new with 3 arguments: key, msg set to result of the function force_bytes with an argument value,
+#ANNOTATION: and digestmod set to hashlib.sha1, return the result.
+
+
+def get_random_string(length=12,
+                      allowed_chars='abcdefghijklmnopqrstuvwxyz'
+                                    'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'):
+#ANNOTATION: define the function constant_time_compare with 2 arguments: length set to integer 12, 
+#ANNOTATION: and allowed_chars set a string 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.
+    """
+    Returns a securely generated random string.
+
+    The default length of 12 with the a-z, A-Z, 0-9 character set returns
+    a 71-bit value. log_2((26+26+10)^12) =~ 71 bits
+    """
+#ANNOTATION: docstring
+    if not using_sysrandom:
+#ANNOTATION: if using_sysrandom is false,
+        # This is ugly, and a hack, but it makes things better than
+        # the alternative of predictability. This re-seeds the PRNG
+        # using a value that is hard for an attacker to predict, every
+        # time a random string is required. This may change the
+        # properties of the chosen random sequence slightly, but this
+        # is better than absolute predictability.
+        random.seed(
+            hashlib.sha256(
+                ("%s%s%s" % (
+                    random.getstate(),
+                    time.time(),
+                    settings.SECRET_KEY)).encode('utf-8')
+            ).digest())
+#ANNOTATION: format string "%s%s%s" with 3 elements: result of the function random.getstate, result of the call the the function time.time, 
+#ANNOTATION: and settings.SECRET_KEY, call on it method encode with an argument string 'utf-8', 
+#ANNOTATION: use the result as an argument for the call to the method hashlib.sha256, call the method digest on the result,
+#ANNOTATION: use the result as an argument for the call to the function random.seed.
+    return ''.join(random.choice(allowed_chars) for i in range(length))
+#ANNOTATION: call the function random.choice with an argument allowed_chars, for every i in range of integers from 0 to lengths,
+#ANNOTATION: join the results into a string, return it.
+
+
+if hasattr(hmac, "compare_digest"):
+#ANNOTATION: if hmac has an attribute "compare_digest",
+    # Prefer the stdlib implementation, when available.
+    def constant_time_compare(val1, val2):
+#ANNOTATION: define the function constant_time_compare with 2 arguments: val1 and val2.
+        return hmac.compare_digest(force_bytes(val1), force_bytes(val2))
+#ANNOTATION: call the function hmac.compare_digest with 2 arguments: result of the function force_bytes called with an argument val1,
+#ANNOTATION: and result of the function force_bytes called with an argument val2, return the result.
+else:
+#ANNOTATION: if not,
+    def constant_time_compare(val1, val2):
+#ANNOTATION: call the function constant_time_compare with 2 arguments: val1 and val2.
+        """
+        Returns True if the two strings are equal, False otherwise.
+
+        The time taken is independent of the number of characters that match.
+
+        For the sake of simplicity, this function executes in constant time only
+        when the two strings have the same length. It short-circuits when they
+        have different lengths. Since Django only uses it to compare hashes of
+        known expected length, this is acceptable.
+        """
+#ANNOTATION: docstring
+        if len(val1) != len(val2):
+#ANNOTATION: if lengths of val1 and val2 are not equal,
+            return False
+#ANNOTATION: return boolean False.
+        result = 0
+#ANNOTATION: result is an integer 0.
+        if six.PY3 and isinstance(val1, bytes) and isinstance(val2, bytes):
+#ANNOTATION: if six.PY3 is true and val1 and val2 are an instances of bytes,
+            for x, y in zip(val1, val2):
+#ANNOTATION: zip val1 and va2 into list of tuples, for every x and y in the result,
+                result |= x ^ y
+#ANNOTATION: perform bitwise exclusive OR on 2 operands x and y, perform bitwise OR with 2 operands: previous result and result, substitute the result for result.
+        else:
+#ANNOTATION: if not,
+            for x, y in zip(val1, val2):
+#ANNOTATION: zip val1 and va2 into list of tuples, for every x and y in the result,
+                result |= ord(x) ^ ord(y)
+#ANNOTATION: perform bitwise exclusive OR on 2 operands integer representation of x and integer representation of y, 
+#ANNOTATION: perform bitwise OR with 2 operands: previous result and result, substitute the result for result.
+        return result == 0
+#ANNOTATION: if result is equal to integer 0, return boolean True, otherwise return boolean False.
+
+
+def _bin_to_long(x):
+#ANNOTATION: define the function _bin_to_long with an argument x.
+    """
+    Convert a binary string into a long integer
+
+    This is a clever optimization for fast xor vector math
+    """
+#ANNOTATION: docstring
+    return int(binascii.hexlify(x), 16)
+#ANNOTATION: call the function binascii.hexlify with an argument x, convert the result to base 16 integer, return the result.
+
+
+def _long_to_bin(x, hex_format_string):
+#ANNOTATION: define the function _long_to_bin with 2 arguments: x and hex_format_string.
+    """
+    Convert a long integer into a binary string.
+    hex_format_string is like "%020x" for padding 10 characters.
+    """
+#ANNOTATION: docstring
+    return binascii.unhexlify((hex_format_string % x).encode('ascii'))
+#ANNOTATION: format string hex_format_string with x, call the method encode on the result with an argument string 'ascii',
+#ANNOTATION: use the result as an argument for the call to the function binascii.unhexlify, return the result.
+
+
+if hasattr(hashlib, "pbkdf2_hmac"):
+#ANNOTATION: if hashlib had an instance "pbkdf2_hmac",
+    def pbkdf2(password, salt, iterations, dklen=0, digest=None):
+#ANNOTATION: define the function pbkdf2 with 5 arguments: password, salt, iterations, dklen set to integer 0 and digest set to None.
+        """
+        Implements PBKDF2 with the same API as Django's existing
+        implementation, using the stdlib.
+
+        This is used in Python 2.7.8+ and 3.4+.
+        """
+#ANNOTATION: docstring
+        if digest is None:
+#ANNOTATION: if digest is None,
+            digest = hashlib.sha256
+#ANNOTATION: substitute hashlib.sha256 for digest.
+        if not dklen:
+#ANNOTATION: if dklen is false,
+            dklen = None
+#ANNOTATION: dklen is None.
+        password = force_bytes(password)
+#ANNOTATION: call the function force_bytes with an argument password, substitute the result for password.
+        salt = force_bytes(salt)
+#ANNOTATION: call the function force_bytes with an argument salt, substitute the result for salt.
+        return hashlib.pbkdf2_hmac(
+            digest().name, password, salt, iterations, dklen)
+#ANNOTATION: call the function hashlib.pbkdf2_hmac with 5 arguments: field name of the result of the function digest, password, salt, 
+#ANNOTATION: iterations and dklen, return the result.
+else:
+#ANNOTATION: if not,
+    def pbkdf2(password, salt, iterations, dklen=0, digest=None):
+#ANNOTATION: define the function pbkdf2 with 5 arguments: password, salt, iterations, dklen set to integer 0 and digest set to None.
+        """
+        Implements PBKDF2 as defined in RFC 2898, section 5.2
+
+        HMAC+SHA256 is used as the default pseudo random function.
+
+        As of 2011, 10,000 iterations was the recommended default which
+        took 100ms on a 2.2Ghz Core 2 Duo. This is probably the bare
+        minimum for security given 1000 iterations was recommended in
+        2001. This code is very well optimized for CPython and is only
+        four times slower than openssl's implementation. Look in
+        django.contrib.auth.hashers for the present default.
+        """
+#ANNOTATION: docstring
+        assert iterations > 0
+#ANNOTATION: if iterations is lesser than integer 0, raise an error.
+        if not digest:
+#ANNOTATION: if digest is false,
+            digest = hashlib.sha256
+#ANNOTATION: substitute hashlib.sha256 for digest.
+        password = force_bytes(password)
+#ANNOTATION: call the function force_bytes with an argument password, substitute the result for password.
+        salt = force_bytes(salt)
+#ANNOTATION: call the function force_bytes with an argument salt, substitute the result for salt.
+        hlen = digest().digest_size
+#ANNOTATION: call the function digest, substitute the filed digest_size of the result for hlen.
+        if not dklen:
+#ANNOTATION: if dklen is false,
+            dklen = hlen
+#ANNOTATION: substitute hlen for dklen.
+        if dklen > (2 ** 32 - 1) * hlen:
+#ANNOTATION: bring intger 2 to integer 32, decrement the result by 1, multiply it with hlen, if dklen is greater than the previous result,
+            raise OverflowError('dklen too big')
+#ANNOTATION: raise an OverflowError exception with an argument string 'dklen too big'.
+        l = -(-dklen // hlen)
+#ANNOTATION: divide negative dklen with hlen, substitute floored result for l.
+        r = dklen - (l - 1) * hlen
+#ANNOTATION: decrement l by integer 1, multiply it with hlen, subtract the result from dklen, substitute the result for r.
+
+        hex_format_string = "%%0%ix" % (hlen * 2)
+#ANNOTATION: hex_format_string is a string "%%0%ix" formated with hlen multiplied with integer 2.
+
+        inner, outer = digest(), digest()
+#ANNOTATION: call the function digest twice, substitute the results for inner, outer, respectively.
+        if len(password) > inner.block_size:
+#ANNOTATION: if length of password is greater than inner.block_size, 
+            password = digest(password).digest()
+#ANNOTATION: call the function digest with an argument password, call the method digest on the result, substitute the result or password.
+        password += b'\x00' * (inner.block_size - len(password))
+#ANNOTATION: decrement by length of password, create bytes string with previous result number of characters '\x00', 
+#ANNOTATION: append the result to password.
+        inner.update(password.translate(hmac.trans_36))
+#ANNOTATION: call the method password.translate with an argument hmac.trans_36, update inner dictionary with the result.
+        outer.update(password.translate(hmac.trans_5C))
+#ANNOTATION: call the method password.translate with an argument hmac.trans_5C, update outer dictionary with the result.
+
+        def F(i):
+#ANNOTATION: define the function F with an argument i.
+            u = salt + struct.pack(b'>I', i)
+#ANNOTATION: call the method struct.pack with 2 arguments: bytes string '>I' and i, append the result to salt, substitute the result or u.
+            result = 0
+#ANNOTATION: result is an integer 0.
+            for j in xrange(int(iterations)):
+#ANNOTATION: for every j in range of integers from 0 to iterations converted to an integer,
+                dig1, dig2 = inner.copy(), outer.copy()
+#ANNOTATION: call the function inner.copy, substitute the result for dig1, call the function outer.copy, substitute the result for dig2.
+                dig1.update(u)
+#ANNOTATION: call the method dig1.update with an argument u. 
+                dig2.update(dig1.digest())
+#ANNOTATION: call the method dig1.digest, use the result as an argument for the call to the function dig2.update. 
+                u = dig2.digest()
+#ANNOTATION: call the method dig2.digest, substitute the result for u.
+                result ^= _bin_to_long(u)
+#ANNOTATION: call the function _bin_to_long with an argument u perform bitwise exclusive OR with 2 operands, previous result an result,
+#ANNOTATION: substitute the result for result.
+            return _long_to_bin(result, hex_format_string)
+#ANNOTATION: call the function _long_to_bin with 2 arguments: result and hex_format_string, return the result.
+
+        T = [F(x) for x in range(1, l)]
+#ANNOTATION: call the function F with an argument x, for every x in sequence of integers from 1 to l, not included, 
+#ANNOTATION: substitute the results in a list for T.
+        return b''.join(T) + F(l)[:r]
+#ANNOTATION: join elements of T in a bytes string, append first r elements of result of the call to the function F with an argument l to it,
+#ANNOTATION: return the result.

@@ -1,0 +1,80 @@
+"""
+Wrapper for loading templates from the filesystem.
+"""
+#ANNOTATION: docstring
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.template.base import TemplateDoesNotExist
+#ANNOTATION: from django.template.base import TemplateDoesNotExist into default name space.
+from django.template.loader import BaseLoader
+#ANNOTATION: from django.template.loader import BaseLoader into default name space.
+from django.utils._os import safe_join
+#ANNOTATION: from django.utils._os import safe_join into default name space.
+
+
+class Loader(BaseLoader):
+#ANNOTATION: derive the class Loader from the BaseLoader base class.
+    is_usable = True
+#ANNOTATION: is_usable is boolean True.
+
+    def get_template_sources(self, template_name, template_dirs=None):
+#ANNOTATION: define the method get_template_source with 3 arguments: self, template_name, template_dirs set to None.
+        """
+        Returns the absolute paths to "template_name", when appended to each
+        directory in "template_dirs". Any paths that don't lie inside one of the
+        template dirs are excluded from the result set, for security reasons.
+        """
+#ANNOTATION: docstring
+        if not template_dirs:
+#ANNOTATION: if template_dirs is false,
+            template_dirs = settings.TEMPLATE_DIRS
+#ANNOTATION: substitute settings.TEMPLATE_DIRS for template_dirs.
+        for template_dir in template_dirs:
+#ANNOTATION: for every template_dir in template_dirs,
+            try:
+#ANNOTATION: try,
+                yield safe_join(template_dir, template_name)
+#ANNOTATION: call the function safe_join with 2 arguments template_dir and template_name, yield the result.
+            except UnicodeDecodeError:
+#ANNOTATION: if UnicodeDecodeError exception is caught,
+                # The template dir name was a bytestring that wasn't valid UTF-8.
+                raise
+#ANNOTATION: raise an exception.
+            except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+                # The joined path was located outside of this particular
+                # template_dir (it might be inside another one, so this isn't
+                # fatal).
+                pass
+#ANNOTATION: do nothing.
+
+    def load_template_source(self, template_name, template_dirs=None):
+#ANNOTATION: define the method load_template_source with 3 arguments: self, template_name, template_dirs set to None.
+        tried = []
+#ANNOTATION: tried is an empty list.
+        for filepath in self.get_template_sources(template_name, template_dirs):
+#ANNOTATION: call the method self.get_template_sources with 2 arguments template_name and template_dirs, for every filepath in the result,
+            try:
+#ANNOTATION: try,
+                with open(filepath, 'rb') as fp:
+#ANNOTATION: open the file named filepath in read mode, with file descriptor renamed to fp perform,
+                    return (fp.read().decode(settings.FILE_CHARSET), filepath)
+#ANNOTATION: read file fp, call the method decode on the result with an argument settings.FILE_CHARSET, return tuple containing 2 elements,
+#ANNOTATION: previous result and filepath.
+            except IOError:
+#ANNOTATION: if IOError exception is caught,
+                tried.append(filepath)
+#ANNOTATION: append filepath to tried.
+        if tried:
+#ANNOTATION: if tried is true,
+            error_msg = "Tried %s" % tried
+#ANNOTATION: err_msg is a string "Tried %s", where '%s' is replaced with tried.
+        else:
+#ANNOTATION: if not,
+            error_msg = "Your TEMPLATE_DIRS setting is empty. Change it to point to at least one template directory."
+#ANNOTATION: error_msg is a string "Your TEMPLATE_DIRS setting is empty. Change it to point to at least one template directory.".
+        raise TemplateDoesNotExist(error_msg)
+#ANNOTATION: raise an TemplateDoesNotExist exception with an argument error_msg.
+    load_template_source.is_usable = True
+#ANNOTATION: load_template_source.is_usable is boolean True.

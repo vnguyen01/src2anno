@@ -1,0 +1,741 @@
+import copy
+#ANNOTATION: import module copy.
+import operator
+#ANNOTATION: import module opera.
+from functools import wraps
+#ANNOTATION: from functools import wraps into default name space.
+import sys
+#ANNOTATION: import module sys.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+from django.utils.six.moves import copyreg
+#ANNOTATION: from django.utils.six.moves import copyreg into default name space.
+
+
+# You can't trivially replace this with `functools.partial` because this binds
+# to classes and returns bound instances, whereas functools.partial (on
+# CPython) is a type and its instances don't bind.
+def curry(_curried_func, *args, **kwargs):
+#ANNOTATION: define the function curry with 3 arguments: _curried_func, unpacked list args and unpacked dictionary kwargs.
+    def _curried(*moreargs, **morekwargs):
+#ANNOTATION: define the function _curried with 2 arguments: unpacked list moreargs and unpacked dictionary morekwargs.
+        return _curried_func(*(args + moreargs), **dict(kwargs, **morekwargs))
+#ANNOTATION: call the function _curried_func with 2 arguments: list moreargs appended to args and unpacked, 
+#ANNOTATION: unpacked dictionary created with elements of morekwargs dictionary through the kwargs mapping, return the result.
+    return _curried
+#ANNOTATION: return _curried.
+
+
+def memoize(func, cache, num_args):
+#ANNOTATION: define the function memoize with 3 arguments: func, cache and num_args.
+    """
+    Wrap a function so that results for any argument tuple are stored in
+    'cache'. Note that the args to the function must be usable as dictionary
+    keys.
+
+    Only the first num_args are considered when creating the key.
+    """
+#ANNOTATION: docstring
+    warnings.warn("memoize wrapper is deprecated and will be removed in "
+                  "Django 1.9. Use django.utils.lru_cache instead.",
+                  RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the function warnings.warn with 3 arguments: 
+#ANNOTATION: string "memoize wrapper is deprecated and will be removed in Django 1.9. Use django.utils.lru_cache instead.",
+#ANNOTATION: RemovedInDjango19Warning and stacklevel set to integer 2.
+
+    @wraps(func)
+#ANNOTATION: decorator function wraps with an argument func.
+    def wrapper(*args):
+#ANNOTATION: define the function wrapper with an argument unpacked list args.
+        mem_args = args[:num_args]
+#ANNOTATION: mem_args is a list containing of first num_args elements of args list.
+        if mem_args in cache:
+#ANNOTATION: if mem_args is contained in cache,
+            return cache[mem_args]
+#ANNOTATION: get the value under the mem_args key of the cache dictionary, return it.
+        result = func(*args)
+#ANNOTATION: call the function func with an argument unpacked list args, substitute the result for result.
+        cache[mem_args] = result
+#ANNOTATION: substitute result for value under the mem_args key of the cache dictionary.
+        return result
+#ANNOTATION: return result.
+    return wrapper
+#ANNOTATION: return wrapper.
+
+
+class cached_property(object):
+#ANNOTATION: derive the class cached_property from the object base class.
+    """
+    Decorator that converts a method with a single self argument into a
+    property cached on the instance.
+
+    Optional ``name`` argument allows you to make cached properties of other
+    methods. (e.g.  url = cached_property(get_absolute_url, name='url') )
+    """
+#ANNOTATION: docstring
+    def __init__(self, func, name=None):
+#ANNOTATION: define the method __init__ with 3 arguments: self, func and name set to None.
+        self.func = func
+#ANNOTATION: substitute func for self.func.
+        self.name = name or func.__name__
+#ANNOTATION: if name is true, substitute it for self.name, otherwise substitute func.__name__ for self.name.
+
+    def __get__(self, instance, type=None):
+#ANNOTATION: define the method __get__ with 3 arguments: self, instance and name type to None.
+        if instance is None:
+#ANNOTATION: if instance is None,
+            return self
+#ANNOTATION: return self.
+        res = instance.__dict__[self.name] = self.func(instance)
+#ANNOTATION: call the function self.func with an argument instance, substitute the result for res and value under the self.name key of the instance.__dict__ dictionary.
+        return res
+#ANNOTATION: return res.
+
+
+class Promise(object):
+#ANNOTATION: derive the class Promise from the object base class.
+    """
+    This is just a base class for the proxy class created in
+    the closure of the lazy function. It can be used to recognize
+    promises in code.
+    """
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+def lazy(func, *resultclasses):
+#ANNOTATION:define the function lazy with 2 arguments: func and unpacked list resultclasses.
+    """
+    Turns any callable into a lazy evaluated callable. You need to give result
+    classes or types -- at least one is needed so that the automatic forcing of
+    the lazy evaluation code is triggered. Results are not memoized; the
+    function is evaluated on every access.
+    """
+#ANNOTATION: docstring
+
+    @total_ordering
+#ANNOTATION: decorator total_ordering,
+    class __proxy__(Promise):
+#ANNOTATION: derive the class __proxy__ from the Promise base class.
+        """
+        Encapsulate a function call and act as a proxy for methods that are
+        called on the result of that function. The function is not evaluated
+        until one of the methods on the result is called.
+        """
+#ANNOTATION: docstring
+        __dispatch = None
+#ANNOTATION: __dispatch is None.
+
+        def __init__(self, args, kw):
+#ANNOTATION: define the method __init__ with 3 arguments: self, args and kw.
+            self.__args = args
+#ANNOTATION: substitute args for self.__args.
+            self.__kw = kw
+#ANNOTATION: substitute kw for self.__kw.
+            if self.__dispatch is None:
+#ANNOTATION: if self.__dispatch is None.
+                self.__prepare_class__()
+#ANNOTATION: call the method self.__prepare_class__.
+
+        def __reduce__(self):
+#ANNOTATION: define the method __reduce__ with an argument self.
+            return (
+                _lazy_proxy_unpickle,
+                (func, self.__args, self.__kw) + resultclasses
+            )
+#ANNOTATION: return a tuple wit 2 elements: _lazy_proxy_unpickle and tuple with 3 elements: func, self.__args, self.__kw and resultclasses.
+
+        @classmethod
+#ANNOTATION: classmethod decorator,
+        def __prepare_class__(cls):
+#ANNOTATION: define the method __prepare_class__ with an argument self.
+            cls.__dispatch = {}
+#ANNOTATION: cls.__dispatch is an empty dictionary.
+            for resultclass in resultclasses:
+#ANNOTATION: for every resultclass in resultclasses,
+                cls.__dispatch[resultclass] = {}
+#ANNOTATION: value under the resultclass key of the cls.__dispatch dictionary is an empty dictionary.
+                for type_ in reversed(resultclass.mro()):
+#ANNOTATION: call the method resultclass.mro, reverse the order of elements, for every type_ in the result.
+                    for (k, v) in type_.__dict__.items():
+#ANNOTATION: for every k and v in result of the call to the method type_.__dict__.items,
+                        # All __promise__ return the same wrapper method, but
+                        # they also do setup, inserting the method into the
+                        # dispatch dict.
+                        meth = cls.__promise__(resultclass, k, v)
+#ANNOTATION: call the method cls.__promise__ with 3 arguments: resultclass, k and v, substitute the result for meth.
+                        if hasattr(cls, k):
+#ANNOTATION: if cls has an attribute k,
+                            continue
+#ANNOTATION: skip this loop iteration,
+                        setattr(cls, k, meth)
+#ANNOTATION: set k attribute of cls object to meth.
+            cls._delegate_bytes = bytes in resultclasses
+#ANNOTATION: if bytes is contained in resultclasses, cls._delegate_bytes is boolean True, otherwise it is boolean False.
+            cls._delegate_text = six.text_type in resultclasses
+#ANNOTATION: if six.text_type is contained in resultclasses, cls._delegate_text is boolean True, otherwise it is boolean False.
+            assert not (cls._delegate_bytes and cls._delegate_text), "Cannot call lazy() with both bytes and text return types."
+#ANNOTATION: if cls._delegate_bytes and cls._delegate_text are both false, raise an error, with an argument string "Cannot call lazy() with both bytes and text return types.".
+            if cls._delegate_text:
+#ANNOTATION: if cls._delegate_text is true,
+                if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+                    cls.__str__ = cls.__text_cast
+#ANNOTATION: substitute cls.__text_cast for cls.__str__.
+                else:
+#ANNOTATION: if not,
+                    cls.__unicode__ = cls.__text_cast
+#ANNOTATION: substitute cls.__text_cast for cls.__text_cast.
+            elif cls._delegate_bytes:
+#ANNOTATION: otherwise if cls._delegate_bytes is true,
+                if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+                    cls.__bytes__ = cls.__bytes_cast
+#ANNOTATION: substitute cls.__bytes_cast for cls.__bytes__.
+                else:
+#ANNOTATION: if not,
+                    cls.__str__ = cls.__bytes_cast
+#ANNOTATION: substitute cls.__bytes_cast for cls.__str__.
+
+        @classmethod
+#ANNOTATION: class method decorator,
+        def __promise__(cls, klass, funcname, method):
+#ANNOTATION: define the method __promise__ with 4 arguments: cls, klass, funcname and method.
+            # Builds a wrapper around some magic method and registers that
+            # magic method for the given type and method name.
+            def __wrapper__(self, *args, **kw):
+#ANNOTATION: define the method __wrapper__ with 3 arguments: self, unpacked list args and unpacked dictionary kw.
+                # Automatically triggers the evaluation of a lazy value and
+                # applies the given magic method of the result type.
+                res = func(*self.__args, **self.__kw)
+#ANNOTATION: call the function func with 2 arguments: unpacked list self.__args and unpacked dictionary self.__kw, substitute the result for res.
+                for t in type(res).mro():
+#ANNOTATION: get the type of res, call the method mro on the result, for every t in the result,
+                    if t in self.__dispatch:
+#ANNOTATION: if t is contained in self.__dispatch,
+                        return self.__dispatch[t][funcname](res, *args, **kw)
+#ANNOTATION: get the value under the funcname key of the t-th elment of self.__dispatch dictionary, call the result with 3 arguments: res,
+#ANNOTATION: unpacked list args and unpacked dictionary kw, return the result.
+                raise TypeError("Lazy object returned unexpected type.")
+#ANNOTATION: raise an TypeError exception with an argument sting "Lazy object returned unexpected type.".
+
+            if klass not in cls.__dispatch:
+#ANNOTATION: if klass is not contained in cls.__dispatch,
+                cls.__dispatch[klass] = {}
+#ANNOTATION: value under the klass key of the cls.__dispatch dictionary is an empty dictionary.
+            cls.__dispatch[klass][funcname] = method
+#ANNOTATION: substitute method for value under the funcname key of the dictionary under the klass key of the cls.__dispatch dictionary.
+            return __wrapper__
+#ANNOTATION: return __wrapper__.
+
+        def __text_cast(self):
+#ANNOTATION: define the method __text_cast with an argument self.
+            return func(*self.__args, **self.__kw)
+#ANNOTATION: call the function func with 2 arguments: unpacked list self.__args and unpacked dictionary self.__kw, return the result.
+
+        def __bytes_cast(self):
+#ANNOTATION: define the method __bytes_cast with an argument self.
+            return bytes(func(*self.__args, **self.__kw))
+#ANNOTATION: call the function func with 2 arguments: unpacked list self.__args and unpacked dictionary self.__kw, 
+#ANNOTATION: use the result as an argument for the call to the function bytes, return the result.
+
+        def __cast(self):
+#ANNOTATION: define the method __cast with an argument self.
+            if self._delegate_bytes:
+#ANNOTATION: if self._delegate_bytes is true,
+                return self.__bytes_cast()
+#ANNOTATION: call the method self.__bytes_cast, return the result.
+            elif self._delegate_text:
+#ANNOTATION: otherwise if self._delegate_text is true,
+                return self.__text_cast()
+#ANNOTATION: call the method self.__text_cast, return the result.
+            else:
+#ANNOTATION: if not,
+                return func(*self.__args, **self.__kw)
+#ANNOTATION: call the function func with 2 arguments: unpacked list self.__args and unpacked dictionary self.__kw, return the result.
+
+        def __ne__(self, other):
+#ANNOTATION: define the method __ne__ with 2 arguments: self and other.
+            if isinstance(other, Promise):
+#ANNOTATION: if other is an instance of Promise class,
+                other = other.__cast()
+#ANNOTATION: call the method other.__cast, substitute the result for other.
+            return self.__cast() != other
+#ANNOTATION: call the method self.__cast, if the result doesnt equal to other, return boolean True, otherwise return boolean False.
+
+        def __eq__(self, other):
+#ANNOTATION: define the method __ne__ with 2 arguments: self and other.
+            if isinstance(other, Promise):
+#ANNOTATION: if other is an instance of Promise class,
+                other = other.__cast()
+#ANNOTATION: call the method other.__cast, substitute the result for other.
+            return self.__cast() == other
+#ANNOTATION: call the method self.__cast, if the result equals other, return boolean True, otherwise return boolean False.
+
+        def __lt__(self, other):
+#ANNOTATION: define the method __lt__ with 2 arguments: self and other.
+            if isinstance(other, Promise):
+#ANNOTATION: if other is an instance of Promise,
+                other = other.__cast()
+#ANNOTATION: call the method other.__cast, substitute the result for other.
+            return self.__cast() < other
+#ANNOTATION: call the method self.__cast, if the result is lesser than other, return boolean True, otherwise return boolean False.
+
+        def __hash__(self):
+#ANNOTATION: define the method __hash__ with an argument self.
+            return hash(self.__cast())
+#ANNOTATION: call the method self.__cast, return the hash value of the result.
+
+        def __mod__(self, rhs):
+#ANNOTATION: define the method __mod__ with 2 arguments: self and rhs.
+            if self._delegate_bytes and six.PY2:
+#ANNOTATION: if self._delegate_bytes and six.PY2 are both true,
+                return bytes(self) % rhs
+#ANNOTATION: call the function bytes with an argument self, divide the result with rhs and return the reminder of the division. 
+            elif self._delegate_text:
+#ANNOTATION: otherwise if self._delegate_text is true,
+                return six.text_type(self) % rhs
+#ANNOTATION: call the function six.text_type with an argument self, divide the result with rhs and return the reminder of the division.
+            return self.__cast() % rhs
+#ANNOTATION: call the function sself.__cast with an argument self, divide the result with rhs and return the reminder of the division.
+
+        def __deepcopy__(self, memo):
+#ANNOTATION: define the method __deepcopy__ with 2 arguments: self and memo.
+            # Instances of this class are effectively immutable. It's just a
+            # collection of functions. So we don't need to do anything
+            # complicated for copying.
+            memo[id(self)] = self
+#ANNOTATION: get the id of the self object, use it as a key to obtain the value from the memo dictionary, substitute self with it.
+            return self
+#ANNOTATION: return self.
+
+    @wraps(func)
+#ANNOTATION: decorator function wraps with an argument func.
+    def __wrapper__(*args, **kw):
+#ANNOTATION: define the function __wrapper__ with 2 arguments: unpacked list args and unpacked dictionary kw.
+        # Creates the proxy object, instead of the actual value.
+        return __proxy__(args, kw)
+#ANNOTATION: call the function __proxy__ with 2 arguments: args and kw, return the result.
+
+    return __wrapper__
+#ANNOTATION: return __wrapper__.
+
+
+def _lazy_proxy_unpickle(func, args, kwargs, *resultclasses):
+#ANNOTATION: define the function _lazy_proxy_unpickle with 4 arguments: func, args, kwargs and unpacked list resultclasses.
+    return lazy(func, *resultclasses)(*args, **kwargs)
+#ANNOTATION: call the function lazy with 2 arguments: func and unpacked list resultclasses, call the result with 2 arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+
+
+def allow_lazy(func, *resultclasses):
+#ANNOTATION: define the function allow_lazy with 2 arguments: func and unpacked list resultclasses.
+    """
+    A decorator that allows a function to be called with one or more lazy
+    arguments. If none of the args are lazy, the function is evaluated
+    immediately, otherwise a __proxy__ is returned that will evaluate the
+    function when needed.
+    """
+#ANNOTATION: docstring
+    @wraps(func)
+#ANNOTATION: decorator function wraps with an argument func.
+    def wrapper(*args, **kwargs):
+#ANNOTATION: define the function wrapper with 2 arguments: unpacked list args and unpacked dictionary kwargs.
+        for arg in list(args) + list(six.itervalues(kwargs)):
+#ANNOTATION: call the function six.itervalues with an argument kwargs, convert the result to a list and append it to a list containing args,
+#ANNOTATION: for every arg in the result,
+            if isinstance(arg, Promise):
+#ANNOTATION: if arg is an instance of Promise class,
+                break
+#ANNOTATION: break from the loop execution,
+        else:
+#ANNOTATION: if not,
+            return func(*args, **kwargs)
+#ANNOTATION: call the function func with 2 arguments: unpacked list args and unpacked dictionary kwargs.
+        return lazy(func, *resultclasses)(*args, **kwargs)
+#ANNOTATION: call the function lazy with 2 arguments: func and unpacked list resultclasses, call the result with 2 arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs, return the result.
+    return wrapper
+#ANNOTATION: return wrapper.
+
+empty = object()
+#ANNOTATION: empty is an instance of object class.
+
+
+def new_method_proxy(func):
+#ANNOTATION: define the function new_method_proxy with an argument func.
+    def inner(self, *args):
+#ANNOTATION: define the method inner with 2 arguments: self and unpacked list args.
+        if self._wrapped is empty:
+#ANNOTATION: if self._wrapped is contained in empty,
+            self._setup()
+#ANNOTATION: call the method self._setup.
+        return func(self._wrapped, *args)
+#ANNOTATION: call the function func with 2 arguments: self._wrapped and unpacked list args.
+    return inner
+#ANNOTATION: self._wrapped.
+
+
+class LazyObject(object):
+#ANNOTATION: derive the class LazyObject from the object base class.
+    """
+    A wrapper for another class that can be used to delay instantiation of the
+    wrapped class.
+
+    By subclassing, you have the opportunity to intercept and alter the
+    instantiation. If you don't need to do that, use SimpleLazyObject.
+    """
+#ANNOTATION: docstring
+
+    # Avoid infinite recursion when tracing __init__ (#19456).
+    _wrapped = None
+#ANNOTATION: _wrapped is None.
+
+    def __init__(self):
+#ANNOTATION: define the method __init__ with an argument self.
+        self._wrapped = empty
+#ANNOTATION: substitute empty for self._wrapped.
+
+    __getattr__ = new_method_proxy(getattr)
+#ANNOTATION: call the function new_method_proxy with an argument getattr, substitute the result for __getattr__.  
+
+    def __setattr__(self, name, value):
+#ANNOTATION: define the method __setattr__ with 3 arguments: self, name and value.
+        if name == "_wrapped":
+#ANNOTATION: if name equals string "_wrapped",
+            # Assign to __dict__ to avoid infinite __setattr__ loops.
+            self.__dict__["_wrapped"] = value
+#ANNOTATION: substitute value under the "_wrapped" key of the self.__dict__ dictionary.
+        else:
+#ANNOTATION: if not,
+            if self._wrapped is empty:
+#ANNOTATION: if self._wrapped is empty,
+                self._setup()
+#ANNOTATION: call the method self._setup.
+            setattr(self._wrapped, name, value)
+#ANNOTATION: set name attribute of self._wrapped object to value.
+
+    def __delattr__(self, name):
+#ANNOTATION: define the method __delattr__ with 2 arguments self and name.
+        if name == "_wrapped":
+#ANNOTATION: if name equals string "_wrapped",
+            raise TypeError("can't delete _wrapped.")
+#ANNOTATION: raise an TypeError exception with an argument sting "can't delete _wrapped.".
+        if self._wrapped is empty:
+#ANNOTATION: if self._wrapped is empty,
+            self._setup()
+#ANNOTATION: call the method self._setup. 
+        delattr(self._wrapped, name)
+#ANNOTATION: delete name attribute from self._wrapped object.
+
+    def _setup(self):
+#ANNOTATION: define the method _setup with an argument self.
+        """
+        Must be implemented by subclasses to initialize the wrapped object.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of LazyObject must provide a _setup() method')
+#ANNOTATION: raise an NotImplementedError exception with an argument sting 'subclasses of LazyObject must provide a _setup() method'.
+
+    # Because we have messed with __class__ below, we confuse pickle as to what
+    # class we are pickling. It also appears to stop __reduce__ from being
+    # called. So, we define __getstate__ in a way that cooperates with the way
+    # that pickle interprets this class.  This fails when the wrapped class is
+    # a builtin, but it is better than nothing.
+    def __getstate__(self):
+#ANNOTATION: define the method __getstate__ with an argument self.
+        if self._wrapped is empty:
+#ANNOTATION: if self._wrapped is empty,
+            self._setup()
+#ANNOTATION: call the method self._setup.
+        return self._wrapped.__dict__
+#ANNOTATION: return self._wrapped.__dict__.
+
+    # Python 3.3 will call __reduce__ when pickling; this method is needed
+    # to serialize and deserialize correctly.
+    @classmethod
+#ANNOTATION: classmethod decorator,
+    def __newobj__(cls, *args):
+#ANNOTATION: define the method __newobj__ with 2 arguments cls and unpacked list args.
+        return cls.__new__(cls, *args)
+#ANNOTATION: call the method cls.__new__ with 2 arguments: cls and unpacked list args.
+
+    def __reduce_ex__(self, proto):
+#ANNOTATION: define the method __reduce_ex__ with 2 arguments self and proto.
+        if proto >= 2:
+#ANNOTATION: if proto is greater than or equal to integer 2,
+            # On Py3, since the default protocol is 3, pickle uses the
+            # ``__newobj__`` method (& more efficient opcodes) for writing.
+            return (self.__newobj__, (self.__class__,), self.__getstate__())
+#ANNOTATION: return a tuple with 3 elements: self.__newobj__, tuple with an element self.__class__ and result of the method self.__getstate__.
+        else:
+#ANNOTATION: if not,
+            # On Py2, the default protocol is 0 (for back-compat) & the above
+            # code fails miserably (see regression test). Instead, we return
+            # exactly what's returned if there's no ``__reduce__`` method at
+            # all.
+            return (copyreg._reconstructor, (self.__class__, object, None), self.__getstate__())
+#ANNOTATION: return a tuple with 3 elements: copyreg._reconstructor, tuple with 3 elements: self.__class__, object and None,
+#ANNOTATION: and result of the method self.__getstate__.
+
+    def __deepcopy__(self, memo):
+#ANNOTATION: define the method __deepcopy__ with 2 arguments self and memo.
+        if self._wrapped is empty:
+#ANNOTATION: if self._wrapped is empty,
+            # We have to use type(self), not self.__class__, because the
+            # latter is proxied.
+            result = type(self)()
+#ANNOTATION: get type of self, call it and substitute the result for result.
+            memo[id(self)] = result
+#ANNOTATION: get the id of the self object, use it as a key to obtain the value from the memo dictionary, substitute self with it.
+            return result
+#ANNOTATION: return result.
+        return copy.deepcopy(self._wrapped, memo)
+#ANNOTATION: call the method copy.deepcopy with 2 arguments: self._wrapped and memo, return the result.
+
+    if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+        __bytes__ = new_method_proxy(bytes)
+#ANNOTATION: call the function new_method_proxy with an argument bytes, substitute the result for __bytes__.
+        __str__ = new_method_proxy(str)
+#ANNOTATION: call the function new_method_proxy with an argument str, substitute the result for __str__.
+        __bool__ = new_method_proxy(bool)
+#ANNOTATION: call the function new_method_proxy with an argument bool, substitute the result for __bool__.
+    else:
+#ANNOTATION: if not,
+        __str__ = new_method_proxy(str)
+#ANNOTATION: call the function new_method_proxy with an argument str, substitute the result for __str__.
+        __unicode__ = new_method_proxy(unicode)
+#ANNOTATION: call the function new_method_proxy with an argument unicode, substitute the result for __unicode__.
+        __nonzero__ = new_method_proxy(bool)
+#ANNOTATION: call the function new_method_proxy with an argument bool, substitute the result for __nonzero__.
+
+    # Introspection support
+    __dir__ = new_method_proxy(dir)
+#ANNOTATION: call the function new_method_proxy with an argument dir, substitute the result for __dir__.
+
+    # Need to pretend to be the wrapped class, for the sake of objects that
+    # care about this (especially in equality tests)
+    __class__ = property(new_method_proxy(operator.attrgetter("__class__")))
+#ANNOTATION: cal the method operator.attrgetter with an argument string "__class__", use the result as an argument for the call to the function,
+#ANNOTATION: new_method_proxy, __class__ is an property object created with previous result as an argument. 
+    __eq__ = new_method_proxy(operator.eq)
+#ANNOTATION: call the function new_method_proxy with an argument operator.eq, substitute the result for __eq__.
+    __ne__ = new_method_proxy(operator.ne)
+#ANNOTATION: call the function new_method_proxy with an argument operator.ne, substitute the result for __ne__.
+    __hash__ = new_method_proxy(hash)
+#ANNOTATION: call the function new_method_proxy with an argument hash, substitute the result for __hash__.
+
+    # Dictionary methods support
+    __getitem__ = new_method_proxy(operator.getitem)
+#ANNOTATION: call the function new_method_proxy with an argument operator.getitem, substitute the result for __getitem__.
+    __setitem__ = new_method_proxy(operator.setitem)
+#ANNOTATION: call the function new_method_proxy with an argument operator.setitem, substitute the result for __setitem__.
+    __delitem__ = new_method_proxy(operator.delitem)
+#ANNOTATION: call the function new_method_proxy with an argument operator.delitem, substitute the result for __delitem__.
+
+    __len__ = new_method_proxy(len)
+#ANNOTATION: call the function new_method_proxy with an argument len, substitute the result for __len__.
+    __contains__ = new_method_proxy(operator.contains)
+#ANNOTATION: call the function new_method_proxy with an argument operator.contains, substitute the result for __contains__.
+
+
+# Workaround for http://bugs.python.org/issue12370
+_super = super
+#ANNOTATION: substitute super for _super.
+
+
+class SimpleLazyObject(LazyObject):
+#ANNOTATION: derive the class SimpleLazyObject from the LazyObject base class.
+    """
+    A lazy object initialized from any function.
+
+    Designed for compound objects of unknown type. For builtins or objects of
+    known type, use django.utils.functional.lazy.
+    """
+#ANNOTATION: docstring
+    def __init__(self, func):
+#ANNOTATION: define the method __init__ with 2 arguments self and func.
+        """
+        Pass in a callable that returns the object to be wrapped.
+
+        If copies are made of the resulting SimpleLazyObject, which can happen
+        in various circumstances within Django, then you must ensure that the
+        callable can be safely run more than once and will return the same
+        value.
+        """
+#ANNOTATION: docstring
+        self.__dict__['_setupfunc'] = func
+#ANNOTATION: substitute func for value under the '_setupfunc' key of the self.__dict__ dictionary.
+        _super(SimpleLazyObject, self).__init__()
+#ANNOTATION: call the function _super with 2 arguments: class SimpleLazyObject and self, call the method __init__ on the result.
+
+    def _setup(self):
+#ANNOTATION: define the method _setup with an argument self.
+        self._wrapped = self._setupfunc()
+#ANNOTATION: call the method self._setupfunc, substitute the result for self._wrapped.
+
+    # Return a meaningful representation of the lazy object for debugging
+    # without evaluating the wrapped object.
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        if self._wrapped is empty:
+#ANNOTATION: if self._wrapped is empty,
+            repr_attr = self._setupfunc
+#ANNOTATION: substitute self._setupfunc for repr_attr.
+        else:
+#ANNOTATION: if not,
+            repr_attr = self._wrapped
+#ANNOTATION: substitute self._wrapped for repr_attr.
+        return '<%s: %r>' % (type(self).__name__, repr_attr)
+#ANNOTATION: return a string '<%s: %r>', format it with __name__ field of the self class and repr_attr.
+
+    def __deepcopy__(self, memo):
+#ANNOTATION: define the method __deepcopy__ with 2 arguments self and memo.
+        if self._wrapped is empty:
+#ANNOTATION: if self._wrapped is empty,
+            # We have to use SimpleLazyObject, not self.__class__, because the
+            # latter is proxied.
+            result = SimpleLazyObject(self._setupfunc)
+#ANNOTATION: result is an instance of SimpleLazyObject class, created with an argument self._setupfunc.
+            memo[id(self)] = result
+#ANNOTATION: get the id of the self object, use it as a key to obtain the value from the memo dictionary, substitute self with it.
+            return result
+#ANNOTATION: return result.
+        return copy.deepcopy(self._wrapped, memo)
+#ANNOTATION: call the method copy.deepcopy with 2 arguments: self._wrapped and memo, return the result.
+
+
+class lazy_property(property):
+#ANNOTATION: derive the class lazy_property from the property base class.
+    """
+    A property that works with subclasses by wrapping the decorated
+    functions of the base class.
+    """
+#ANNOTATION: docstring
+    def __new__(cls, fget=None, fset=None, fdel=None, doc=None):
+#ANNOTATION: define the method __new__ with 5 arguments: cls, fget set to None, fset set to None, fdel set to None and doc set to None.
+        if fget is not None:
+#ANNOTATION: if fget is not None,
+            @wraps(fget)
+#ANNOTATION: decorator function wraps with an argument fget.
+            def fget(instance, instance_type=None, name=fget.__name__):
+#ANNOTATION: define the function fget with 3 arguments: instance, instance_type set to None and name set to fget.__name__.
+                return getattr(instance, name)()
+#ANNOTATION: get name attribute from the instance object, call it and return the result.
+        if fset is not None:
+#ANNOTATION: if fset is not None,
+            @wraps(fset)
+#ANNOTATION: decorator function wraps with an argument fset.
+            def fset(instance, value, name=fset.__name__):
+#ANNOTATION: define the function fset with 3 arguments: instance, valse to None and name set to fset.__name__.
+                return getattr(instance, name)(value)
+#ANNOTATION: get name attribute from the instance object, call it with an argument value and return the result.
+        if fdel is not None:
+#ANNOTATION: if fdel is not None,
+            @wraps(fdel)
+#ANNOTATION: decorator function wraps with an argument fdel.
+            def fdel(instance, name=fdel.__name__):
+#ANNOTATION: define the function fdel with 2 arguments: instance and name set to fdel.__name__.
+                return getattr(instance, name)()
+#ANNOTATION: get name attribute from the instance object, call it and return the result.
+        return property(fget, fset, fdel, doc)
+#ANNOTATION: return an property object with getter function fget, setter function fset, destructor fdel and documentation string doc.
+
+
+def partition(predicate, values):
+#ANNOTATION: define the function partition with 2 arguments: predicate and values.
+    """
+    Splits the values into two sets, based on the return value of the function
+    (True/False). e.g.:
+
+        >>> partition(lambda x: x > 3, range(5))
+        [0, 1, 2, 3], [4]
+    """
+#ANNOTATION: docstring
+    results = ([], [])
+#ANNOTATION: results is a tuple with 2 elements, 2 empty lists.
+    for item in values:
+#ANNOTATION: for every item in values,
+        results[predicate(item)].append(item)
+#ANNOTATION: call the function predicate with an argument item, use it as a key to get results dictionary value, append item to it.
+    return results
+#ANNOTATION: return results.
+
+if sys.version_info >= (2, 7, 2):
+#ANNOTATION: if sys.version_info is greater than or equal to a tuple with 3 elements: integers 2, 7 and 2, respectively,
+    from functools import total_ordering
+#ANNOTATION: from functools import total_ordering.
+else:
+#ANNOTATION: if not,
+    # For Python < 2.7.2. total_ordering in versions prior to 2.7.2 is buggy.
+    # See http://bugs.python.org/issue10042 for details. For these versions use
+    # code borrowed from Python 2.7.3.
+    def total_ordering(cls):
+#ANNOTATION: define the function total_ordering with an argument cls.
+        """Class decorator that fills in missing ordering methods"""
+#ANNOTATION: docstring
+        convert = {
+            '__lt__': [('__gt__', lambda self, other: not (self < other or self == other)),
+                       ('__le__', lambda self, other: self < other or self == other),
+                       ('__ge__', lambda self, other: not self < other)],
+            '__le__': [('__ge__', lambda self, other: not self <= other or self == other),
+                       ('__lt__', lambda self, other: self <= other and not self == other),
+                       ('__gt__', lambda self, other: not self <= other)],
+            '__gt__': [('__lt__', lambda self, other: not (self > other or self == other)),
+                       ('__ge__', lambda self, other: self > other or self == other),
+                       ('__le__', lambda self, other: not self > other)],
+            '__ge__': [('__le__', lambda self, other: (not self >= other) or self == other),
+                       ('__gt__', lambda self, other: self >= other and not self == other),
+                       ('__lt__', lambda self, other: not self >= other)]
+        }
+#ANNOTATION: convert is a dictionary with 4 initial entries: list with 3 tuples: tuple with 2 elements: string '__gt__',
+#ANNOTATION: and lambda function with 2 arguments: self and other, resulting boolean False if self is lesser than other or self is equal to other,
+#ANNOTATION: tuple with 2 elements: string '__le__',
+#ANNOTATION: and lambda function with 2 arguments: self and other, resulting boolean True if self is lesser than other or self is equal to other,
+#ANNOTATION: tuple with 2 elements: string '__ge__',
+#ANNOTATION: and lambda function with 2 arguments: self and other, resulting boolean False if self is lesser than other, for '__lt__',
+#ANNOTATION: list with 3 tuples: tuple with 2 elements: string '__ge__',
+#ANNOTATION: and lambda function with 2 arguments: self and other, resulting boolean False if self is lesser than or equal to other,
+#ANNOTATION: or self is equal to other, tuple with 2 elements: string '__lt__',
+#ANNOTATION: and lambda function with 2 arguments: self and other, resulting boolean True if self is lesser than or equal to other,
+#ANNOTATION: or self is not equal to other, tuple with 2 elements: string '__gt__',
+#ANNOTATION: and lambda function with 2 arguments: self and other, resulting boolean False if self is lesser than or equal to other, for '__le__',
+#ANNOTATION: list with 3 tuples: tuple with 2 elements: string '__lt__',
+#ANNOTATION: and lambda function with 2 arguments: self and other, resulting boolean False if self is greater than other or self is equal to other,
+#ANNOTATION: tuple with 2 elements: string '__ge__',
+#ANNOTATION: and lambda function with 2 arguments: self and other, resulting boolean True if self is greater than other or self is equal to other,
+#ANNOTATION: tuple with 2 elements: string '__le__',
+#ANNOTATION: and lambda function with 2 arguments: self and other, resulting boolean False if self is greater than other, for '__gt__',
+#ANNOTATION: and list with 3 tuples: tuple with 2 elements: string '__le__',
+#ANNOTATION: and lambda function with 2 arguments: self and other, resulting boolean True if self is not greater than or is not equal to other,
+#ANNOTATION: or self is equal to other, tuple with 2 elements: string '__gt__',
+#ANNOTATION: and lambda function with 2 arguments: self and other, resulting boolean True if self is greater than or not equal to other,
+#ANNOTATION: or self is not equal to other, tuple with 2 elements: string '__lt__',
+#ANNOTATION: and lambda function with 2 arguments: self and other, resulting boolean False if self is greater than or equal to other, for '__ge__',
+        roots = set(dir(cls)) & set(convert)
+#ANNOTATION: convert cls to a dictionary, convert the result into a set and convert convert into a set, roots is a set of differences of the two previous sets.
+        if not roots:
+#ANNOTATION: if roots is false,
+            raise ValueError('must define at least one ordering operation: < > <= >=')
+#ANNOTATION: raise an ValueError exception with an argument string 'must define at least one ordering operation: < > <= >='.
+        root = max(roots)       # prefer __lt__ to __le__ to __gt__ to __ge__
+#ANNOTATION: get maximal element from roots and substitute it for root.
+        for opname, opfunc in convert[root]:
+#ANNOTATION: get the value under the root key of the convert dictionary, for every opname and opfunc in the result,
+            if opname not in roots:
+#ANNOTATION: if opname is not contained in roots,
+                opfunc.__name__ = opname
+#ANNOTATION: substitute opname for opfunc.__name__.
+                opfunc.__doc__ = getattr(int, opname).__doc__
+#ANNOTATION: get opname attribute from int object, substitute its field __doc__ for opfunc.__doc__.
+                setattr(cls, opname, opfunc)
+#ANNOTATION: set opname attribute of cls object to opfunc.
+        return cls
+#ANNOTATION: return cls.

@@ -1,0 +1,523 @@
+"""HTML utilities suitable for global use."""
+#ANNOTATION: docstring
+
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import re
+#ANNOTATION: import module re.
+import sys
+#ANNOTATION: import module sys.
+
+from django.utils.encoding import force_text, force_str
+#ANNOTATION: from django.utils.encoding import force_text and force_str into default name space.
+from django.utils.functional import allow_lazy
+#ANNOTATION: from django.utils.functional import allow_lazy into default name space.
+from django.utils.safestring import SafeData, mark_safe
+#ANNOTATION: from django.utils.safestring import SafeData and mark_safe into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.six.moves.urllib.parse import quote, unquote, urlsplit, urlunsplit
+#ANNOTATION: from django.utils.six.moves.urllib.parse import quote, unquote, urlsplit and urlunsplit into default name space.
+from django.utils.text import normalize_newlines
+#ANNOTATION: from django.utils.text import normalize_newlines into default name space.
+
+from .html_parser import HTMLParser, HTMLParseError
+#ANNOTATION: from .html_parser import HTMLParser and HTMLParseError into default name space.
+
+
+# Configuration for urlize() function.
+TRAILING_PUNCTUATION = ['.', ',', ':', ';', '.)', '"', '\'']
+#ANNOTATION: TRAILING_PUNCTUATION is a list with 7 elements: '.', ',', ':', ';', '.)', '"' and '\''.
+WRAPPING_PUNCTUATION = [('(', ')'), ('<', '>'), ('[', ']'), ('&lt;', '&gt;'), ('"', '"'), ('\'', '\'')]
+#ANNOTATION: WRAPPING_PUNCTUATION is a list with 6 elements: tuple with 2 elements: '(' and ')', tuple with 2 elements: '<' and '>',
+#ANNOTATION: tuple with 2 elements: '[' and ']', tuple with 2 elements: '&lt' and '&gt', tuple with 2 elements: '"' and '"',
+#ANNOTATION: and tuple with 2 elements: '\'' and '\''.
+
+# List of possible strings used for bullets in bulleted lists.
+DOTS = ['&middot;', '*', '\u2022', '&#149;', '&bull;', '&#8226;']
+#ANNOTATION: DOTS is a list with 6 elements: strings '&middot;', '*', '\u2022', '&#149;', '&bull;' and '&#8226;'.
+
+unencoded_ampersands_re = re.compile(r'&(?!(\w+|#\d+);)')
+#ANNOTATION: call the function re.compile with raw string '&(?!(\w+|#\d+);)', substitute the result for unencoded_ampersands_re.
+word_split_re = re.compile(r'(\s+)')
+#ANNOTATION: call the function re.compile with raw string '(\s+)', substitute the result for word_split_re.
+simple_url_re = re.compile(r'^https?://\[?\w', re.IGNORECASE)
+#ANNOTATION: call the function re.compile with 2 arguments: raw string '^https?://\[?\w' and re.IGNORECASE, substitute the result for simple_url_re.
+simple_url_2_re = re.compile(r'^www\.|^(?!http)\w[^@]+\.(com|edu|gov|int|mil|net|org)($|/.*)$', re.IGNORECASE)
+#ANNOTATION: call the function re.compile with 2 arguments: raw string '^www\.|^(?!http)\w[^@]+\.(com|edu|gov|int|mil|net|org)($|/.*)$',
+#ANNOTATION: and re.IGNORECASE, substitute the result for simple_url_re.
+simple_email_re = re.compile(r'^\S+@\S+\.\S+$')
+#ANNOTATION: call the function re.compile with raw string '&(?!(\w+|#\d+);)', substitute the result for simple_email_re.
+link_target_attribute_re = re.compile(r'(<a [^>]*?)target=[^\s>]+')
+#ANNOTATION: call the function re.compile with raw string '(<a [^>]*?)target=[^\s>]+', substitute the result for link_target_attribute_re.
+html_gunk_re = re.compile(r'(?:<br clear="all">|<i><\/i>|<b><\/b>|<em><\/em>|<strong><\/strong>|<\/?smallcaps>|<\/?uppercase>)', re.IGNORECASE)
+#ANNOTATION: call the function re.compile with 2 arguments: 
+#ANNOTATION: raw string '(?:<br clear="all">|<i><\/i>|<b><\/b>|<em><\/em>|<strong><\/strong>|<\/?smallcaps>|<\/?uppercase>)' and re.IGNORECASE,
+#ANNOTATION: substitute the result for html_gunk_re.
+hard_coded_bullets_re = re.compile(r'((?:<p>(?:%s).*?[a-zA-Z].*?</p>\s*)+)' % '|'.join(re.escape(x) for x in DOTS), re.DOTALL)
+#ANNOTATION: call the function re.compile with 2 arguments: raw string '((?:<p>(?:%s).*?[a-zA-Z].*?</p>\s*)+)',
+#ANNOTATION: formated with string created by joining elements of result of the function re.escape with an argument x, with separator '|',
+#ANNOTATION: for every x in DOTS, and re.DOTALL, substitute the result for hard_coded_bullets_re.
+trailing_empty_content_re = re.compile(r'(?:<p>(?:&nbsp;|\s|<br \/>)*?</p>\s*)+\Z')
+#ANNOTATION: call the function re.compile with raw string '(?:<p>(?:&nbsp;|\s|<br \/>)*?</p>\s*)+\Z', substitute the result for trailing_empty_content_re.
+
+
+def escape(text):
+#ANNOTATION: define the function escape with an argument text.
+    """
+    Returns the given text with ampersands, quotes and angle brackets encoded for use in HTML.
+    """
+#ANNOTATION: docstring
+    return mark_safe(force_text(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;'))
+#ANNOTATION: call the function force_text with an argument text, replace every occurrence of '&' in the result with '&amp;',
+#ANNOTATION: every occurrence of '<' with '&lt;', every occurrence of '>' with '&gt;', every occurrence of '"' with '&quot;',
+#ANNOTATION: and every occurrence of "'" with '&#39;', call the function mark_safe with the previous result as an argument, return the result.
+escape = allow_lazy(escape, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: escape, six.text_type, substitute the result for escape.
+
+_js_escapes = {
+    ord('\\'): '\\u005C',
+    ord('\''): '\\u0027',
+    ord('"'): '\\u0022',
+    ord('>'): '\\u003E',
+    ord('<'): '\\u003C',
+    ord('&'): '\\u0026',
+    ord('='): '\\u003D',
+    ord('-'): '\\u002D',
+    ord(';'): '\\u003B',
+    ord('\u2028'): '\\u2028',
+    ord('\u2029'): '\\u2029'
+}
+#ANNOTATION: _js_escapes is a dictionary with 11 initial entries: '\\u005C' for integer representation of string '\\',
+#ANNOTATION: '\\u0027' for integer representation of string '\', '\\u0022' for integer representation of string '"',
+#ANNOTATION: '\\u003E' for integer representation of string '>', '\\u003C' for integer representation of string '<',
+#ANNOTATION: '\\u0026' for integer representation of string '%', '\\u003D' for integer representation of string '=',
+#ANNOTATION: '\\u002D' for integer representation of string '-', '\\u003B' for integer representation of string ';',
+#ANNOTATION: '\\u2028' for integer representation of string '\u2028' and '\\u2029' for integer representation of string '\u2029'.
+
+# Escape every ASCII character with a value less than 32.
+_js_escapes.update((ord('%c' % z), '\\u%04X' % z) for z in range(32))
+#ANNOTATION: for eery z in range of integers from 0 to 31, update _js_escapes dictionary with '\\u%04X' formated with z, 
+#ANNOTATION: for integer representation of z converted into a string.
+
+
+def escapejs(value):
+#ANNOTATION: define the function escapejs with an argument value.
+    """Hex encodes characters for use in JavaScript strings."""
+#ANNOTATION: docstring
+    return mark_safe(force_text(value).translate(_js_escapes))
+#ANNOTATION: call the function force_text with an argument value, call the method translate on the result, with an argument _js_escapes,
+#ANNOTATION: use the result as an argument for the call to the mark_safe function, return the result.
+escapejs = allow_lazy(escapejs, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: escapejs, six.text_type, substitute the result for escapejs.
+
+
+def conditional_escape(text):
+#ANNOTATION: define the function conditional_escape with an argument text.
+    """
+    Similar to escape(), except that it doesn't operate on pre-escaped strings.
+    """
+#ANNOTATION: docstring
+    if hasattr(text, '__html__'):
+#ANNOTATION: if text has an '__html__' attribute,
+        return text.__html__()
+#ANNOTATION: call the method text.__html__, return the result. 
+    else:
+#ANNOTATION: if not,
+        return escape(text)
+#ANNOTATION: call the function escape with an argument text, return the result.
+
+
+def format_html(format_string, *args, **kwargs):
+#ANNOTATION: define the function format_html with 3 arguments: format_string, unpacked list args and unpacked dictionary kwargs.
+    """
+    Similar to str.format, but passes all arguments through conditional_escape,
+    and calls 'mark_safe' on the result. This function should be used instead
+    of str.format or % interpolation to build up small HTML fragments.
+    """
+#ANNOTATION: docstring
+    args_safe = map(conditional_escape, args)
+#ANNOTATION: map elements from args through the function conditional_escape, substitute the result for args_safe.
+    kwargs_safe = dict((k, conditional_escape(v)) for (k, v) in six.iteritems(kwargs))
+#ANNOTATION: kwargs_safe is a dictionary created for every k and v in result of the function six.iteritems called with an argument kwargs,
+#ANNOTATION: with value result of the conditional_escape function called with an argument v for key k.
+    return mark_safe(format_string.format(*args_safe, **kwargs_safe))
+#ANNOTATION: call the method format_string.format with 2 arguments: unpacked list args_safe and unpacked dictionary kwargs_safe,
+#ANNOTATION: use the result as an argument for the call to the function mark_safe, return the result.
+
+
+def format_html_join(sep, format_string, args_generator):
+#ANNOTATION: define the function format_html_join with 3 arguments: sep, format_string and args_generator.
+    """
+    A wrapper of format_html, for the common case of a group of arguments that
+    need to be formatted using the same format string, and then joined using
+    'sep'. 'sep' is also passed through conditional_escape.
+
+    'args_generator' should be an iterator that returns the sequence of 'args'
+    that will be passed to format_html.
+
+    Example:
+
+      format_html_join('\n', "<li>{0} {1}</li>", ((u.first_name, u.last_name)
+                                                  for u in users))
+
+    """
+#ANNOTATION: docstring
+    return mark_safe(conditional_escape(sep).join(
+        format_html(format_string, *tuple(args))
+        for args in args_generator))
+#ANNOTATION: join results of format_html called with 2 arguments: format_string and tuple with an element args, into a string,
+#ANNOTATION: separated with result of the function conditional_escape with an argument sep, for every args in args_generator,
+#ANNOTATION: use the result as an argument for the call to the function mark_safe, return the result.
+
+
+def linebreaks(value, autoescape=False):
+#ANNOTATION: define the function linebreaks with 2 arguments: value and autoescape set to boolean False.
+    """Converts newlines into <p> and <br />s."""
+#ANNOTATION: docstring
+    value = normalize_newlines(value)
+#ANNOTATION: call the function normalize_newlines with an argument value, substitute the result for value.
+    paras = re.split('\n{2,}', value)
+#ANNOTATION: call the method re.split with 2 arguments: string '\n{2,}' and value, substitute the result for paras.
+    if autoescape:
+#ANNOTATION: if autoescape is true,
+        paras = ['<p>%s</p>' % escape(p).replace('\n', '<br />') for p in paras]
+#ANNOTATION: call the function escape with an argument p, replace every occurrence of '\n' in the result for '<br />', 
+#ANNOTATION: format the string  '<p>%s</p>' with the result, for every p in paras, substitute list of results for paras.
+    else:
+#ANNOTATION: if not,
+        paras = ['<p>%s</p>' % p.replace('\n', '<br />') for p in paras]
+#ANNOTATION: replace every occurrence of '\n' in p for '<br />', 
+#ANNOTATION: format the string  '<p>%s</p>' with the result, for every p in paras, substitute list of results for paras.
+    return '\n\n'.join(paras)
+#ANNOTATION: join elements of paras into a string separated with '\n\n', return the result.
+linebreaks = allow_lazy(linebreaks, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: linebreaks, six.text_type, substitute the result for linebreaks.
+
+
+class MLStripper(HTMLParser):
+#ANNOTATION: derive the class MLStripper from the HTMLParser base class.
+    def __init__(self):
+#ANNOTATION: define the method __init__ with an argument self.
+        # The strict parameter was added in Python 3.2 with a default of True.
+        # The default changed to False in Python 3.3 and was deprecated.
+        if sys.version_info[:2] == (3, 2):
+#ANNOTATION: if fist and second element of sys.version_info equals to integer 3 and 2, respectively,
+            HTMLParser.__init__(self, strict=False)
+#ANNOTATION: call the method HTMLParser.__init__ with 2 arguments: self and strict set to boolean False.
+        else:
+#ANNOTATION: if not,
+            HTMLParser.__init__(self)
+#ANNOTATION: call the method HTMLParser.__init__ with an argument self.
+        self.reset()
+#ANNOTATION: call the method self.reset.
+        self.fed = []
+#ANNOTATION: self.fed is an empty list.
+
+    def handle_data(self, d):
+#ANNOTATION: define the method handle_data with 2 arguments self and d.
+        self.fed.append(d)
+#ANNOTATION: append d to self.fed.
+
+    def handle_entityref(self, name):
+#ANNOTATION: define the method handle_entityref with 2 arguments self and name.
+        self.fed.append('&%s;' % name)
+#ANNOTATION: format string '&%s;' with name, append it to self.fed.
+
+    def handle_charref(self, name):
+#ANNOTATION: define the method handle_charref with 2 arguments self and name.
+        self.fed.append('&#%s;' % name)
+#ANNOTATION: format string '&#%s;' with name, append it to self.fed.
+
+    def get_data(self):
+#ANNOTATION: define the method get_data with an argument self.
+        return ''.join(self.fed)
+#ANNOTATION: join elements of self.fed into a string, return the result.
+
+
+def _strip_once(value):
+#ANNOTATION: define the function _strip_once with an argument value.
+    """
+    Internal tag stripping utility used by strip_tags.
+    """
+#ANNOTATION: docstring
+    s = MLStripper()
+#ANNOTATION: s is an instance of MLStripper class.
+    try:
+#ANNOTATION: try,
+        s.feed(value)
+#ANNOTATION: call the method s.feed with an argument value.
+    except HTMLParseError:
+#ANNOTATION: if HTMLParseError exception is caught,
+        return value
+#ANNOTATION: return value.
+    try:
+#ANNOTATION: try,
+        s.close()
+#ANNOTATION: close file descriptor s.
+    except (HTMLParseError, UnboundLocalError):
+#ANNOTATION: if HTMLParseError or UnboundLocalError exceptions are caught,
+        # UnboundLocalError because of http://bugs.python.org/issue17802
+        # on Python 3.2, triggered by strict=False mode of HTMLParser
+        return s.get_data() + s.rawdata
+#ANNOTATION: sum the result of the method s.get_data and s.rawdata, return the result.
+    else:
+#ANNOTATION: if not,
+        return s.get_data()
+#ANNOTATION: call the method s.get_data, return the result.
+
+
+def strip_tags(value):
+#ANNOTATION: define the function strip_tags with an argument value.
+    """Returns the given HTML with all tags stripped."""
+#ANNOTATION: docstring
+    # Note: in typical case this loop executes _strip_once once. Loop condition
+    # is redundant, but helps to reduce number of executions of _strip_once.
+    while '<' in value and '>' in value:
+#ANNOTATION: while '<' is contained in value and '>' is contained in value,
+        new_value = _strip_once(value)
+#ANNOTATION: call the function _strip_once with an argument value, substitute the result for new_value.
+        if new_value == value:
+#ANNOTATION: if new_value equals value,
+            # _strip_once was not able to detect more tags
+            break
+#ANNOTATION: break from the loop execution.
+        value = new_value
+#ANNOTATION: substitute new_value for value.
+    return value
+#ANNOTATION: return value.
+strip_tags = allow_lazy(strip_tags)
+#ANNOTATION: call the function allow_lazy with an argument strip_tags, substitute the result for strip_tags.
+
+
+def remove_tags(html, tags):
+#ANNOTATION: define the function remove_tags with 2 arguments: html and tags.
+    """Returns the given HTML with given tags removed."""
+#ANNOTATION: docstring
+    tags = [re.escape(tag) for tag in tags.split()]
+#ANNOTATION: tags is a list containing results of the function re.escape with an argument tag, for every tag in tags split into words.
+    tags_re = '(%s)' % '|'.join(tags)
+#ANNOTATION: join elements of tags into a string, separated with '|', format string '(%s)' with it, substitute the result for tags_re.
+    starttag_re = re.compile(r'<%s(/?>|(\s+[^>]*>))' % tags_re, re.U)
+#ANNOTATION: call the function re.compile with 2 arguments: raw string '<%s(/?>|(\s+[^>]*>))' formated with tags_re and re.U,
+#ANNOTATION: substitute the result for starttag_re.
+    endtag_re = re.compile('</%s>' % tags_re)
+#ANNOTATION: call the function re.compile with an argument string '</%s>' formated with tags_re, substitute the result for endtag_re.
+    html = starttag_re.sub('', html)
+#ANNOTATION: call the function starttag_re.sub with 2 arguments: an empty string and html, substitute the result for html.
+    html = endtag_re.sub('', html)
+#ANNOTATION: call the function endtag_re.sub with 2 arguments: an empty string and html, substitute the result for html.
+    return html
+#ANNOTATION: return html.
+remove_tags = allow_lazy(remove_tags, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: remove_tags, six.text_type, substitute the result for remove_tags.
+
+
+def strip_spaces_between_tags(value):
+#ANNOTATION: define the function strip_spaces_between_tags with an argument value.
+    """Returns the given HTML with spaces between tags removed."""
+#ANNOTATION: docstring
+    return re.sub(r'>\s+<', '><', force_text(value))
+#ANNOTATION: call the method re.sub with 3 arguments: raw string '>\s+<', string '><' and result of the function force_text, 
+#ANNOTATION: called with an argument value, return the result.
+strip_spaces_between_tags = allow_lazy(strip_spaces_between_tags, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: strip_spaces_between_tags, six.text_type, substitute the result for strip_spaces_between_tags.
+
+
+def strip_entities(value):
+#ANNOTATION: define the function strip_entities with an argument value.
+    """Returns the given HTML with all entities (&something;) stripped."""
+#ANNOTATION: docstring
+    return re.sub(r'&(?:\w+|#\d+);', '', force_text(value))
+#ANNOTATION: call the method re.sub with 3 arguments: raw string '&(?:\w+|#\d+);', empty string and result of the function force_text, 
+#ANNOTATION: called with an argument value, return the result.
+strip_entities = allow_lazy(strip_entities, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: strip_entities, six.text_type, substitute the result for strip_entities.
+
+
+def smart_urlquote(url):
+#ANNOTATION: define the function smart_urlquote with an argument url.
+    "Quotes a URL if it isn't already quoted."
+#ANNOTATION: docstring
+    # Handle IDN before quoting.
+    try:
+#ANNOTATION: try,
+        scheme, netloc, path, query, fragment = urlsplit(url)
+#ANNOTATION: call the function urlsplit with an argument url, assign the result to scheme, netloc, path, query and fragment, respectively.
+        try:
+#ANNOTATION: try,
+            netloc = netloc.encode('idna').decode('ascii')  # IDN -> ACE
+#ANNOTATION: call the method netloc.encode with an argument string 'idna', call the method decode on the result with an argument 'ascii',
+#ANNOTATION: substitute the result for netloc.
+        except UnicodeError:  # invalid domain part
+#ANNOTATION: if UnicodeError exception is caught,
+            pass
+#ANNOTATION: do nothing.
+        else:
+#ANNOTATION: if not,
+            url = urlunsplit((scheme, netloc, path, query, fragment))
+#ANNOTATION: call the function urlunsplit with an argument tuple with 4 elements: scheme, netloc, path, query and fragment, substitute the result for url.
+    except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+        # invalid IPv6 URL (normally square brackets in hostname part).
+        pass
+#ANNOTATION: do nothing.
+
+    url = unquote(force_str(url))
+#ANNOTATION: call the function force_str with an argument url, use the result as an argument for the call to the function unquote, substitute the result for url.
+    # See http://bugs.python.org/issue2637
+    url = quote(url, safe=b'!*\'();:@&=+$,/?#[]~')
+#ANNOTATION: call the function quote with 2 arguments: url and safe as bytes string '!*\'();:@&=+$,/?#[]~', substitute the result for url.
+
+    return force_text(url)
+#ANNOTATION: call the function force_text with an argument url, return the result.
+
+
+def urlize(text, trim_url_limit=None, nofollow=False, autoescape=False):
+#ANNOTATION: define the function urlize with 4 arguments: text, trim_url_limit set to None, nofollow set to boolean False,
+#ANNOTATION: and autoescape set to boolean False.
+    """
+    Converts any URLs in text into clickable links.
+
+    Works on http://, https://, www. links, and also on links ending in one of
+    the original seven gTLDs (.com, .edu, .gov, .int, .mil, .net, and .org).
+    Links can have trailing punctuation (periods, commas, close-parens) and
+    leading punctuation (opening parens) and it'll still do the right thing.
+
+    If trim_url_limit is not None, the URLs in the link text longer than this
+    limit will be truncated to trim_url_limit-3 characters and appended with
+    an ellipsis.
+
+    If nofollow is True, the links will get a rel="nofollow" attribute.
+
+    If autoescape is True, the link text and URLs will be autoescaped.
+    """
+#ANNOTATION: docstring
+    def trim_url(x, limit=trim_url_limit):
+#ANNOTATION: define the function trim_url with 2 arguments: x and limit set to trim_url_limit.
+        if limit is None or len(x) <= limit:
+#ANNOTATION: if limit is None or length of x is lesser than or equal to limit,
+            return x
+#ANNOTATION: return x.
+        return '%s...' % x[:max(0, limit - 3)]
+#ANNOTATION: return a string '%s...' formated with elements of x up to the index equal to the maximum value between integer 0 and 3 subtracted from limit.
+    safe_input = isinstance(text, SafeData)
+#ANNOTATION: if text is an instance of SafeData, safe_input is boolean True, otherwise is boolean False.
+    words = word_split_re.split(force_text(text))
+#ANNOTATION: call the function force_text with an argument text, split by it word_split_re, substitute it for words.
+    for i, word in enumerate(words):
+#ANNOTATION: for every i and word in enumerated iterable words,
+        if '.' in word or '@' in word or ':' in word:
+#ANNOTATION: if '.' is contained in words or '@' is contained in word or ':' is contained in word,
+            # Deal with punctuation.
+            lead, middle, trail = '', word, ''
+#ANNOTATION: substitute empty string, word an empty string for lead, middle and trail, respectively.
+            for punctuation in TRAILING_PUNCTUATION:
+#ANNOTATION: for every punctuation in TRAILING_PUNCTUATION,
+                if middle.endswith(punctuation):
+#ANNOTATION: if middle ends with punctuation,
+                    middle = middle[:-len(punctuation)]
+#ANNOTATION: substitute elements of middle from the beginning to the negative length of punctuation, for middle.
+                    trail = punctuation + trail
+#ANNOTATION: sum punctuation and trail, substitute the result for trail.
+            for opening, closing in WRAPPING_PUNCTUATION:
+#ANNOTATION: for every opening and closing in WRAPPING_PUNCTUATION,
+                if middle.startswith(opening):
+#ANNOTATION: if middle starts with opening,
+                    middle = middle[len(opening):]
+#ANNOTATION: substitute elements of middle from length of opening index to the end, for middle.
+                    lead = lead + opening
+#ANNOTATION: sum lead and opening, substitute the result for lead.
+                # Keep parentheses at the end only if they're balanced.
+                if (middle.endswith(closing)
+                        and middle.count(closing) == middle.count(opening) + 1):
+#ANNOTATION: if middle ends with closing and count of occurrence of closing in middle equals count of occurrence of opening in middle incremented by one,
+                    middle = middle[:-len(closing)]
+#ANNOTATION: substitute elements of middle from the beginning to the negative length of closing, for middle.
+                    trail = closing + trail
+#ANNOTATION: sum trail and closing, substitute the result for lead.
+
+            # Make URL we want to point to.
+            url = None
+#ANNOTATION: url is None.
+            nofollow_attr = ' rel="nofollow"' if nofollow else ''
+#ANNOTATION: if nofollow is true nofollow_attr is a string ' rel="nofollow"', otherwise nofollow_attr is an empty string.
+            if simple_url_re.match(middle):
+#ANNOTATION: call the method simple_url_re.match with an argument middle, if it evaluates to true,
+                url = smart_urlquote(middle)
+#ANNOTATION: call the function smart_urlquote with an argument middle, substitute the result for url.
+            elif simple_url_2_re.match(middle):
+#ANNOTATION: otherwise if call the method simple_url_2_re.match with an argument middle evaluates to true,
+                url = smart_urlquote('http://%s' % middle)
+#ANNOTATION: call the function smart_urlquote with an argument string 'http://%s' formated with an argument middle, substitute the result for url.
+            elif ':' not in middle and simple_email_re.match(middle):
+#ANNOTATION: otherwise if ':' is not contained in middle and result of the function simple_email_re.match called with an argument middle,
+#ANNOTATION: evaluates to true,
+                local, domain = middle.rsplit('@', 1)
+#ANNOTATION: split middle into two parts from the right by '@' character, assign the resulting parts to local and domain.
+                try:
+#ANNOTATION: try,
+                    domain = domain.encode('idna').decode('ascii')
+#ANNOTATION: call the method domain.encode with an argument string 'idna', call the method decode on the result with an argument string 'ascii',
+#ANNOTATION: substitute the result for domain.
+                except UnicodeError:
+#ANNOTATION: if UnicodeError exception is caught,
+                    continue
+#ANNOTATION: skip this loop iteration.
+                url = 'mailto:%s@%s' % (local, domain)
+#ANNOTATION: url is a string 'mailto:%s@%s' formated with local and domain.
+                nofollow_attr = ''
+#ANNOTATION: nofollow_attr is an empty string.
+
+            # Make link.
+            if url:
+#ANNOTATION: if url is true,
+                trimmed = trim_url(middle)
+#ANNOTATION: call the function trim_url with an argument middle, substitute the result for trimmed.
+                if autoescape and not safe_input:
+#ANNOTATION: if autoescape is true and safe_input is false,
+                    lead, trail = escape(lead), escape(trail)
+#ANNOTATION: call the function escape with an argument lead, substitute the result for lead, call the function escape with an argument trail,
+#ANNOTATION: substitute the result for trail.
+                    url, trimmed = escape(url), escape(trimmed)
+#ANNOTATION: call the function escape with an argument url, substitute the result for url, call the function escape with an argument trimmed,
+#ANNOTATION: substitute the result for trimmed.
+                middle = '<a href="%s"%s>%s</a>' % (url, nofollow_attr, trimmed)
+#ANNOTATION: middle is a string '<a href="%s"%s>%s</a>' formated with url, nofollow_attr and trimmed.
+                words[i] = mark_safe('%s%s%s' % (lead, middle, trail))
+#ANNOTATION: format string '<a href="%s"%s>%s</a>' with lead, middle and trail, use it as an argument for the call to the function mark_safe,
+#ANNOTATION: substitute the result for i-th element of words.
+            else:
+#ANNOTATION: if not,
+                if safe_input:
+#ANNOTATION: if safe_input is true, 
+                    words[i] = mark_safe(word)
+#ANNOTATION: call the function mark_safe with an argument word, substitute the result for i-th element of words.
+                elif autoescape:
+#ANNOTATION: otherwise if autoescape is true,
+                    words[i] = escape(word)
+#ANNOTATION: call the function escape with an argument word, substitute the result for i-th element of words.
+        elif safe_input:
+#ANNOTATION: otherwise if safe_input is true,
+            words[i] = mark_safe(word)
+#ANNOTATION: call the function mark_safe with an argument word, substitute the result for i-th element of words.
+        elif autoescape:
+#ANNOTATION: otherwise if autoescape is true,
+            words[i] = escape(word)
+#ANNOTATION: call the function escape with an argument word, substitute the result for i-th element of words.
+    return ''.join(words)
+#ANNOTATION: join elements of words into a string, return it.
+urlize = allow_lazy(urlize, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: urlize, six.text_type, substitute the result for urlize.
+
+
+def avoid_wrapping(value):
+#ANNOTATION: define the function avoid_wrapping with an argument value.
+    """
+    Avoid text wrapping in the middle of a phrase by adding non-breaking
+    spaces where there previously were normal spaces.
+    """
+#ANNOTATION: docstring
+    return value.replace(" ", "\xa0")
+#ANNOTATION: replace every occurrence of ' ' in value for '\xa0', return the result.

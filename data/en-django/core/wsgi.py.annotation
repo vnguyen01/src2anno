@@ -1,0 +1,21 @@
+import django
+#ANNOTATION: import module django.
+from django.core.handlers.wsgi import WSGIHandler
+#ANNOTATION: from django.core.handlers.wsgi import WSGIHandler into default name space.
+
+
+def get_wsgi_application():
+#ANNOTATION: define the function get_wsgi_application.
+    """
+    The public interface to Django's WSGI support. Should return a WSGI
+    callable.
+
+    Allows us to avoid making django.core.handlers.WSGIHandler public API, in
+    case the internal WSGI implementation changes or moves in the future.
+
+    """
+#ANNOTATION: docstring
+    django.setup()
+#ANNOTATION: call the django.setup method.
+    return WSGIHandler()
+#ANNOTATION: return WSGIHandler object.

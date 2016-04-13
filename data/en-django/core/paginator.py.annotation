@@ -1,0 +1,261 @@
+import collections
+#ANNOTATION: import module collections.
+from math import ceil
+#ANNOTATION: from math import ceil into default name space.
+
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+class InvalidPage(Exception):
+#ANNOTATION: derive the class InvalidPage from the Exception base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+class PageNotAnInteger(InvalidPage):
+#ANNOTATION: derive the class PageNotAnInteger from the InvalidPage base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+class EmptyPage(InvalidPage):
+#ANNOTATION: derive the class EmptyPage from the InvalidPage base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+class Paginator(object):
+#ANNOTATION: derive the class Paginator from the object base class.
+
+    def __init__(self, object_list, per_page, orphans=0,
+                 allow_empty_first_page=True):
+#ANNOTATION: def the method __init__ with 5 arguments: self, object_list, per_page, orphans set to integer 0 and allow_empty_first_page set to boolean True.
+        self.object_list = object_list
+#ANNOTATION: substitute object_list for self.object_list.
+        self.per_page = int(per_page)
+#ANNOTATION: convert per_page into an integer and substitute it for self.per_page.
+        self.orphans = int(orphans)
+#ANNOTATION: convert orphans into an integer and substitute it for self.orphans.
+        self.allow_empty_first_page = allow_empty_first_page
+#ANNOTATION: substitute allow_empty_first_page for self.allow_empty_first_page.
+        self._num_pages = self._count = None
+#ANNOTATION: self._num_pages and self._count are None.
+
+    def validate_number(self, number):
+#ANNOTATION: define the method validate_number with self class instance and number as arguments.
+        """
+        Validates the given 1-based page number.
+        """
+#ANNOTATION: docstring
+        try:
+#ANNOTATION: try,
+            number = int(number)
+#ANNOTATION: convert number into an integer and substitute it for number
+        except (TypeError, ValueError):
+#ANNOTATION: if TypeError or ValueError exceptions are caught,
+            raise PageNotAnInteger('That page number is not an integer')
+#ANNOTATION: raise an exception PageNotAnInteger with string 'That page number is not an integer' as an argument.
+        if number < 1:
+#ANNOTATION: if number is lesser than integer 1,
+            raise EmptyPage('That page number is less than 1')
+#ANNOTATION: raise an EmptyPage exception with string 'That page number is less than 1' as an argument.
+        if number > self.num_pages:
+#ANNOTATION: if number is greater than self.num_pages,
+            if number == 1 and self.allow_empty_first_page:
+#ANNOTATION: if number equals a integer 1 and self.allow_empty_first_page is true,
+                pass
+#ANNOTATION: do nothing.
+            else:
+#ANNOTATION: if not,
+                raise EmptyPage('That page contains no results')
+#ANNOTATION: raise an EmptyPage exception with string 'That page contains no results' as an argument.
+        return number
+#ANNOTATION: return number.
+
+    def page(self, number):
+#ANNOTATION: define the method page with self class instance and number as arguments.
+        """
+        Returns a Page object for the given 1-based page number.
+        """
+#ANNOTATION: docstring
+        number = self.validate_number(number)
+#ANNOTATION: call the method self.validate_number with an argument number, substitute it for number.
+        bottom = (number - 1) * self.per_page
+#ANNOTATION: decrement number by one, multiply it with self.per_page, substitute the result for bottom.
+        top = bottom + self.per_page
+#ANNOTATION: sum bottom and self.per_page, substitute the result for top.
+        if top + self.orphans >= self.count:
+#ANNOTATION: if sum of the top and self.orphans is greater or equal to self.count,
+            top = self.count
+#ANNOTATION: substitute self.count for top.
+        return self._get_page(self.object_list[bottom:top], number, self)
+#ANNOTATION: call the self._get_pages method with 3 arguments: self.object_list from the bottom to the top index, number and self, return the result.
+
+    def _get_page(self, *args, **kwargs):
+#ANNOTATION: define the method _get_page with self class instance, unpacked list args and unpacked dictionary kwargs as arguments.
+        """
+        Returns an instance of a single page.
+
+        This hook can be used by subclasses to use an alternative to the
+        standard :cls:`Page` object.
+        """
+#ANNOTATION: docstring
+        return Page(*args, **kwargs)
+#ANNOTATION: return a instance of the class Page, created with 2 arguments: unpacked list args and unpacked dictionary kwargs. 
+
+    def _get_count(self):
+#ANNOTATION: define the method _get_count with an argument self.
+        """
+        Returns the total number of objects, across all pages.
+        """
+#ANNOTATION: docstring
+        if self._count is None:
+#ANNOTATION: if self._count is None,
+            try:
+#ANNOTATION: try,
+                self._count = self.object_list.count()
+#ANNOTATION: substitute the return value of the method self.object_list.count for self._count.
+            except (AttributeError, TypeError):
+#ANNOTATION: if TypeError or AttributeError exceptions are caught,
+                # AttributeError if object_list has no count() method.
+                # TypeError if object_list.count() requires arguments
+                # (i.e. is of type list).
+                self._count = len(self.object_list)
+#ANNOTATION: substitute length of self.object_list for self._count.
+        return self._count
+#ANNOTATION: return self._count.
+    count = property(_get_count)
+#ANNOTATION: count is a property object with _get_count as a getter method.
+
+    def _get_num_pages(self):
+#ANNOTATION: define the method _get_num_pages with an argument self.
+        """
+        Returns the total number of pages.
+        """
+#ANNOTATION: docstring
+        if self._num_pages is None:
+#ANNOTATION: if self._num_pages is None,
+            if self.count == 0 and not self.allow_empty_first_page:
+#ANNOTATION: if self.count equals a integer 0 and self.allow_empty_first_page is false,
+                self._num_pages = 0
+#ANNOTATION: self._num_pages is a integer 0.
+            else:
+#ANNOTATION: if not,
+                hits = max(1, self.count - self.orphans)
+#ANNOTATION: get greater value between integer 1 and result of subtraction of self.orphans from self.count, substitute it for hits. 
+                self._num_pages = int(ceil(hits / float(self.per_page)))
+#ANNOTATION: divide hits by a floating point number self.per_page, convert its ceiling value to an integer and substitute it for self._num_pages.
+        return self._num_pages
+#ANNOTATION: return self._num_pages.
+    num_pages = property(_get_num_pages)
+#ANNOTATION: num_pages is a property object with _get_num_pages as a getter method.
+
+    def _get_page_range(self):
+#ANNOTATION: define the method _get_page_range with an argument self.
+        """
+        Returns a 1-based range of pages for iterating through within
+        a template for loop.
+        """
+#ANNOTATION: docstring
+        return range(1, self.num_pages + 1)
+#ANNOTATION: return all the integers from the integer 1 to the self.num_pages.
+    page_range = property(_get_page_range)
+#ANNOTATION: page_range is a property object with _get_page_range as a getter method.
+
+
+QuerySetPaginator = Paginator   # For backwards-compatibility.
+#ANNOTATION: substitute Paginator for QuerySetPaginator.
+
+
+class Page(collections.Sequence):
+#ANNOTATION: derive the class Page from the collections.Sequence base class.
+
+    def __init__(self, object_list, number, paginator):
+#ANNOTATION: define the method __init__ with 4 arguments: self, object_list, number, and paginator.
+        self.object_list = object_list
+#ANNOTATION: substitute object_list for self.object_list.
+        self.number = number
+#ANNOTATION: substitute number for self.number.
+        self.paginator = paginator
+#ANNOTATION: substitute paginator for self.paginator.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return '<Page %s of %s>' % (self.number, self.paginator.num_pages)
+#ANNOTATION: return the string '<Page %s of %s>', with occurrences of '%s' replaced by self.number and self.paginator.num_pages, respectively. 
+
+    def __len__(self):
+#ANNOTATION: define the method __len__ with an argument self.
+        return len(self.object_list)
+#ANNOTATION: return the length of self.object_list.
+
+    def __getitem__(self, index):
+#ANNOTATION: define the method __getitem__ with arguments self and index.
+        if not isinstance(index, (slice,) + six.integer_types):
+#ANNOTATION: if index is not an instance of six.integer_types or tuple type,
+            raise TypeError
+#ANNOTATION: raise a TypeError exception,
+        # The object_list is converted to a list so that if it was a QuerySet
+        # it won't be a database hit per __getitem__.
+        if not isinstance(self.object_list, list):
+#ANNOTATION: if self.object is not an instance of list type,
+            self.object_list = list(self.object_list)
+#ANNOTATION: convert self.object_list to a list.
+        return self.object_list[index]
+#ANNOTATION: return self.object_list element at index.
+
+    def has_next(self):
+#ANNOTATION: define the method has_next with an argument self.
+        return self.number < self.paginator.num_pages
+#ANNOTATION: if self.number is lesser than self.paginator.num_pages, return boolean True, otherwise return boolean False.
+
+    def has_previous(self):
+#ANNOTATION: define the method has_previous with an argument self.
+        return self.number > 1
+#ANNOTATION: if self.number is greater than integer 1, return boolean True, otherwise return boolean False.
+
+    def has_other_pages(self):
+#ANNOTATION: define the method has_other_pages with an argument self.
+        return self.has_previous() or self.has_next()
+#ANNOTATION: call the method self.has_previous, if it evaluate to false, call the self.has_next method, return the result. 
+
+    def next_page_number(self):
+#ANNOTATION: define the method next_page_number with an argument self.
+        return self.paginator.validate_number(self.number + 1)
+#ANNOTATION: call the method self.paginator.validate_number with self.number incremented by 1 as argument, return the result. 
+
+    def previous_page_number(self):
+#ANNOTATION: define the method previous_page_number with an argument self.
+        return self.paginator.validate_number(self.number - 1)
+#ANNOTATION: call the method self.paginator.validate_number with self.number decremented by 1 as argument, return the result. 
+
+    def start_index(self):
+#ANNOTATION: define the method start_index with an argument self.
+        """
+        Returns the 1-based index of the first object on this page,
+        relative to total objects in the paginator.
+        """
+#ANNOTATION: docstring
+        # Special case, return zero if no items.
+        if self.paginator.count == 0:
+#ANNOTATION: if self.paginator.count equals a integer 0,
+            return 0
+#ANNOTATION: return integer 0.
+        return (self.paginator.per_page * (self.number - 1)) + 1
+#ANNOTATION: decrement self.number by one, multiply it by self.paginator.per_page, increment the result by one, return it.
+
+    def end_index(self):
+#ANNOTATION: define the method end_index with an argument self.
+        """
+        Returns the 1-based index of the last object on this page,
+        relative to total objects found (hits).
+        """
+#ANNOTATION: docstring
+        # Special case for the last page because there can be orphans.
+        if self.number == self.paginator.num_pages:
+#ANNOTATION: if self.number equals to self.paginator.num_pages,
+            return self.paginator.count
+#ANNOTATION: return self.paginator.count.
+        return self.number * self.paginator.per_page
+#ANNOTATION: multiply self.number and self.paginator.per_page, return the result.

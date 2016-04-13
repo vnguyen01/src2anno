@@ -1,0 +1,367 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import codecs
+#ANNOTATION: import module codecs.
+import datetime
+#ANNOTATION: import module datetime.
+from decimal import Decimal
+#ANNOTATION: from decimal import Decimal into default name space.
+import locale
+#ANNOTATION: import module locale.
+
+from django.utils.functional import Promise
+#ANNOTATION: from django.utils.functional import Promise into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.six.moves.urllib.parse import quote
+#ANNOTATION: from django.utils.six.moves.urllib.parse import quote into default name space.
+
+
+class DjangoUnicodeDecodeError(UnicodeDecodeError):
+#ANNOTATION: derive the class DjangoUnicodeDecodeError from the base class UnicodeDecodeError.
+    def __init__(self, obj, *args):
+#ANNOTATION: define the private method __init__, with self instance of this class, obj and list of arbitrary length *args as arguments. 
+        self.obj = obj
+#ANNOTATION: assign obj to the obj field of self instance of this class.
+        UnicodeDecodeError.__init__(self, *args)
+#ANNOTATION: call the initialization method UnicodeDecodeError.__init__, with self instance of this class and *args as arguments.
+
+    def __str__(self):
+#ANNOTATION: define the private method __str__, with self instance of this class as the only argument.
+        original = UnicodeDecodeError.__str__(self)
+#ANNOTATION: call the method UnicodeDecodeError.__str__, with self as the argument, substitute the result for original.
+        return '%s. You passed in %r (%s)' % (original, self.obj,
+                type(self.obj))
+#ANNOTATION: in the string '%s. You passed in %r (%s)' replace every %s with original and type of the object self.obj as strings, respectively, 
+#ANNOTATION: and replace %r with self.obj, return the result. 
+
+
+def python_2_unicode_compatible(klass):
+#ANNOTATION: define function python_2_unicode_compatible, with klass as an argument.
+    """
+    A decorator that defines __unicode__ and __str__ methods under Python 2.
+    Under Python 3 it does nothing.
+
+    To support Python 2 and 3 with a single code base, define a __str__ method
+    returning text and apply this decorator to the class.
+    """
+#ANNOTATION: docstring
+    if six.PY2:
+#ANNOTATION: if field PY2 of the module six is boolean True,
+        if '__str__' not in klass.__dict__:
+#ANNOTATION: if string '__str__' is not contained in __dict__ field of klass,
+            raise ValueError("@python_2_unicode_compatible cannot be applied "
+                             "to %s because it doesn't define __str__()." %
+                             klass.__name__)
+#ANNOTATION: raise the exception ValueError, with string as argument, "@python_2_unicode_compatible cannot be applied",
+#ANNOTATION: "to %s because it doesn't define __str__().", replace %s with string value of klass.__name__.
+        klass.__unicode__ = klass.__str__
+#ANNOTATION: substitute __str__ filed of klass for __unicode__ field of klass.
+        klass.__str__ = lambda self: self.__unicode__().encode('utf-8')
+#ANNOTATION: define lambda function with self class instance as the argument, lambda function body encapsulates the call to the method,
+#ANNOTATION: str.__unicode__().encode('utf-8'), call the lambda function and put the result in the __str__ filed of klass.
+    return klass
+#ANNOTATION: return klass.
+
+
+def smart_text(s, encoding='utf-8', strings_only=False, errors='strict'):
+#ANNOTATION: define the function smart_text, with s, encoding set to string 'utf-8', strings_only set to False, errors set to 'strict' as arguments.
+    """
+    Returns a text object representing 's' -- unicode on Python 2 and str on
+    Python 3. Treats bytestrings using the 'encoding' codec.
+
+    If strings_only is True, don't convert (some) non-string-like objects.
+    """
+#ANNOTATION: docstring
+    if isinstance(s, Promise):
+#ANNOTATION: if s is instance of a class Promise,
+        # The input is the result of a gettext_lazy() call.
+        return s
+#ANNOTATION: return s.
+    return force_text(s, encoding, strings_only, errors)
+#ANNOTATION: return the result of the call to the function force_text, with s, encoding, string_only and errors as arguments.
+
+
+_PROTECTED_TYPES = six.integer_types + (type(None), float, Decimal,
+    datetime.datetime, datetime.date, datetime.time)
+#ANNOTATION: _PROTECTED_TYPES is a tuple containing next elements, six.integer_types, type of None, type of float, Decimal, detetime.datetime, 
+#ANNOTATION: datetime.date and datetime.time.
+
+
+def is_protected_type(obj):
+#ANNOTATION: define the function is_protected_type with obj as the only argument. 
+    """Determine if the object instance is of a protected type.
+
+    Objects of protected types are preserved as-is when passed to
+    force_text(strings_only=True).
+    """
+#ANNOTATION: docstring
+    return isinstance(obj, _PROTECTED_TYPES)
+#ANNOTATION: check if obj is instance of the object _PROTECTED_TYPES, return the boolean result.
+
+
+def force_text(s, encoding='utf-8', strings_only=False, errors='strict'):
+#ANNOTATION: define the function force_text, with s, encoding set to 'utf-8', strings_only set to False, errors set to string 'strict' as arguments.
+    """
+    Similar to smart_text, except that lazy instances are resolved to
+    strings, rather than kept as lazy objects.
+
+    If strings_only is True, don't convert (some) non-string-like objects.
+    """
+#ANNOTATION: docstring
+    # Handle the common case first for performance reasons.
+    if isinstance(s, six.text_type):
+#ANNOTATION: if s is the instance of the object six.text_type,
+        return s
+#ANNOTATION: return s.
+    if strings_only and is_protected_type(s):
+#ANNOTATION: if the boolean return vale of the call to the function is_protected_type(s) and string_onlys are boolean True,
+        return s
+#ANNOTATION: return s.
+    try:
+#ANNOTATION: try,
+        if not isinstance(s, six.string_types):
+#ANNOTATION: if s is not an instance of the object six/string_types,
+            if six.PY3:
+#ANNOTATION: if PY3 filed of six is boolean True,
+                if isinstance(s, bytes):
+#ANNOTATION: if s is an instance of object bytes,
+                    s = six.text_type(s, encoding, errors)
+#ANNOTATION: call the function six.text_type with s, encoding and errors as the arguments, substitute the result for s.
+                else:
+#ANNOTATION: if not,
+                    s = six.text_type(s)
+#ANNOTATION: call the function six.text_type with s as an argument, substitute the result for s.
+            elif hasattr(s, '__unicode__'):
+#ANNOTATION: otherwise, if s has an attribute '__unicode__',
+                s = six.text_type(s)
+#ANNOTATION: call the function six.text_type with s as an argument, substitute result for s.
+            else:
+#ANNOTATION: if not,
+                s = six.text_type(bytes(s), encoding, errors)
+#ANNOTATION: call the function six.text_type with return value of the function bytes(s), encoding and errors as the arguments, 
+#ANNOTATION: substitute the result for s. 
+        else:
+#ANNOTATION: if not,
+            # Note: We use .decode() here, instead of six.text_type(s, encoding,
+            # errors), so that if s is a SafeBytes, it ends up being a
+            # SafeText at the end.
+            s = s.decode(encoding, errors)
+#ANNOTATION: call the method s.decode with encoding and errors as the arguments, substitute the result for s. 
+    except UnicodeDecodeError as e:
+#ANNOTATION: if an exception of the type UnicodeDecodeError, renamed to e, is caught,
+        if not isinstance(s, Exception):
+#ANNOTATION: if s is not an instance of the object Exception,
+            raise DjangoUnicodeDecodeError(s, *e.args)
+#ANNOTATION: raise an exception DjingoUnicodeDecodeError, with s and list of arguments *args from object e, as the arguments.
+        else:
+#ANNOTATION: if not,
+            # If we get to here, the caller has passed in an Exception
+            # subclass populated with non-ASCII bytestring data without a
+            # working unicode method. Try to handle this without raising a
+            # further exception by individually forcing the exception args
+            # to unicode.
+            s = ' '.join([force_text(arg, encoding, strings_only,
+                    errors) for arg in s])
+#ANNOTATION: for every arg in s, call the function force_text with arg, encoding, strings_only and errors as arguments, 
+#ANNOTATION: join the result in a string separated by whitespaces, substitute it for s.
+    return s
+#ANNOTATION: return s.
+
+
+def smart_bytes(s, encoding='utf-8', strings_only=False, errors='strict'):
+#ANNOTATION: define function smart_bytes with s, encoding set to string 'utf-8', strings_only set to False and errors set to string 'strict', as arguments.
+    """
+    Returns a bytestring version of 's', encoded as specified in 'encoding'.
+
+    If strings_only is True, don't convert (some) non-string-like objects.
+    """
+#ANNOTATION: docstring
+    if isinstance(s, Promise):
+#ANNOTATION: if s is an instance of an object Promise.
+        # The input is the result of a gettext_lazy() call.
+        return s
+#ANNOTATION: return s.
+    return force_bytes(s, encoding, strings_only, errors)
+#ANNOTATION: evaluate the function force_bytes, with the arguments s, encoding, strings_only and errors, return the result.
+
+
+def force_bytes(s, encoding='utf-8', strings_only=False, errors='strict'):
+#ANNOTATION: define function force_bytes with s, encoding set to 'utf-8', strings_only set to False and errors set to 'strict' as arguments.
+    """
+    Similar to smart_bytes, except that lazy instances are resolved to
+    strings, rather than kept as lazy objects.
+
+    If strings_only is True, don't convert (some) non-string-like objects.
+    """
+#ANNOTATION: docstring
+    # Handle the common case first for performance reasons.
+    if isinstance(s, bytes):
+#ANNOTATION: if s is an instance of an object bytes.
+        if encoding == 'utf-8':
+#ANNOTATION: if encoding equals to string 'utf-8'.
+            return s
+#ANNOTATION: return s.
+        else:
+#ANNOTATION: if not,
+            return s.decode('utf-8', errors).encode(encoding, errors)
+#ANNOTATION: evaluate the method s.decode with string 'utf-8' and errors as the arguments, 
+#ANNOTATION: on the result call the method encode with the arguments encoding and errors, return the result.
+    if strings_only and is_protected_type(s):
+#ANNOTATION: if strings_only and boolean return value of the call to the function is_protected_type for argument s are boolean True,
+        return s
+#ANNOTATION: return s.
+    if isinstance(s, six.memoryview):
+#ANNOTATION: if s is an instance of an object six.memoryview.
+        return bytes(s)
+#ANNOTATION: evaluate the function bytes with the argument s, and return the result.
+    if isinstance(s, Promise):
+#ANNOTATION: if s is an instance of an object Promise.
+        return six.text_type(s).encode(encoding, errors)
+#ANNOTATION: return six.text_type(s).encode(encoding, errors).
+    if not isinstance(s, six.string_types):
+#ANNOTATION: if s is not an instance of the object six.string_types,
+        try:
+#ANNOTATION: try,
+            if six.PY3:
+#ANNOTATION: if PY3 field of six is boolean True,
+                return six.text_type(s).encode(encoding)
+#ANNOTATION: evaluate the method six.text_type(s), on the result call the method encode with encoding as an argument, return the result. 
+            else:
+#ANNOTATION: if not,
+                return bytes(s)
+#ANNOTATION: evaluate the function bytes with the argument s, and return the result.
+        except UnicodeEncodeError:
+#ANNOTATION: if the UnicodeEncodeError exception is caught,
+            if isinstance(s, Exception):
+#ANNOTATION: if s is an instance of the subclass Exception,
+                # An Exception subclass containing non-ASCII data that doesn't
+                # know how to print itself properly. We shouldn't raise a
+                # further exception.
+                return b' '.join([force_bytes(arg, encoding, strings_only,
+                        errors) for arg in s])
+#ANNOTATION: for every arg in s, evaluate the function force_bytes for the arguments arg, encoding, strings_only and errors,
+#ANNOTATION: put the results in a list, join the list elements in a string separated by whitespace separator, return the string as the bytes string.
+            return six.text_type(s).encode(encoding, errors)
+#ANNOTATION: evaluate the method six.text_type(s), on the result call the method encode with the arguments encoding and errors, return the result.
+    else:
+#ANNOTATION: if not,
+        return s.encode(encoding, errors)
+#ANNOTATION: evaluate the member method of s, encode with the encoding and errors as the arguments, return the result.
+
+if six.PY3:
+#ANNOTATION: if PY3 field of module six is boolean True,
+    smart_str = smart_text
+#ANNOTATION: substitute smart_text for smart_str.
+    force_str = force_text
+#ANNOTATION: substitute force_text for force_str.
+else:
+#ANNOTATION: if not,
+    smart_str = smart_bytes
+#ANNOTATION: substitute smart_bytes for smart_str.
+    force_str = force_bytes
+#ANNOTATION: substitute force_bytes for force_str.
+    # backwards compatibility for Python 2
+    smart_unicode = smart_text
+#ANNOTATION: substitute smart_text for smart_unicode.
+    force_unicode = force_text
+#ANNOTATION: substitute force_text for force_unicode.
+
+smart_str.__doc__ = """
+Apply smart_text in Python 3 and smart_bytes in Python 2.
+
+This is suitable for writing to sys.stdout (for instance).
+"""
+#ANNOTATION: smart_str.__doc__ is a docstring.
+
+force_str.__doc__ = """
+Apply force_text in Python 3 and force_bytes in Python 2.
+"""
+#ANNOTATION: force_str.__doc__ is a docstring.
+
+
+def iri_to_uri(iri):
+#ANNOTATION: define the function iri_to_uri with iri as an argument.
+    """
+    Convert an Internationalized Resource Identifier (IRI) portion to a URI
+    portion that is suitable for inclusion in a URL.
+
+    This is the algorithm from section 3.1 of RFC 3987.  However, since we are
+    assuming input is either UTF-8 or unicode already, we can simplify things a
+    little from the full method.
+
+    Returns an ASCII string containing the encoded result.
+    """
+#ANNOTATION: docstring
+    # The list of safe characters here is constructed from the "reserved" and
+    # "unreserved" characters specified in sections 2.2 and 2.3 of RFC 3986:
+    #     reserved    = gen-delims / sub-delims
+    #     gen-delims  = ":" / "/" / "?" / "#" / "[" / "]" / "@"
+    #     sub-delims  = "!" / "$" / "&" / "'" / "(" / ")"
+    #                   / "*" / "+" / "," / ";" / "="
+    #     unreserved  = ALPHA / DIGIT / "-" / "." / "_" / "~"
+    # Of the unreserved characters, urllib.quote already considers all but
+    # the ~ safe.
+    # The % character is also added to the list of safe characters here, as the
+    # end of section 3.1 of RFC 3987 specifically mentions that % must not be
+    # converted.
+    if iri is None:
+#ANNOTATION: if iri is not initialized, 
+        return iri
+#ANNOTATION: return iri.
+    return quote(force_bytes(iri), safe=b"/#%[]=:;$&()+,!?*@'~")
+#ANNOTATION: call the function quote with return value of the evaluated function force_bytes(iri),
+#ANNOTATION: and with safe set to bytes string "/#%[]=:;$&()+,!?*@'~", return the result.
+
+
+def filepath_to_uri(path):
+#ANNOTATION: define function filepath_to_uri with path as the argument.
+    """Convert a file system path to a URI portion that is suitable for
+    inclusion in a URL.
+
+    We are assuming input is either UTF-8 or unicode already.
+
+    This method will encode certain chars that would normally be recognized as
+    special chars for URIs.  Note that this method does not encode the '
+    character, as it is a valid character within URIs.  See
+    encodeURIComponent() JavaScript function for more details.
+
+    Returns an ASCII string containing the encoded result.
+    """
+#ANNOTATION: docstring
+    if path is None:
+#ANNOTATION: if path is not initialized,
+        return path
+#ANNOTATION: return path.
+    # I know about `os.sep` and `os.altsep` but I want to leave
+    # some flexibility for hardcoding separators.
+    return quote(force_bytes(path).replace(b"\\", b"/"), safe=b"/~!*()'")
+#ANNOTATION: evaluate function force_bytes with path as the argument, replace all of the occurancies of the "\\" with "/" in the resulting string,
+#ANNOTATION: call the function quote with the result and with the safe set to bytes string "/~!*()'", return the function result.
+
+
+def get_system_encoding():
+#ANNOTATION: define the function get_system_encoding without the input arguments.
+    """
+    The encoding of the default system locale but falls back to the given
+    fallback encoding if the encoding is unsupported by python or could
+    not be determined.  See tickets #10335 and #5846
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        encoding = locale.getdefaultlocale()[1] or 'ascii'
+#ANNOTATION: evaluate the function getdefaultlocale from the module locale, if second element of return value exists assign it to encoding,
+#ANNOTATION: otherwise assign string 'ascii' to encoding.
+        codecs.lookup(encoding)
+#ANNOTATION: call the method lookup with the encoding as the argument.
+    except Exception:
+#ANNOTATION: if the Exception exception is caught,
+        encoding = 'ascii'
+#ANNOTATION: substitute string 'ascii' for encoding.
+    return encoding
+#ANNOTATION: return encoding.
+
+DEFAULT_LOCALE_ENCODING = get_system_encoding()
+#ANNOTATION: evaluate the function get_system_encoding(), substitute the return vale for DEFAULT_LOCALE_ENCODING.

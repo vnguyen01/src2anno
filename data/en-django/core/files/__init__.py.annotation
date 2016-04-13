@@ -1,0 +1,5 @@
+from django.core.files.base import File
+#ANNOTATION: from django.core.files.base import File into default name space.
+
+__all__ = ['File']
+#ANNOTATION: __all__ is an list containing a string 'File'.

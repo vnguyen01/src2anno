@@ -1,0 +1,85 @@
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.utils.safestring import mark_safe
+#ANNOTATION: from django.utils.safestring import mark_safe into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+def format(number, decimal_sep, decimal_pos=None, grouping=0, thousand_sep='',
+           force_grouping=False):
+#ANNOTATION: define the function format with 6 arguments: number, decimal_sep, decimal_pos set to None, grouping set to integer 0, 
+#ANNOTATION: thousand_sep set to an empty string and force_grouping set to boolean False.
+    """
+    Gets a number (as a number or string), and returns it as a string,
+    using formats defined as arguments:
+
+    * decimal_sep: Decimal separator symbol (for example ".")
+    * decimal_pos: Number of decimal positions
+    * grouping: Number of digits in every group limited by thousand separator
+    * thousand_sep: Thousand separator symbol (for example ",")
+    """
+#ANNOTATION: docstring
+    use_grouping = settings.USE_L10N and settings.USE_THOUSAND_SEPARATOR
+#ANNOTATION: if settings.USE_L10N is true, substitute settings.USE_THOUSAND_SEPARATOR for use_grouping, 
+#ANNOTATION: otherwise substitute settings.USE_L10N for use_grouping.
+    use_grouping = use_grouping or force_grouping
+#ANNOTATION: if use_grouping is true substitute it for use_grouping, otherwise substitute force_grouping for use_grouping.
+    use_grouping = use_grouping and grouping > 0
+#ANNOTATION: if use_grouping is true and grouping is greater than integer 0, use_grouping is boolean True, otherwise it is boolean False.
+    # Make the common case fast
+    if isinstance(number, int) and not use_grouping and not decimal_pos:
+#ANNOTATION: if number is an integer and use_grouping is false and decimal_pos is false,
+        return mark_safe(six.text_type(number))
+#ANNOTATION: call the function six.text_type with an argument number, use the result as an argument for the call to the function mark_safe,
+#ANNOTATION: return the result.
+    # sign
+    sign = ''
+#ANNOTATION: sign is an empty string.
+    str_number = six.text_type(number)
+#ANNOTATION: call the function six.text_type with an argument number, substitute the result for str_number. 
+    if str_number[0] == '-':
+#ANNOTATION: if first element of str_number equals a string '-'.
+        sign = '-'
+#ANNOTATION: sign is a string '-'.
+        str_number = str_number[1:]
+#ANNOTATION: remove the first element from str_number.
+    # decimal part
+    if '.' in str_number:
+#ANNOTATION: if '.' is not contained in str_number,
+        int_part, dec_part = str_number.split('.')
+#ANNOTATION: split str_number by '.', substitute the result for int_part and dec_part, respectively.
+        if decimal_pos is not None:
+#ANNOTATION: if decimal_pos is not None,
+            dec_part = dec_part[:decimal_pos]
+#ANNOTATION: substitute first decimal_pos elements of dec_part for dec_part.
+    else:
+#ANNOTATION: if not,
+        int_part, dec_part = str_number, ''
+#ANNOTATION: substitute str_number and an empty string for int_part and dec_part.
+    if decimal_pos is not None:
+#ANNOTATION: if decimal_pos is not None
+        dec_part = dec_part + ('0' * (decimal_pos - len(dec_part)))
+#ANNOTATION: subtract length of dec_part from decimal_pos, multiply the number of character '0' by the result, 
+#ANNOTATION: append the resulting string to dec_part, substitute it for dec_part.
+    if dec_part:
+#ANNOTATION: if dec_part is true,
+        dec_part = decimal_sep + dec_part
+#ANNOTATION: add decimal_sep and dec_part, substitute the result for dec_part.
+    # grouping
+    if use_grouping:
+#ANNOTATION: if use_grouping is true,
+        int_part_gd = ''
+#ANNOTATION: int_part_gd is an empty string.
+        for cnt, digit in enumerate(int_part[::-1]):
+#ANNOTATION: for every cnt and digit in enumerated list int_part with reversed ordering of elements,
+            if cnt and not cnt % grouping:
+#ANNOTATION: if cnt is true and remained of dividing cnt with grouping is zero,
+                int_part_gd += thousand_sep
+#ANNOTATION: increment int_part_gd by thousand_sep.
+            int_part_gd += digit
+#ANNOTATION: append digit to int_part_gd.
+        int_part = int_part_gd[::-1]
+#ANNOTATION: invert the ordering of elements of int_part_gd, substitute it for int_part.
+    return sign + int_part + dec_part
+#ANNOTATION: sum sign, int_part and dec_part, return the result.

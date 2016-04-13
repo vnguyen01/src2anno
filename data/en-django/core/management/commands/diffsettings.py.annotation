@@ -1,0 +1,65 @@
+from django.core.management.base import BaseCommand
+#ANNOTATION: from django.core.management.base import BaseCommand into default name space.
+
+
+def module_to_dict(module, omittable=lambda k: k.startswith('_')):
+#ANNOTATION: define the function module_to_dict with 2 arguments: module and omittable as a lambda function with an argument k, 
+#ANNOTATION: and returns boolean True if k starts with '_', otherwise returns False. 
+    """Converts a module namespace to a Python dictionary."""
+#ANNOTATION: docstring
+    return dict((k, repr(v)) for k, v in module.__dict__.items() if not omittable(k))
+#ANNOTATION: return dictionary created out of tuple elements k and printable representation of v, 
+#ANNOTATION: for every k and v in return value of the method module.__dict__.items, only if result of the method omittable called with an argument k is false.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand base class.
+    help = """Displays differences between the current settings.py and Django's
+    default settings. Settings that don't appear in the defaults are
+    followed by "###"."""
+#ANNOTATION: help is a docstring.
+
+    requires_system_checks = False
+#ANNOTATION: requires_system_checks is boolean False. 
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with 2 arguments self and parser.
+        parser.add_argument('--all', action='store_true', dest='all', default=False,
+            help='Display all settings, regardless of their value. '
+            'Default values are prefixed by "###".')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--all', action set to string 'store_true', dest set to string 'all',
+#ANNOTATION: default set to boolean False and help set to a string 'Display all settings, regardless of their value. Default values are prefixed by "###".'
+
+    def handle(self, **options):
+#ANNOTATION: define the method handle with arguments self and unpacked dictionary options.
+        # Inspired by Postfix's "postconf -n".
+        from django.conf import settings, global_settings
+#ANNOTATION: from django.conf import settings, global_settings into default name space.
+
+        # Because settings are imported lazily, we need to explicitly load them.
+        settings._setup()
+#ANNOTATION: call the method settings._setup.
+
+        user_settings = module_to_dict(settings._wrapped)
+#ANNOTATION: call the function module_to_dict with an argument settings._wrapped, substitute it for user_settings.
+        default_settings = module_to_dict(global_settings)
+#ANNOTATION: call the function module_to_dict with an argument global_settings, substitute it for default_settings.
+
+        output = []
+#ANNOTATION: output is an empty string.
+        for key in sorted(user_settings):
+#ANNOTATION: for every key in sorted list of user_settings,
+            if key not in default_settings:
+#ANNOTATION: if key is not contained in default_settings,
+                output.append("%s = %s  ###" % (key, user_settings[key]))
+#ANNOTATION: replace '%s' in string "%s = %s  ###" with key and value under the key key of the user_setting dictionary, append it to the output.
+            elif user_settings[key] != default_settings[key]:
+#ANNOTATION: otherwise if value under the key key of the user_settings dictionary is not equal to the value under the key key of the default_settings dictionary,
+                output.append("%s = %s" % (key, user_settings[key]))
+#ANNOTATION: replace '%s' in string "%s = %s" with key and value under the key key of the user_setting dictionary, append it to the output.
+            elif options['all']:
+#ANNOTATION: otherwise if value under the key 'all' of the options dictionary is true,
+                output.append("### %s = %s" % (key, user_settings[key]))
+#ANNOTATION: replace '%s' in string "### %s = %s" with key and value under the key key of the user_setting dictionary, append it to the output.
+        return '\n'.join(output)
+#ANNOTATION: join elements of the output into a string, separated by newlies, return the string.

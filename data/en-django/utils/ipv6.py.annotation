@@ -1,0 +1,394 @@
+# This code was mostly based on ipaddr-py
+# Copyright 2007 Google Inc. http://code.google.com/p/ipaddr-py/
+# Licensed under the Apache License, Version 2.0 (the "License").
+from django.core.exceptions import ValidationError
+#ANNOTATION: from django.core.exceptions import ValidationError into default name space.
+from django.utils.translation import ugettext_lazy as _
+#ANNOTATION: from django.utils.translation import ugettext_lazy as _ into default name space.
+from django.utils.six.moves import xrange
+#ANNOTATION: from django.utils.six.moves import xrange into default name space.
+
+
+def clean_ipv6_address(ip_str, unpack_ipv4=False,
+        error_message=_("This is not a valid IPv6 address.")):
+#ANNOTATION: define the function clean_ipv6_address with 3 arguments: ip_str, unpack_ipv4 set to boolean False and error_message,
+#ANNOTATION: set to the result of the function _ called with an argument string "This is not a valid IPv6 address.".
+    """
+    Cleans an IPv6 address string.
+
+    Validity is checked by calling is_valid_ipv6_address() - if an
+    invalid address is passed, ValidationError is raised.
+
+    Replaces the longest continuous zero-sequence with "::" and
+    removes leading zeroes and makes sure all hextets are lowercase.
+
+    Args:
+        ip_str: A valid IPv6 address.
+        unpack_ipv4: if an IPv4-mapped address is found,
+        return the plain IPv4 address (default=False).
+        error_message: A error message for in the ValidationError.
+
+    Returns:
+        A compressed IPv6 address, or the same value
+
+    """
+#ANNOTATION: docstring
+    best_doublecolon_start = -1
+#ANNOTATION: best_doublecolon_start is an integer -1.
+    best_doublecolon_len = 0
+#ANNOTATION: best_doublecolon_len is an integer 0.
+    doublecolon_start = -1
+#ANNOTATION: doublecolon_start is an integer -1.
+    doublecolon_len = 0
+#ANNOTATION: doublecolon_len is an integer 0.
+
+    if not is_valid_ipv6_address(ip_str):
+#ANNOTATION: call he function is_valid_ipv6_address with an argument ip_str, if it evaluates to false,
+        raise ValidationError(error_message, code='invalid')
+#ANNOTATION: raise an ValidationError exception with 2 arguments: error_message and code as a string 'invalid'.
+
+    # This algorithm can only handle fully exploded
+    # IP strings
+    ip_str = _explode_shorthand_ip_string(ip_str)
+#ANNOTATION: call the function _explode_shorthand_ip_string with an argument ip_str, substitute the result for ip_str.
+
+    ip_str = _sanitize_ipv4_mapping(ip_str)
+#ANNOTATION: call the function _explode_shorthand_ip_string with an argument ip_str, substitute the result for ip_str.
+
+    # If needed, unpack the IPv4 and return straight away
+    # - no need in running the rest of the algorithm
+    if unpack_ipv4:
+#ANNOTATION: if unpack_ipv4 is true,
+        ipv4_unpacked = _unpack_ipv4(ip_str)
+#ANNOTATION: call the function _unpack_ipv4 with an argument ip_str, substitute the result for ipv4_unpacked.
+
+        if ipv4_unpacked:
+#ANNOTATION: if ipv4_unpacked is true,
+            return ipv4_unpacked
+#ANNOTATION: return ipv4_unpacked.
+
+    hextets = ip_str.split(":")
+#ANNOTATION: split ip_str by ':', substitute the result for hextets.
+
+    for index in range(len(hextets)):
+#ANNOTATION: for every index in range of integers from 0 to length of hextets, not included,
+        # Remove leading zeroes
+        hextets[index] = hextets[index].lstrip('0')
+#ANNOTATION: get the value under the index key of the hextets dictionary, remove the leading '0' characters, 
+#ANNOTATION: substitute the result for value under the index key of the hextets dictionary.
+        if not hextets[index]:
+#ANNOTATION: get the value under the index key of the hextets dictionary, if it is false,
+            hextets[index] = '0'
+#ANNOTATION: value under the index key of the hextets dictionary is a string '0'.
+
+        # Determine best hextet to compress
+        if hextets[index] == '0':
+#ANNOTATION: if value under the index key of the hextets dictionary equals to string '0',
+            doublecolon_len += 1
+#ANNOTATION: increment doublecolon_len by integer 1,
+            if doublecolon_start == -1:
+#ANNOTATION: if doublecolon_start equals integer -1,
+                # Start of a sequence of zeros.
+                doublecolon_start = index
+#ANNOTATION: substitute index for doublecolon_start.
+            if doublecolon_len > best_doublecolon_len:
+#ANNOTATION: if doublecolon_len is greater than best_doublecolon_len,
+                # This is the longest sequence of zeros so far.
+                best_doublecolon_len = doublecolon_len
+#ANNOTATION: substitute doublecolon_len for best_doublecolon_len.
+                best_doublecolon_start = doublecolon_start
+#ANNOTATION: substitute doublecolon_start for best_doublecolon_start.
+        else:
+#ANNOTATION: if not,
+            doublecolon_len = 0
+#ANNOTATION: doublecolon_len is integer 0.
+            doublecolon_start = -1
+#ANNOTATION: doublecolon_start is integer -1.
+
+    # Compress the most suitable hextet
+    if best_doublecolon_len > 1:
+#ANNOTATION: if best_doublecolon_len is greater than integer 1,
+        best_doublecolon_end = (best_doublecolon_start +
+                                best_doublecolon_len)
+#ANNOTATION: sum best_doublecolon_start and best_doublecolon_len, substitute the result for best_doublecolon_end,
+        # For zeros at the end of the address.
+        if best_doublecolon_end == len(hextets):
+#ANNOTATION: if best_doublecolon_end equals length of hextets,
+            hextets += ['']
+#ANNOTATION: append an empty string to list hextets.
+        hextets[best_doublecolon_start:best_doublecolon_end] = ['']
+        # For zeros at the beginning of the address.
+#ANNOTATION: replace hextets list from the best_doublecolon_start index to best_doublecolon_end index with an empty string.
+        if best_doublecolon_start == 0:
+#ANNOTATION: if best_doublecolon_start equals integer 0,
+            hextets = [''] + hextets
+#ANNOTATION: prepend an empty string to hextets list.
+
+    result = ":".join(hextets)
+#ANNOTATION: join elements of hextets into a string, separated with ':', substitute it for result.
+
+    return result.lower()
+#ANNOTATION: convert result to lowercase and return it.
+
+
+def _sanitize_ipv4_mapping(ip_str):
+#ANNOTATION: define the function _sanitize_ipv4_mapping with an argument ip_str.
+    """
+    Sanitize IPv4 mapping in an expanded IPv6 address.
+
+    This converts ::ffff:0a0a:0a0a to ::ffff:10.10.10.10.
+    If there is nothing to sanitize, returns an unchanged
+    string.
+
+    Args:
+        ip_str: A string, the expanded IPv6 address.
+
+    Returns:
+        The sanitized output string, if applicable.
+    """
+#ANNOTATION: docstring
+    if not ip_str.lower().startswith('0000:0000:0000:0000:0000:ffff:'):
+#ANNOTATION: convert ip_str to lowercase, if it doesnt start with a string '0000:0000:0000:0000:0000:ffff:',
+        # not an ipv4 mapping
+        return ip_str
+#ANNOTATION: return ip_str.
+
+    hextets = ip_str.split(':')
+#ANNOTATION: split ip_str into parts by ':', substitute the result for hextets.
+
+    if '.' in hextets[-1]:
+#ANNOTATION: if '.' is contained in last elements of hextets,
+        # already sanitized
+        return ip_str
+#ANNOTATION: return ip_str.
+
+    ipv4_address = "%d.%d.%d.%d" % (
+        int(hextets[6][0:2], 16),
+        int(hextets[6][2:4], 16),
+        int(hextets[7][0:2], 16),
+        int(hextets[7][2:4], 16),
+    )
+#ANNOTATION: ipv4_address is a string "%d.%d.%d.%d" formated with first 2 elements of seventh element of hextets converted into hexadecimal number,
+#ANNOTATION: second 2 elements of seventh element of hextets converted into hexadecimal number,
+#ANNOTATION: first 2 elements of eight element of hextets converted into hexadecimal number,
+#ANNOTATION: second 2 elements of eight element of hextets converted into hexadecimal number.
+    result = ':'.join(hextets[0:6])
+#ANNOTATION: join first 5 elements of hextets into a string, separated by ':', substitute the result for result.
+    result += ':' + ipv4_address
+#ANNOTATION: append ':' and ipv4_address to result.
+
+    return result
+#ANNOTATION: return result.
+
+
+def _unpack_ipv4(ip_str):
+#ANNOTATION: define the function _unpack_ipv4 with an argument ip_str.
+    """
+    Unpack an IPv4 address that was mapped in a compressed IPv6 address.
+
+    This converts 0000:0000:0000:0000:0000:ffff:10.10.10.10 to 10.10.10.10.
+    If there is nothing to sanitize, returns None.
+
+    Args:
+        ip_str: A string, the expanded IPv6 address.
+
+    Returns:
+        The unpacked IPv4 address, or None if there was nothing to unpack.
+    """
+#ANNOTATION: docstring
+    if not ip_str.lower().startswith('0000:0000:0000:0000:0000:ffff:'):
+#ANNOTATION: convert ip_str to lowercase, if it doesnt start with a string '0000:0000:0000:0000:0000:ffff:',
+        return None
+#ANNOTATION: return None.
+
+    return ip_str.rsplit(':', 1)[1]
+#ANNOTATION: split ip_str into 2 parts from right, return second element of the result.
+
+
+def is_valid_ipv6_address(ip_str):
+#ANNOTATION: define the function is_valid_ipv6_address with an argument ip_str.
+    """
+    Ensure we have a valid IPv6 address.
+
+    Args:
+        ip_str: A string, the IPv6 address.
+
+    Returns:
+        A boolean, True if this is a valid IPv6 address.
+
+    """
+#ANNOTATION: docstring
+    from django.core.validators import validate_ipv4_address
+#ANNOTATION: from django.core.validators import validate_ipv4_address.
+
+    # We need to have at least one ':'.
+    if ':' not in ip_str:
+#ANNOTATION: if ':' is not contained in ip_str.
+        return False
+#ANNOTATION: return boolean False.
+
+    # We can only have one '::' shortener.
+    if ip_str.count('::') > 1:
+#ANNOTATION: if count of occurrence of '::' in ip_str is greater than integer 1,
+        return False
+#ANNOTATION: return boolean False.
+
+    # '::' should be encompassed by start, digits or end.
+    if ':::' in ip_str:
+#ANNOTATION: if string ':::' is contained in ip_str,
+        return False
+#ANNOTATION: return boolean False.
+
+    # A single colon can neither start nor end an address.
+    if ((ip_str.startswith(':') and not ip_str.startswith('::')) or
+            (ip_str.endswith(':') and not ip_str.endswith('::'))):
+#ANNOTATION: if ip_str starts with ':, but it doesnt starts with '::', or if ip_str ends with ':, but it doesnt ends with '::',
+        return False
+#ANNOTATION: return boolean False.
+
+    # We can never have more than 7 ':' (1::2:3:4:5:6:7:8 is invalid)
+    if ip_str.count(':') > 7:
+#ANNOTATION: if count of occurrence of ':' in ip_str is greater than integer 7,
+        return False
+#ANNOTATION: return boolean False.
+
+    # If we have no concatenation, we need to have 8 fields with 7 ':'.
+    if '::' not in ip_str and ip_str.count(':') != 7:
+#ANNOTATION: if '::' is not contained in ip_str and number of occurrences of ':' in ip_str is not equal to integer 7,
+        # We might have an IPv4 mapped address.
+        if ip_str.count('.') != 3:
+#ANNOTATION: if count of occurrence of '.' in ip_str is not equal to integer 3,
+            return False
+#ANNOTATION: return boolean False.
+
+    ip_str = _explode_shorthand_ip_string(ip_str)
+#ANNOTATION: call the function _explode_shorthand_ip_string with an argument ip_str, substitute the result for ip_str.
+
+    # Now that we have that all squared away, let's check that each of the
+    # hextets are between 0x0 and 0xFFFF.
+    for hextet in ip_str.split(':'):
+#ANNOTATION: split ip_str into parts by ':', for every hextet in the result,
+        if hextet.count('.') == 3:
+#ANNOTATION: if count of occurrence of '.' in ip_str is equal to integer 3,
+            # If we have an IPv4 mapped address, the IPv4 portion has to
+            # be at the end of the IPv6 portion.
+            if not ip_str.split(':')[-1] == hextet:
+#ANNOTATION: split ip_str by ':', if last element of the result is not equal to hextet.
+                return False
+#ANNOTATION: return boolean False.
+            try:
+#ANNOTATION: try,
+                validate_ipv4_address(hextet)
+#ANNOTATION: call the function validate_ipv4_address with an argument hextet.
+            except ValidationError:
+#ANNOTATION: if ValidationError exception is caught,
+                return False
+#ANNOTATION: return boolean False.
+        else:
+#ANNOTATION: if not,
+            try:
+#ANNOTATION: try,
+                # a value error here means that we got a bad hextet,
+                # something like 0xzzzz
+                if int(hextet, 16) < 0x0 or int(hextet, 16) > 0xFFFF:
+#ANNOTATION: if hextet converted to hexadecimal number is smaller than hexadecimal 0, or hextet converted to hexadecimal number is smaller than hexadecimal FFFF,
+                    return False
+#ANNOTATION: return boolean False.
+            except ValueError:
+#ANNOTATION: if ValueError exception is caught.
+                return False
+#ANNOTATION: return boolean False.
+    return True
+#ANNOTATION: return boolean True.
+
+
+def _explode_shorthand_ip_string(ip_str):
+#ANNOTATION: define the function _explode_shorthand_ip_string with an argument ip_str.
+    """
+    Expand a shortened IPv6 address.
+
+    Args:
+        ip_str: A string, the IPv6 address.
+
+    Returns:
+        A string, the expanded IPv6 address.
+
+    """
+#ANNOTATION: docstring
+    if not _is_shorthand_ip(ip_str):
+#ANNOTATION: call the function _is_shorthand_ip with an argument ip_str, if it evaluates to false,
+        # We've already got a longhand ip_str.
+        return ip_str
+#ANNOTATION: return ip_str.
+
+    new_ip = []
+#ANNOTATION: new_ip is an empty list,
+    hextet = ip_str.split('::')
+#ANNOTATION: split ip_str by '::', substitute it for hextet.
+
+    # If there is a ::, we need to expand it with zeroes
+    # to get to 8 hextets - unless there is a dot in the last hextet,
+    # meaning we're doing v4-mapping
+    if '.' in ip_str.split(':')[-1]:
+#ANNOTATION: split ip_str into parts by ':', if '.' is contained in the last element of the result, 
+        fill_to = 7
+#ANNOTATION: fill_to is an integer 7.
+    else:
+#ANNOTATION: if not,
+        fill_to = 8
+#ANNOTATION: fill_to is an integer 8.
+
+    if len(hextet) > 1:
+#ANNOTATION: if length of hextet is greater than integer 1,
+        sep = len(hextet[0].split(':')) + len(hextet[1].split(':'))
+#ANNOTATION: split first and second element of hextet into parts by ':', sum their lengths, substitute the result for sep.
+        new_ip = hextet[0].split(':')
+#ANNOTATION: split first element of hextet into parts by ':', append them to new_ip.
+
+        for __ in xrange(fill_to - sep):
+#ANNOTATION: for every __ in range of integers from 0 up to sep subtracted from fill_to, 
+            new_ip.append('0000')
+#ANNOTATION: append string '0000' to new_ip.
+        new_ip += hextet[1].split(':')
+#ANNOTATION: split second element of hextet into parts by ':', append them to new_ip.
+
+    else:
+#ANNOTATION: if not,
+        new_ip = ip_str.split(':')
+#ANNOTATION: split ip_str into parts by ':', substitute the result for new_ip.
+
+    # Now need to make sure every hextet is 4 lower case characters.
+    # If a hextet is < 4 characters, we've got missing leading 0's.
+    ret_ip = []
+#ANNOTATION: ret_ip is an empty list.
+    for hextet in new_ip:
+#ANNOTATION: for every hextet in new_ip,
+        ret_ip.append(('0' * (4 - len(hextet)) + hextet).lower())
+#ANNOTATION: subtract length of hextet from 4, create a string with previous result number of character '0', append hextet to it,
+#ANNOTATION: convert the result into a lowercase, append it to ret_ip.
+    return ':'.join(ret_ip)
+#ANNOTATION: join elements of ret_ip into a string separated with ':', return it.
+
+
+def _is_shorthand_ip(ip_str):
+#ANNOTATION: define the function _is_shorthand_ip with an argument ip_str.
+    """Determine if the address is shortened.
+
+    Args:
+        ip_str: A string, the IPv6 address.
+
+    Returns:
+        A boolean, True if the address is shortened.
+
+    """
+#ANNOTATION: docstring
+    if ip_str.count('::') == 1:
+#ANNOTATION: if count of occurrence of '::' in ip_str equals integer 1, 
+        return True
+#ANNOTATION: return boolean True.
+    if any(len(x) < 4 for x in ip_str.split(':')):
+#ANNOTATION: split ip_str into parts by ':', for every x in the result, calculate length of x, if any is smaller than integer 4,
+        return True
+#ANNOTATION: return boolean True.
+    return False
+#ANNOTATION: return boolean False.

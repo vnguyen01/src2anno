@@ -1,0 +1,29 @@
+"""
+Email message and email sending related helper functions.
+"""
+#ANNOTATION: docstring 
+
+import socket
+#ANNOTATION: import module socket.
+
+
+# Cache the hostname, but do it lazily: socket.getfqdn() can take a couple of
+# seconds, which slows down the restart of the server.
+class CachedDnsName(object):
+#ANNOTATION: derive class CachedDnsName from the object base class.
+    def __str__(self):
+#ANNOTATION: define the method __str__ with argument self.
+        return self.get_fqdn()
+#ANNOTATION: evaluate the self.get_fqdn method, return the result.
+
+    def get_fqdn(self):
+#ANNOTATION: define the method get_fqdn with argument self.
+        if not hasattr(self, '_fqdn'):
+#ANNOTATION: if self doesnt have an attribute '_fqdn',
+            self._fqdn = socket.getfqdn()
+#ANNOTATION: call the function socket.getfqdn, substitute the result for self._fqdn.
+        return self._fqdn
+#ANNOTATION: return self._fqdn.
+
+DNS_NAME = CachedDnsName()
+#ANNOTATION: DNS_NAME is a instance of CachedDnsName class.

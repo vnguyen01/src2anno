@@ -1,0 +1,242 @@
+import logging
+#ANNOTATION: import module logging.
+import sys
+#ANNOTATION: import module sys.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core import mail
+#ANNOTATION: from django.core import mail into default name space.
+from django.core.mail import get_connection
+#ANNOTATION: from django.core.mail import get_connection into default name space.
+from django.utils.deprecation import RemovedInNextVersionWarning
+#ANNOTATION: from django.utils.deprecation import RemovedInNextVersionWarning into default name space.
+from django.utils.module_loading import import_string
+#ANNOTATION: from django.utils.module_loading import import_string into default name space.
+from django.views.debug import ExceptionReporter, get_exception_reporter_filter
+#ANNOTATION: from django.views.debug import ExceptionReporter and get_exception_reporter_filter into default name space.
+
+# Imports kept for backwards-compatibility in Django 1.7.
+from logging import NullHandler  # NOQA
+#ANNOTATION: from logging import NullHandler.
+from logging.config import dictConfig  # NOQA
+#ANNOTATION: from logging.config import dictConfig.
+
+getLogger = logging.getLogger
+#ANNOTATION: substitute logging.getLogger for getLogger.
+
+# Default logging for Django. This sends an email to the site admins on every
+# HTTP 500 error. Depending on DEBUG, all other log records are either sent to
+# the console (DEBUG=True) or discarded by mean of the NullHandler (DEBUG=False).
+DEFAULT_LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'filters': ['require_debug_true'],
+            'class': 'logging.StreamHandler',
+        },
+        'null': {
+            'class': 'logging.NullHandler',
+        },
+        'mail_admins': {
+            'level': 'ERROR',
+            'filters': ['require_debug_false'],
+            'class': 'django.utils.log.AdminEmailHandler'
+        }
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+        },
+        'django.request': {
+            'handlers': ['mail_admins'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'django.security': {
+            'handlers': ['mail_admins'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'py.warnings': {
+            'handlers': ['console'],
+        },
+    }
+}
+#ANNOTATION: DEFAULT_LOGGING is a dictionary with 5 initial entries: 1 for 'version', False for 'disable_existing_loggers', 
+#ANNOTATION: and 3 additional pairs of dictionaries for string.
+
+
+def configure_logging(logging_config, logging_settings):
+#ANNOTATION: define the function configure_logging with 2 arguments: logging_config and logging_settings.
+    if not sys.warnoptions:
+#ANNOTATION: if sys.warnoptions is false,
+        # Route warnings through python logging
+        logging.captureWarnings(True)
+#ANNOTATION: call the method logging.captureWarnings with an argument boolean True.
+        # RemovedInNextVersionWarning is a subclass of DeprecationWarning which
+        # is hidden by default, hence we force the "default" behavior
+        warnings.simplefilter("default", RemovedInNextVersionWarning)
+#ANNOTATION: call the function warnings.simplefilter with 2 arguments: string "default" and RemovedInNextVersionWarning.
+
+    if logging_config:
+#ANNOTATION: if logging_config is true,
+        # First find the logging configuration function ...
+        logging_config_func = import_string(logging_config)
+#ANNOTATION: call the function import_string with an argument logging_config, substitute the result for logging_config_func.
+
+        logging_config_func(DEFAULT_LOGGING)
+#ANNOTATION: call the function logging_config_func with an argument DEFAULT_LOGGING.
+
+        # ... then invoke it with the logging settings
+        if logging_settings:
+#ANNOTATION: if logging_settings is true,
+            logging_config_func(logging_settings)
+#ANNOTATION: call the function logging_config_func with an argument logging_settings.
+
+
+class AdminEmailHandler(logging.Handler):
+#ANNOTATION: derive the class AdminEmailHandler from logging.Handler base class.
+    """An exception log handler that emails log entries to site admins.
+
+    If the request is passed as the first argument to the log record,
+    request data will be provided in the email report.
+    """
+#ANNOTATION: docstring
+
+    def __init__(self, include_html=False, email_backend=None):
+#ANNOTATION: define the method __init__ with 3 arguments: self, include_html set to boolean False and email_backend set to None.
+        logging.Handler.__init__(self)
+#ANNOTATION: call the method logging.Handler.__init__ with an argument self.
+        self.include_html = include_html
+#ANNOTATION: substitute include_html for self.include_html.
+        self.email_backend = email_backend
+#ANNOTATION: substitute email_backend for self.email_backend.
+
+    def emit(self, record):
+#ANNOTATION: define the method emit with 2 arguments: self and record.
+        try:
+#ANNOTATION: try,
+            request = record.request
+#ANNOTATION: substitute record.request for request.
+            subject = '%s (%s IP): %s' % (
+                record.levelname,
+                ('internal' if request.META.get('REMOTE_ADDR') in settings.INTERNAL_IPS
+                 else 'EXTERNAL'),
+                record.getMessage()
+            )
+#ANNOTATION: subject is an string '%s (%s IP): %s', formated with record.levelname, string 'internal' if value under the 'REMOTE_ADDR' key,
+#ANNOTATION: of the request.META dictionary is contained in settings.INTERNAL_IPS, otherwise use string 'EXTERNAL',
+#ANNOTATION: and result of the method record.getMessage.
+            filter = get_exception_reporter_filter(request)
+#ANNOTATION: call the function get_exception_reporter_filter with an argument request, substitute the result for filter.
+            request_repr = '\n{0}'.format(filter.get_request_repr(request))
+#ANNOTATION: call the method filter.get_request_repr with an argument request, format string '\n{0}' with the result, substitute the result for request_repr.
+        except Exception:
+#ANNOTATION: if Exception exception is caught,
+            subject = '%s: %s' % (
+                record.levelname,
+                record.getMessage()
+            )
+#ANNOTATION: subject is an string '%s: %s' formated with record.levelname and result of the method record.getMessage, respectively.
+            request = None
+#ANNOTATION: request is None.
+            request_repr = "unavailable"
+#ANNOTATION: request_repr is a string "unavailable".
+        subject = self.format_subject(subject)
+#ANNOTATION: call the function self.format_subject with an argument subject, substitute the result for subject.
+
+        if record.exc_info:
+#ANNOTATION: if record.exc_info is true,
+            exc_info = record.exc_info
+#ANNOTATION: substitute record.exc_info for exc_info.
+        else:
+#ANNOTATION: if not,
+            exc_info = (None, record.getMessage(), None)
+#ANNOTATION: exc_info is an tuple with 3 elements: None, result of method record.getMessage and None.
+
+        message = "%s\n\nRequest repr(): %s" % (self.format(record), request_repr)
+#ANNOTATION: message is an string "%s\n\nRequest repr(): %s"  formated with the result of the metod self.format with an argument record,
+#ANNOTATION: and request_repr, respectively.
+        reporter = ExceptionReporter(request, is_email=True, *exc_info)
+#ANNOTATION: reporter is an instance of ExceptionReporter class, created with 3 arguments: request, is_email as boolean True,
+#ANNOTATION: unpacked list exc_info.
+        html_message = reporter.get_traceback_html() if self.include_html else None
+#ANNOTATION: if self.include_html is true, call the method reporter.get_traceback_html and substitute the result for html_message,
+#ANNOTATION: otherwise html_message is None.
+        mail.mail_admins(subject, message, fail_silently=True,
+                         html_message=html_message,
+                         connection=self.connection())
+#ANNOTATION: call the method mail.mail_admins with 5 arguments: subject, message, fail_silently as boolean True, tml_message as html_message,
+#ANNOTATION: and connection as the result of the method self.connection.
+
+    def connection(self):
+#ANNOTATION: define the connection with an argument self.
+        return get_connection(backend=self.email_backend, fail_silently=True)
+#ANNOTATION: call the function get_connection with 2 arguments: backend set to self.email_backend and fail_silently set to boolean True.
+
+    def format_subject(self, subject):
+#ANNOTATION: define the method format_subject with 2 arguments: self and subject.
+        """
+        Escape CR and LF characters, and limit length.
+        RFC 2822's hard limit is 998 characters per line. So, minus "Subject: "
+        the actual subject must be no longer than 989 characters.
+        """
+#ANNOTATION: docstring
+        formatted_subject = subject.replace('\n', '\\n').replace('\r', '\\r')
+#ANNOTATION: replace every occurrence of '\n' in subject with '\\n' and replace every occurrence of '\r' in subject with '\\r', 
+#ANNOTATION: substitute the result for formatted_subject.
+        return formatted_subject[:989]
+#ANNOTATION: return first 989 elements of formatted_subject.
+
+
+class CallbackFilter(logging.Filter):
+#ANNOTATION: derive the class CallbackFilter from logging.Filter base class.
+    """
+    A logging filter that checks the return value of a given callable (which
+    takes the record-to-be-logged as its only parameter) to decide whether to
+    log a record.
+
+    """
+#ANNOTATION: docstring
+    def __init__(self, callback):
+#ANNOTATION: define the method __init__ with 2 arguments: self and callback.
+        self.callback = callback
+#ANNOTATION: substitute callback for self.callback.
+
+    def filter(self, record):
+#ANNOTATION: define the method filter with 2 arguments: self and record.
+        if self.callback(record):
+#ANNOTATION: call the method self.callback with an argument record, if the result evaluates to true,
+            return 1
+#ANNOTATION: return integer 1. 
+        return 0
+#ANNOTATION: return integer 0.
+
+
+class RequireDebugFalse(logging.Filter):
+#ANNOTATION: derive the class RequireDebugFalse from logging.Filter base class.
+    def filter(self, record):
+#ANNOTATION: define the method filter with 2 arguments: self and record.
+        return not settings.DEBUG
+#ANNOTATION: if settings.DEBUG is true, return boolean False, otherwise return boolean True.
+
+
+class RequireDebugTrue(logging.Filter):
+#ANNOTATION: derive the class RequireDebugTrue from logging.Filter base class.
+    def filter(self, record):
+#ANNOTATION: define the method filter with 2 arguments: self and record.
+        return settings.DEBUG
+#ANNOTATION: return settings.DEBUG.

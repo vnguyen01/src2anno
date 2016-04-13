@@ -1,0 +1,69 @@
+from django.core.management import call_command
+#ANNOTATION: from django.core.management import call_command into default name space.
+from django.core.management.base import BaseCommand
+#ANNOTATION: from django.core.management.base import BaseCommand into default name space.
+from django.db import connection
+#ANNOTATION: from django.db import connection into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive class Command from the BaseCommand base class.
+    help = 'Runs a development server with data from the given fixture(s).'
+#ANNOTATION: help is a string 'Runs a development server with data from the given fixture(s).'.
+    args = '[fixture ...]'
+#ANNOTATION: args is a string '[fixture ...]'.
+
+    requires_system_checks = False
+#ANNOTATION: requires_system_checks is boolean False.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method with self class instance and parser as arguments.
+        parser.add_argument('args', metavar='fixture', nargs='*',
+            help='Path(s) to fixtures to load before running the server.')
+#ANNOTATION: call parser.add_argument method with 'args', metavar set to string 'fixture', nargs set to string '*' and help set to string 'Path(s) to fixtures to load before running the server.'. 
+        parser.add_argument('--noinput', action='store_false', dest='interactive', default=True,
+            help='Tells Django to NOT prompt the user for input of any kind.')
+#ANNOTATION: call parser.add_argument method with '--noinput', action set to string 'store_false', dest set to string 'interactive',
+#ANNOTATION: default set to boolean True and help set to string 'Tells Django to NOT prompt the user for input of any kind.'. 
+        parser.add_argument('--addrport', default='',
+            help='Port number or ipaddr:port to run the server on.')
+#ANNOTATION: call the parser.add_argument with string '--addrport', default set to an empty string and help as string 'Port number or ipaddr:port to run the server on.'.
+        parser.add_argument('--ipv6', '-6', action='store_true', dest='use_ipv6', default=False,
+            help='Tells Django to use an IPv6 address.')
+#ANNOTATION: call parser.add_argument method with '--ipv6', string '-6', action set to string 'store_true', dest set to string 'use_ipv6',
+#ANNOTATION: default set to boolean False and help set to string 'Tells Django to use an IPv6 address.'. 
+
+    def handle(self, *fixture_labels, **options):
+#ANNOTATION: define the method handle with self class instance, list of arguments fixture_labels and dictionary options as arguments.
+        verbosity = options.get('verbosity')
+#ANNOTATION: get the value under the key 'verbosity' of options dictionary, substitute it for verbosity.
+        interactive = options.get('interactive')
+#ANNOTATION: get the value under the key 'interactive' of options dictionary, substitute it for interactive.
+
+        # Create a test database.
+        db_name = connection.creation.create_test_db(verbosity=verbosity, autoclobber=not interactive, serialize=False)
+#ANNOTATION: call the method connection.creation.create_test_db with verbosity set to verbosity, autoclobber set to inverse value of interactive,
+#ANNOTATION: serialize set to boolean False, substitute the return value for db_name.
+
+        # Import the fixture data into the test database.
+        call_command('loaddata', *fixture_labels, **{'verbosity': verbosity})
+#ANNOTATION: call the method call_command with 3 arguments, string 'loaddata', unpacked list fixture_labels and unpacked dictionary containing 1 element: verbosity for 'verbosity'.
+
+        # Run the development server. Turn off auto-reloading because it causes
+        # a strange error -- it causes this handle() method to be called
+        # multiple times.
+        shutdown_message = '\nServer stopped.\nNote that the test database, %r, has not been deleted. You can explore it on your own.' % db_name
+#ANNOTATION: replace '%r' from string '\nServer stopped.\nNote that the test database, %r, has not been deleted. You can explore it on your own.', #ANNOTATION: with db_name, substitute it for shutdown_message.
+        use_threading = connection.features.test_db_allows_multiple_connections
+#ANNOTATION: substitute connection.features.test_db_allows_multiple_connections for use_threading.
+        call_command(
+            'runserver',
+            addrport=options['addrport'],
+            shutdown_message=shutdown_message,
+            use_reloader=False,
+            use_ipv6=options['use_ipv6'],
+            use_threading=use_threading
+        )
+#ANNOTATION: call the function call_command with 6 arguments, string 'runserver', addrport as the value under the 'addrport' key of options dictionary,
+#ANNOTATION: shutdown_message as shutdown_message, use_reloader set to boolean False, 
+#ANNOTATION: use_ipv6 set to the value under the 'use_ipv6' key of options dictionary and use_threading set to use_threading.

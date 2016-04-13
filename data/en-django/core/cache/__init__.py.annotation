@@ -1,0 +1,236 @@
+"""
+Caching framework.
+
+This package defines set of cache backends that all conform to a simple API.
+In a nutshell, a cache is a set of values -- which can be any object that
+may be pickled -- identified by string keys.  For the complete API, see
+the abstract BaseCache class in django.core.cache.backends.base.
+
+Client code should use the `cache` variable defined here to access the default
+cache backend and look up non-default cache backends in the `caches` dict-like
+object.
+
+See docs/topics/cache.txt for information on the public API.
+"""
+#ANNOTATION: docstring
+from threading import local
+#ANNOTATION: from threading import local into default name space.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core import signals
+#ANNOTATION: from django.core import signals into default name space.
+from django.core.cache.backends.base import (
+    InvalidCacheBackendError, CacheKeyWarning, BaseCache)
+#ANNOTATION: from django.core.cache.backends.base import InvalidCacheBackendError, CacheKeyWarning and BaseCache into default name space.
+from django.core.exceptions import ImproperlyConfigured
+#ANNOTATION: from django.core.exceptions import ImproperlyConfigured into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+from django.utils.module_loading import import_string
+#ANNOTATION: from django.utils.module_loading import import_string into default name space.
+
+
+__all__ = [
+    'get_cache', 'cache', 'DEFAULT_CACHE_ALIAS', 'InvalidCacheBackendError',
+    'CacheKeyWarning', 'BaseCache',
+]
+#ANNOTATION: __all__ is an list containing 6 elements: 'get_cache', 'cache', 'DEFAULT_CACHE_ALIAS', 'InvalidCacheBackendError',
+#ANNOTATION: 'CacheKeyWarning' and 'BaseCache'
+
+DEFAULT_CACHE_ALIAS = 'default'
+#ANNOTATION: DEFAULT_CACHE_ALIAS is a string 'default'.
+
+if DEFAULT_CACHE_ALIAS not in settings.CACHES:
+#ANNOTATION: if DEFAULT_CACHE_ALIAS is not contained in settings.CACHES,
+    raise ImproperlyConfigured("You must define a '%s' cache" % DEFAULT_CACHE_ALIAS)
+#ANNOTATION: raise an exception ImproperlyConfigured with string "You must define a '%s' cache" as argument, with '%s' replaced with DEFAULT_CACHE_ALIAS converted into a string. 
+
+
+def get_cache(backend, **kwargs):
+#ANNOTATION: define the function get_cache with backend and dictionary pair of elements kwargs as arguments.
+    """
+    Function to create a cache backend dynamically. This is flexible by design
+    to allow different use cases:
+
+    To load a backend that is pre-defined in the settings::
+
+        cache = get_cache('default')
+
+    To create a backend with its dotted import path,
+    including arbitrary options::
+
+        cache = get_cache('django.core.cache.backends.memcached.MemcachedCache', **{
+            'LOCATION': '127.0.0.1:11211', 'TIMEOUT': 30,
+        })
+
+    """
+#ANNOTATION: docstring
+    warnings.warn("'get_cache' is deprecated in favor of 'caches'.",
+                  RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the function warnings.warn with string "'get_cache' is deprecated in favor of 'caches'.", RemovedInDjango19Warning,
+#ANNOTATION: and stacklevel set to 2 as arguments.
+    cache = _create_cache(backend, **kwargs)
+#ANNOTATION: call the _create_cache with backend and dictionary kwargs as arguments, substitute the result for cache.
+    # Some caches -- python-memcached in particular -- need to do a cleanup at the
+    # end of a request cycle. If not implemented in a particular backend
+    # cache.close is a no-op
+    signals.request_finished.connect(cache.close)
+#ANNOTATION: call the function signals.request_finished.connect with argument cache.close.
+    return cache
+#ANNOTATION: return cache.
+
+
+def _create_cache(backend, **kwargs):
+#ANNOTATION: define the function _create_cache with backend and dictionary pair of elements kwargs as arguments.
+    try:
+#ANNOTATION: try,
+        # Try to get the CACHES entry for the given backend name first
+        try:
+#ANNOTATION: try,
+            conf = settings.CACHES[backend]
+#ANNOTATION: substitute value under the backend key of settings.CACHES dictionary for conf.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            try:
+#ANNOTATION: try,
+                # Trying to import the given backend, in case it's a dotted path
+                import_string(backend)
+#ANNOTATION: call the function import_string with argument backend. 
+            except ImportError as e:
+#ANNOTATION: if ImportError, renamed to e, exception is caught,
+                raise InvalidCacheBackendError("Could not find backend '%s': %s" % (
+                    backend, e))
+#ANNOTATION: raise and exception InvalidCacheBackendError with string "Could not find backend '%s': %s" as argument, replace '%s' with backend and e, respectively.
+            location = kwargs.pop('LOCATION', '')
+#ANNOTATION: remove 'LOCATION' key from kwargs dictionary and put it into location, or use an empty string if key doesnt exists.
+            params = kwargs
+#ANNOTATION: substitute kwargs for params.
+        else:
+#ANNOTATION: if not,
+            params = conf.copy()
+#ANNOTATION: call the function conf.copy, substitute it for params.
+            params.update(kwargs)
+#ANNOTATION: call the function params.update with argument kwargs.
+            backend = params.pop('BACKEND')
+#ANNOTATION: remove 'BACKEND' key from params dictionary and put it into backend.
+            location = params.pop('LOCATION', '')
+#ANNOTATION: remove 'LOCATION' key from kwargs dictionary and put it into location, or use an empty string if key doesnt exists.
+        backend_cls = import_string(backend)
+#ANNOTATION: call the import_string with argument backend, substitute it for backend_cls.
+    except ImportError as e:
+#ANNOTATION: if ImportError, renamed to e, is caught,
+        raise InvalidCacheBackendError(
+            "Could not find backend '%s': %s" % (backend, e))
+#ANNOTATION: aise and exception InvalidCacheBackendError with string "Could not find backend '%s': %s" as argument, replace '%s' with backend and e, respectively.
+    return backend_cls(location, params)
+#ANNOTATION: evaluate the function backend_cls with location and params as arguments, return the result.
+
+
+class CacheHandler(object):
+#ANNOTATION: derive the class CacheHandler from the object base class.
+    """
+    A Cache Handler to manage access to Cache instances.
+
+    Ensures only one instance of each alias exists per thread.
+    """
+#ANNOTATION: docstring
+    def __init__(self):
+#ANNOTATION: define the __init__ method with argument self.
+        self._caches = local()
+#ANNOTATION: call the function local, substitute the result for self._caches.
+
+    def __getitem__(self, alias):
+#ANNOTATION: define the __getitem__ method with self and alias arguments.
+        try:
+#ANNOTATION: try,
+            return self._caches.caches[alias]
+#ANNOTATION: return value under the alias key of self._caches.caches dictionary.
+        except AttributeError:
+#ANNOTATION: except if AttributeError is caught,
+            self._caches.caches = {}
+#ANNOTATION: self._caches.caches is an empty dictionary.
+        except KeyError:
+#ANNOTATION: except if KeyError exception is caught,
+            pass
+#ANNOTATION: do nothing.
+
+        if alias not in settings.CACHES:
+#ANNOTATION: if alias is not contained in setting.CACHES,
+            raise InvalidCacheBackendError(
+                "Could not find config for '%s' in settings.CACHES" % alias
+            )
+#ANNOTATION: raise and exception InvalidCacheBackendError with string "Could not find config for '%s' in settings.CACHES" as argument, replace '%s' with alias.
+
+        cache = _create_cache(alias)
+#ANNOTATION: call the function _create_cache with argument alias.
+        self._caches.caches[alias] = cache
+#ANNOTATION: substitute cache for value under the alias key of self._caches.caches dictionary.
+        return cache
+#ANNOTATION: reuturn cache.
+
+    def all(self):
+#ANNOTATION: define the method all with argument self.
+        return getattr(self._caches, 'caches', {}).values()
+#ANNOTATION: get attribute 'caches' from the self._caches if exists, otherwise get an empty dictionary, call the values method on the return value, return it.
+
+caches = CacheHandler()
+#ANNOTATION: call the CacheHandler function, substitute the result for caches.
+
+
+class DefaultCacheProxy(object):
+#ANNOTATION: derive the class DefaultCacheProxy from the base class object. 
+    """
+    Proxy access to the default Cache object's attributes.
+
+    This allows the legacy `cache` object to be thread-safe using the new
+    ``caches`` API.
+    """
+#ANNOTATION: docstring
+    def __getattr__(self, name):
+#ANNOTATION: define the method __getattr__ with self and name as arguments.
+        return getattr(caches[DEFAULT_CACHE_ALIAS], name)
+#ANNOTATION: get attribute name from value under the DEFAULT_CACHE_ALIAS key of caches dictionary, return it.
+
+    def __setattr__(self, name, value):
+#ANNOTATION: define the method __setattr__ with self, name and value as arguments.
+        return setattr(caches[DEFAULT_CACHE_ALIAS], name, value)
+#ANNOTATION: set the attribute name from value under the DEFAULT_CACHE_ALIAS key of caches dictionary to value, return it.
+
+    def __delattr__(self, name):
+#ANNOTATION: define the method __delattr__ with self and name as arguments.
+        return delattr(caches[DEFAULT_CACHE_ALIAS], name)
+#ANNOTATION: delete the attribute name from the cache dictionary under the DEFAULT_CACHE_ALIAS key.
+
+    def __contains__(self, key):
+#ANNOTATION: define the method __contains__ with self and key as arguments.
+        return key in caches[DEFAULT_CACHE_ALIAS]
+#ANNOTATION: if key if contained in value under the DEFAULT_CACHE_ALIAS key of caches dictionary, return boolean True, otherwise return False.
+
+    def __eq__(self, other):
+#ANNOTATION: define the method __eq__ with self and other as arguments.
+        return caches[DEFAULT_CACHE_ALIAS] == other
+#ANNOTATION: if value under the DEFAULT_CACHE_ALIAS key of caches dictionary equals to other, return boolean True, otherwise return False.
+
+    def __ne__(self, other):
+#ANNOTATION: define the method __ne__ with self and other as arguments.
+        return caches[DEFAULT_CACHE_ALIAS] != other
+#ANNOTATION: if value under the DEFAULT_CACHE_ALIAS key of caches dictionary is not equal to other, return boolean True, otherwise return False. 
+
+cache = DefaultCacheProxy()
+#ANNOTATION: call the DefaultCacheProxy function, substitute it for cache.
+
+
+def close_caches(**kwargs):
+#ANNOTATION: define the function close_caches with dictionary pair of elements kwargs as argument.
+    # Some caches -- python-memcached in particular -- need to do a cleanup at the
+    # end of a request cycle. If not implemented in a particular backend
+    # cache.close is a no-op
+    for cache in caches.all():
+#ANNOTATION: for every cache in return value of the function caches.all.
+        cache.close()
+#ANNOTATION: call the function cache.close.
+signals.request_finished.connect(close_caches)
+#ANNOTATION: call the function signals.request_finished.connect with argument close_caches.

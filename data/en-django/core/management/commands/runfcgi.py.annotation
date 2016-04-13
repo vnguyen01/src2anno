@@ -1,0 +1,54 @@
+import argparse
+#ANNOTATION: import module argparse.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.core.management.base import BaseCommand
+#ANNOTATION: from django.core.management.base import BaseCommand into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand class.
+    help = "Runs this project as a FastCGI application. Requires flup."
+#ANNOTATION: help is a string "Runs this project as a FastCGI application. Requires flup.".
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with 2 arguments self and parser.
+        parser.add_argument('args', nargs=argparse.REMAINDER,
+            help='Various KEY=val options.')
+#ANNOTATION: call the method parser.add_argument with 3 arguments: string 'args', nargs set to argparse.REMAINDER and help as a string 'Various KEY=val options.'
+
+    def handle(self, *args, **options):
+#ANNOTATION: define the method handle with 3 arguments: self, unpacked list args and unpacked dictionary options.
+        warnings.warn(
+            "FastCGI support has been deprecated and will be removed in Django 1.9.",
+            RemovedInDjango19Warning)
+#ANNOTATION: call the method warnings.warn with 2 arguments: string "FastCGI support has been deprecated and will be removed in Django 1.9.",
+#ANNOTATION: and RemovedInDjango19Warning.
+
+        from django.conf import settings
+#ANNOTATION: from django.conf import settings into default namespace.
+        from django.utils import translation
+#ANNOTATION:  from django.utils import translation into default namespace.
+        # Activate the current language, because it won't get activated later.
+        try:
+#ANNOTATION: try,
+            translation.activate(settings.LANGUAGE_CODE)
+#ANNOTATION: call the method translation.activate with an argument settings.LANGUAGE_CODE.
+        except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+            pass
+#ANNOTATION: do nothing.
+        from django.core.servers.fastcgi import runfastcgi
+#ANNOTATION: from django.core.servers.fastcgi import runfastcgi into default namespace.
+        runfastcgi(args)
+#ANNOTATION: call the function runfastcgi with an argument args.
+
+    def usage(self, subcommand):
+#ANNOTATION: define the method usage with 2 argument: self and subcommand.
+        from django.core.servers.fastcgi import FASTCGI_HELP
+#ANNOTATION: from django.core.servers.fastcgi import FASTCGI_HELP into default namespace.
+        return FASTCGI_HELP
+#ANNOTATION: return FASTCGI_HELP.

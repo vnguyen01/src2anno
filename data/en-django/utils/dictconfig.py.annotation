@@ -1,0 +1,979 @@
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+
+warnings.warn("django.utils.dictconfig will be removed in Django 1.9.",
+    RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the function warnings.warn with 3 arguments: string "django.utils.dictconfig will be removed in Django 1.9.",
+#ANNOTATION: RemovedInDjango19Warning and stacklevel set to integer 2.
+
+# This is a copy of the Python logging.config.dictconfig module,
+# reproduced with permission. It is provided here for backwards
+# compatibility for Python versions prior to 2.7.
+#
+# Copyright 2009-2010 by Vinay Sajip. All Rights Reserved.
+#
+# Permission to use, copy, modify, and distribute this software and its
+# documentation for any purpose and without fee is hereby granted,
+# provided that the above copyright notice appear in all copies and that
+# both that copyright notice and this permission notice appear in
+# supporting documentation, and that the name of Vinay Sajip
+# not be used in advertising or publicity pertaining to distribution
+# of the software without specific, written prior permission.
+# VINAY SAJIP DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING
+# ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL
+# VINAY SAJIP BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR
+# ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER
+# IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
+# OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+import logging.handlers
+#ANNOTATION: import module logging.handlers.
+import re
+#ANNOTATION: import module re.
+import sys
+#ANNOTATION: import module sys.
+import types
+#ANNOTATION: import module types.
+
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+IDENTIFIER = re.compile('^[a-z_][a-z0-9_]*$', re.I)
+#ANNOTATION: compile regex from string '^[a-z_][a-z0-9_]*$' in case insensitive mode, substitute it for IDENTIFIER.
+
+
+def valid_ident(s):
+#ANNOTATION: define the function valid_ident with an argument s.
+    m = IDENTIFIER.match(s)
+#ANNOTATION: match string s with regex IDENTIFIER, substitute the result for m.
+    if not m:
+#ANNOTATION: if m is false,
+        raise ValueError('Not a valid Python identifier: %r' % s)
+#ANNOTATION: raise an ValueError exception with an argument string 'Not a valid Python identifier: %r' formated with s.
+    return True
+#ANNOTATION: return boolean True.
+
+#
+# This function is defined in logging only in recent versions of Python
+#
+try:
+#ANNOTATION: try,
+    from logging import _checkLevel
+#ANNOTATION: from logging import _checkLevel.
+except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+    def _checkLevel(level):
+#ANNOTATION: define the function _checkLevel with an argument level.
+        if isinstance(level, int):
+#ANNOTATION: if level is an instance of int type,
+            rv = level
+#ANNOTATION: substitute level for rv.
+        elif str(level) == level:
+#ANNOTATION: otherwise if level converted into a string equals level,
+            if level not in logging._levelNames:
+#ANNOTATION: if level is not contained in logging._levelNames,
+                raise ValueError('Unknown level: %r' % level)
+#ANNOTATION: raise an ValueError exception with an argument string 'Unknown level: %r' formated with level.
+            rv = logging._levelNames[level]
+#ANNOTATION: substitute value under level key of logging._levelNames dictionary for rv.
+        else:
+#ANNOTATION: if not,
+            raise TypeError('Level not an integer or a '
+                            'valid string: %r' % level)
+#ANNOTATION: raise an TypeError exception with an argument string 'Level not an integer or a valid string: %r' formated with level.
+        return rv
+#ANNOTATION: return rv.
+
+# The ConvertingXXX classes are wrappers around standard Python containers,
+# and they serve to convert any suitable values in the container. The
+# conversion converts base dicts, lists and tuples to their wrapped
+# equivalents, whereas strings which match a conversion format are converted
+# appropriately.
+#
+# Each wrapper should have a configurator attribute holding the actual
+# configurator to use for conversion.
+
+
+class ConvertingDict(dict):
+#ANNOTATION: derive the class ConvertingDict from dict base class.
+    """A converting dictionary wrapper."""
+#ANNOTATION: docstring
+
+    def __getitem__(self, key):
+#ANNOTATION: define the method __getitem__ with 2 arguments: self and key.
+        value = dict.__getitem__(self, key)
+#ANNOTATION: call the method dict.__getitem__ with 2 arguments self and key, substitute the result for value.
+        result = self.configurator.convert(value)
+#ANNOTATION: call the method self.configurator.convert with an argument value, substitute the result for result.
+        # If the converted value is different, save for next time
+        if value is not result:
+#ANNOTATION: if value is not contained in result,
+            self[key] = result
+#ANNOTATION: substitute result for self dictionary under key key.
+            if type(result) in (ConvertingDict, ConvertingList,
+                                ConvertingTuple):
+#ANNOTATION: if type of result is ConvertingDict, ConvertingList or ConvertingTuple,
+                result.parent = self
+#ANNOTATION: substitute self for result.parent.
+                result.key = key
+#ANNOTATION: substitute key for result.key.
+        return result
+#ANNOTATION: return result.
+
+    def get(self, key, default=None):
+#ANNOTATION: define the method get with 3 arguments: self, key and default set to None.
+        value = dict.get(self, key, default)
+#ANNOTATION: get value under key key of self dictionary, if it doesnt exists return default, substitute the result for value.
+        result = self.configurator.convert(value)
+#ANNOTATION: call the method self.configurator.convert with an argument value, substitute the result for result.
+        # If the converted value is different, save for next time
+        if value is not result:
+#ANNOTATION: if value is not contained in result,
+            self[key] = result
+#ANNOTATION: substitute result for value under key key of self dictionary.
+            if type(result) in (ConvertingDict, ConvertingList,
+                                ConvertingTuple):
+#ANNOTATION: if type of result is ConvertingDict, ConvertingList or ConvertingTuple,
+                result.parent = self
+#ANNOTATION: substitute self for result.parent.
+                result.key = key
+#ANNOTATION: substitute key for result.key.
+        return result
+#ANNOTATION: return result.
+
+    def pop(self, key, default=None):
+#ANNOTATION: define the method pop with 3 arguments: self, key and default set to None.
+        value = dict.pop(self, key, default)
+#ANNOTATION: remove value under key key of self dictionary, if it doesnt exists return default, substitute the result for value.
+        result = self.configurator.convert(value)
+#ANNOTATION: call the method self.configurator.convert with an argument value.
+        if value is not result:
+#ANNOTATION: if value is not contained in result,
+            if type(result) in (ConvertingDict, ConvertingList,
+                                ConvertingTuple):
+#ANNOTATION: if type of result is ConvertingDict, ConvertingList or ConvertingTuple,
+                result.parent = self
+#ANNOTATION: substitute self for result.parent.
+                result.key = key
+#ANNOTATION: substitute key for result.key.  
+        return result
+#ANNOTATION: return result.
+
+
+class ConvertingList(list):
+#ANNOTATION: derive the class ConvertingList from list base class.
+    """A converting list wrapper."""
+#ANNOTATION: docstring
+    def __getitem__(self, key):
+#ANNOTATION: define the method __getitem__ with 2 arguments: self and key.
+        value = list.__getitem__(self, key)
+#ANNOTATION: call the method list.__getitem__ with 2 arguments self and key, substitute the result for value.
+        result = self.configurator.convert(value)
+#ANNOTATION: call the method self.configurator.convert with an arugment value, substitute the result for result.
+        # If the converted value is different, save for next time
+        if value is not result:
+#ANNOTATION: if value is not contained in result,
+            self[key] = result
+#ANNOTATION: substitute result for value under key key of self dictionary.
+            if type(result) in (ConvertingDict, ConvertingList,
+                                ConvertingTuple):
+#ANNOTATION: if type of result is ConvertingDict, ConvertingList or ConvertingTuple,
+                result.parent = self
+#ANNOTATION: substitute self for result.parent.
+                result.key = key
+#ANNOTATION: substitute key for result.key.  
+        return result
+#ANNOTATION: return result.
+
+    def pop(self, idx=-1):
+#ANNOTATION: define the method pop with 2 arguments: self and idx set to negative integer 1.
+        value = list.pop(self, idx)
+#ANNOTATION: remove idx-th element from self list.
+        result = self.configurator.convert(value)
+#ANNOTATION: call the method self.configurator.convert with an argument value, substitute the result for result.
+        if value is not result:
+#ANNOTATION: if value is not contained in result,
+            if type(result) in (ConvertingDict, ConvertingList,
+                                ConvertingTuple):
+#ANNOTATION: if type of result is ConvertingDict, ConvertingList or ConvertingTuple,
+                result.parent = self
+#ANNOTATION: substitute self for result.parent.
+        return result
+#ANNOTATION: return result.
+
+
+class ConvertingTuple(tuple):
+#ANNOTATION: derive the class ConvertingTuple from tuple base class.
+    """A converting tuple wrapper."""
+#ANNOTATION: docstring
+    def __getitem__(self, key):
+#ANNOTATION: define the method __getitem__ with 2 arguments: self and key.
+        value = tuple.__getitem__(self, key)
+#ANNOTATION: call the method tuple.__getitem__ with 2 arguments: self and key, substitute the result for value.
+        result = self.configurator.convert(value)
+#ANNOTATION: call the method self.configurator.convert with an argument value, substitute the result for result.
+        if value is not result:
+#ANNOTATION: if value is not contained in result,
+            if type(result) in (ConvertingDict, ConvertingList,
+                                ConvertingTuple):
+#ANNOTATION: if type of result is ConvertingDict, ConvertingList or ConvertingTuple,
+                result.parent = self
+#ANNOTATION: substitute self for result.parent.
+                result.key = key
+#ANNOTATION: substitute key for result.key.  
+        return result
+#ANNOTATION: return result.
+
+
+class BaseConfigurator(object):
+#ANNOTATION: derive the class BaseConfigurator from object base class.
+    """
+    The configurator base class which defines some useful defaults.
+    """
+#ANNOTATION: docstring
+
+    CONVERT_PATTERN = re.compile(r'^(?P<prefix>[a-z]+)://(?P<suffix>.*)$')
+#ANNOTATION: compile a regex from raw string '^(?P<prefix>[a-z]+)://(?P<suffix>.*)$', substitute it for CONVERT_PATTERN.
+
+    WORD_PATTERN = re.compile(r'^\s*(\w+)\s*')
+#ANNOTATION: compile a regex from raw string '^\s*(\w+)\s*', substitute it for WORD_PATTERN.
+    DOT_PATTERN = re.compile(r'^\.\s*(\w+)\s*')
+#ANNOTATION: compile a regex from raw string '^\.\s*(\w+)\s*', substitute it for DOT_PATTERN.
+    INDEX_PATTERN = re.compile(r'^\[\s*(\w+)\s*\]\s*')
+#ANNOTATION: compile a regex from raw string '^\[\s*(\w+)\s*\]\s*', substitute it for INDEX_PATTERN.
+    DIGIT_PATTERN = re.compile(r'^\d+$')
+#ANNOTATION: compile a regex from raw string '^\d+$', substitute it for DIGIT_PATTERN.
+
+    value_converters = {
+        'ext' : 'ext_convert',
+        'cfg' : 'cfg_convert',
+    }
+#ANNOTATION: value_converters is a dictionary with 2 entries: 'ext_convert' for 'ext' and 'cfg_convert' for 'cfg'.
+
+    # We might want to use a different one, e.g. importlib
+    importer = __import__
+#ANNOTATION: substitute __import__ for importer.
+
+    def __init__(self, config):
+#ANNOTATION: define the method __init__ with 2 arguments: self and config.
+        self.config = ConvertingDict(config)
+#ANNOTATION: self.config is an instance of ConvertingDict, called with an argument config.
+        self.config.configurator = self
+#ANNOTATION: substitute self for self.config.configurator. 
+
+    def resolve(self, s):
+#ANNOTATION: define the method resolve with 2 arguments: self and s.
+        """
+        Resolve strings to objects using standard import and attribute
+        syntax.
+        """
+#ANNOTATION: docstring
+        name = s.split('.')
+#ANNOTATION: split s into parts by '.', substitute the result for name.
+        used = name.pop(0)
+#ANNOTATION: remove first element from name, substitute the result for used.
+        try:
+#ANNOTATION: try,
+            found = self.importer(used)
+#ANNOTATION: call the method self.importer with an argument used, substitute the result for found.
+            for frag in name:
+#ANNOTATION: for every frag in name.
+                used += '.' + frag
+#ANNOTATION: append '.' to frag, append the result to used.
+                try:
+#ANNOTATION: try,
+                    found = getattr(found, frag)
+#ANNOTATION: get frag attribute from found object, substitute it for found.
+                except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+                    self.importer(used)
+#ANNOTATION: call the method self.importer with an argument used.
+                    found = getattr(found, frag)
+#ANNOTATION: get frag attribute from found object, substitute it for found.
+            return found
+#ANNOTATION: return found.
+        except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+            e, tb = sys.exc_info()[1:]
+#ANNOTATION: call the method sys.exc_info, substitute the result without the first element for e and tb.
+            v = ValueError('Cannot resolve %r: %s' % (s, e))
+#ANNOTATION: raise an ValueError exception with an argument string 'Cannot resolve %r: %s', formated with s and e.
+            v.__cause__, v.__traceback__ = e, tb
+#ANNOTATION: substitute e and tb for v.__cause__ and v.__traceback__.
+            raise v
+#ANNOTATION: raise an v exception.
+
+    def ext_convert(self, value):
+#ANNOTATION: define the method ext_convert with 2 arguments: self and value.
+        """Default converter for the ext:// protocol."""
+#ANNOTATION: docstring
+        return self.resolve(value)
+#ANNOTATION: call the method self.resolve with an argument value, return the result.
+
+    def cfg_convert(self, value):
+#ANNOTATION: define the method cfg_convert with 2 arguments: self and value.
+        """Default converter for the cfg:// protocol."""
+#ANNOTATION: docstring
+        rest = value
+#ANNOTATION: substitute value for rest.
+        m = self.WORD_PATTERN.match(rest)
+#ANNOTATION: match rest string with self.WORD_PATTERN regex, substitute the result for m. 
+        if m is None:
+#ANNOTATION: if m is None,
+            raise ValueError("Unable to convert %r" % value)
+#ANNOTATION: raise an ValueError exception with an argument string "Unable to convert %r" formated with value.
+        else:
+#ANNOTATION: if not,
+            rest = rest[m.end():]
+#ANNOTATION: call the method m.end, slice list rest from previous result as starting index to the end, substitute the result for rest.
+            d = self.config[m.groups()[0]]
+#ANNOTATION: call the method m.groups, use the first element of the result as key for obtaining value from self.config dictionary,
+#ANNOTATION: substitute it for d.
+            # print d, rest
+            while rest:
+#ANNOTATION: while rest is true,
+                m = self.DOT_PATTERN.match(rest)
+#ANNOTATION: match rest string with self.DOT_PATTERN regex, substitute the result for m.
+                if m:
+#ANNOTATION: if m is true,
+                    d = d[m.groups()[0]]
+#ANNOTATION: call the method m.groups, use the first element of the result as key for obtaining value from d dictionary,
+                else:
+#ANNOTATION: if not,
+                    m = self.INDEX_PATTERN.match(rest)
+#ANNOTATION: match rest string with self.INDEX_PATTERN regex, substitute the result for m.
+                    if m:
+#ANNOTATION: if m is true,
+                        idx = m.groups()[0]
+#ANNOTATION: call the method m.groups, substitute the first element of the result for idx.
+                        if not self.DIGIT_PATTERN.match(idx):
+#ANNOTATION: match rest string with self.DIGIT_PATTERN regex, if it evaluates to false,
+                            d = d[idx]
+#ANNOTATION: substitute value under idx key of dictionary d for d.
+                        else:
+#ANNOTATION: if not,
+                            try:
+#ANNOTATION: try,
+                                n = int(idx)  # try as number first (most likely)
+#ANNOTATION: convert idx to an integer, substitute it or n.
+                                d = d[n]
+#ANNOTATION: substitute value under n key of dictionary d for d.
+                            except TypeError:
+#ANNOTATION: if TypeError exception is caught,
+                                d = d[idx]
+#ANNOTATION: substitute value under idx key of dictionary d for d.
+                if m:
+#ANNOTATION: if m is true,
+                    rest = rest[m.end():]
+#ANNOTATION: call the method m.end, slice list rest from previous result as starting index to the end, substitute the result for rest.
+                else:
+#ANNOTATION: if not,
+                    raise ValueError('Unable to convert '
+                                     '%r at %r' % (value, rest))
+#ANNOTATION: raise an ValueError exception with an argument string 'Unable to convert %r at %r' formated with value and rest.
+        # rest should be empty
+        return d
+#ANNOTATION: return d.
+
+    def convert(self, value):
+#ANNOTATION: define the method convert with 2 arguments: self and value.
+        """
+        Convert values to an appropriate type. dicts, lists and tuples are
+        replaced by their converting alternatives. Strings are checked to
+        see if they have a conversion format and are converted if they do.
+        """
+#ANNOTATION: docstring
+        if not isinstance(value, ConvertingDict) and isinstance(value, dict):
+#ANNOTATION: if vale is not an instance of ConvertingDict and value is an instance of dict type,
+            value = ConvertingDict(value)
+#ANNOTATION: value is an instance of ConvertingDict class, created with an argument value.
+            value.configurator = self
+#ANNOTATION: substitute self for value.configurator.
+        elif not isinstance(value, ConvertingList) and isinstance(value, list):
+#ANNOTATION: otherwise if vale is not an instance of ConvertingList and value is an instance of list type,
+            value = ConvertingList(value)
+#ANNOTATION: value is an instance of ConvertingList class, created with an argument value.
+            value.configurator = self
+#ANNOTATION: substitute self for value.configurator.
+        elif not isinstance(value, ConvertingTuple) and\
+                 isinstance(value, tuple):
+#ANNOTATION: otherwise if vale is not an instance of ConvertingTuple and value is an instance of tuple type,
+            value = ConvertingTuple(value)
+#ANNOTATION: value is an instance of ConvertingTuple class, created with an argument value.
+            value.configurator = self
+#ANNOTATION: substitute self for value.configurator.
+        elif isinstance(value, six.string_types):  # str for py3k
+#ANNOTATION: otherwise if vale is an instance of value,
+            m = self.CONVERT_PATTERN.match(value)
+#ANNOTATION: match value string with regex self.CONVERT_PATTERN, substitute the result for m.
+            if m:
+#ANNOTATION: if m is true,
+                d = m.groupdict()
+#ANNOTATION: call the method m.groupdict, substitute the result for d.
+                prefix = d['prefix']
+#ANNOTATION: substitute value under the 'prefix' key of dictionary d, substitute it for prefix.
+                converter = self.value_converters.get(prefix, None)
+#ANNOTATION: remove self.value_converters dictionary element under prefix key, if it exists substitute it for converter, if not, converter is None.
+                if converter:
+#ANNOTATION: if converter is true,
+                    suffix = d['suffix']
+#ANNOTATION: substitute value under the 'suffix' key of dictionary d, substitute it for suffix.
+                    converter = getattr(self, converter)
+#ANNOTATION: get converter attribute from self object, substitute it for converter.
+                    value = converter(suffix)
+#ANNOTATION: call the function converter with an argument suffix, substitute the result for value.
+        return value
+#ANNOTATION: return value.
+
+    def configure_custom(self, config):
+#ANNOTATION: define the method configure_custom with 2 arguments: self and config.
+        """Configure an object with a user-supplied factory."""
+#ANNOTATION: docstring
+        c = config.pop('()')
+#ANNOTATION: remove config dictionary element under '()' key, substitute it for c.
+        if not hasattr(c, '__call__') and hasattr(types, 'ClassType') and type(c) != types.ClassType:
+#ANNOTATION: if c doesnt have an attribute '__call__' and types has an 'ClassType' attribute and type of c is not equal to types.ClassType,
+            c = self.resolve(c)
+#ANNOTATION: call the method self.resolve with an argument c, substitute the result for c. 
+        props = config.pop('.', None)
+#ANNOTATION: remove config dictionary element under '.' key, if it exists substitute it for props, if not, props is None.
+        # Check for valid identifiers
+        kwargs = dict((k, config[k]) for k in config if valid_ident(k))
+#ANNOTATION: kwargs is a dictionary with elements: config dictionary element under k key for k, for every k in result of function valid_ident,
+#ANNOTATION: called with an argument k.
+        result = c(**kwargs)
+#ANNOTATION: call the function c with an argument unpacked dictionary kwargs, substitute the result for result.
+        if props:
+#ANNOTATION: if props is true,
+            for name, value in props.items():
+#ANNOTATION: for every name and value in items of props dictionary,
+                setattr(result, name, value)
+#ANNOTATION: set result attribute name to value value.
+        return result
+#ANNOTATION: return result.
+
+    def as_tuple(self, value):
+#ANNOTATION: define the method as_tuple with 2 arguments: self and value.
+        """Utility function which converts lists to tuples."""
+#ANNOTATION: docstring
+        if isinstance(value, list):
+#ANNOTATION: if valu is an instance of list type,
+            value = tuple(value)
+#ANNOTATION: convery value into a tuple, substitute it for value.
+        return value
+#ANNOTATION: return value.
+
+
+class DictConfigurator(BaseConfigurator):
+#ANNOTATION: derive the class DictConfigurator from the BaseConfigurator base class.
+    """
+    Configure logging using a dictionary-like object to describe the
+    configuration.
+    """
+#ANNOTATION: docstring
+
+    def configure(self):
+#ANNOTATION: define the method configure with an argument self.
+        """Do the configuration."""
+#ANNOTATION: docstring
+
+        config = self.config
+#ANNOTATION: substitute self.config for config.
+        if 'version' not in config:
+#ANNOTATION: if string 'version' is not contained in config,
+            raise ValueError("dictionary doesn't specify a version")
+#ANNOTATION: raise an ValueError exception with an argument string "dictionary doesn't specify a version".
+        if config['version'] != 1:
+#ANNOTATION: if config dictionary value under 'version' key is not equal to integer 1,
+            raise ValueError("Unsupported version: %s" % config['version'])
+#ANNOTATION: raise an ValueError exception with an argument string "Unsupported version: %s" formated with value under 'version' key of config dictionary.
+        incremental = config.pop('incremental', False)
+#ANNOTATION: get config dictionary element under 'incremental' key, if it exists substitute it for incremental, if not, 
+#ANNOTATION: incremental is boolean False.
+        EMPTY_DICT = {}
+#ANNOTATION: EMPTY_DICT is an empty dictionary.
+        logging._acquireLock()
+#ANNOTATION: call the method logging._acquireLock.
+        try:
+#ANNOTATION: try,
+            if incremental:
+#ANNOTATION: if incremental is true,
+                handlers = config.get('handlers', EMPTY_DICT)
+#ANNOTATION: get config dictionary element under 'handlers' key, if it exists substitute it for handlers, if not, handlers is EMPTY_DICT.
+                # incremental handler config only if handler name
+                # ties in to logging._handlers (Python 2.7)
+                if sys.version_info[:2] == (2, 7):
+#ANNOTATION: if first two elements of sys.version_info equal to integers 2 ant 7, respectively,
+                    for name in handlers:
+#ANNOTATION: for every name in handlers,
+                        if name not in logging._handlers:
+#ANNOTATION: if name is not contained in logging._handlers,
+                            raise ValueError('No handler found with '
+                                             'name %r'  % name)
+#ANNOTATION: raise an ValueError exception with an argument string 'No handler found with name %r' formated with name.
+                        else:
+#ANNOTATION: if not,
+                            try:
+#ANNOTATION: try,
+                                handler = logging._handlers[name]
+#ANNOTATION: substitute value under name key of logging._handlers dictionary for handler.
+                                handler_config = handlers[name]
+#ANNOTATION: substitute value under name key of handlers dictionary for handler_config.
+                                level = handler_config.get('level', None)
+#ANNOTATION: get handler_config dictionary element under 'level' key, if it exists substitute it for level, if not, level is None.
+                                if level:
+#ANNOTATION: if level is true,
+                                    handler.setLevel(_checkLevel(level))
+#ANNOTATION: call the function _checkLevel with an argument level, use the result as an argument for the call to the function handler.setLevel.
+                            except StandardError as e:
+#ANNOTATION: if StandardError, renamed to e, exception is caught,
+                                raise ValueError('Unable to configure handler '
+                                                 '%r: %s' % (name, e))
+#ANNOTATION: raise an ValueError exception with an argument string 'Unable to configure handler %r: %s' formated with name and e.
+                loggers = config.get('loggers', EMPTY_DICT)
+#ANNOTATION: get config dictionary element under 'loggers' key, if it exists substitute it for loggers, if not, loggers is EMPTY_DICT.
+                for name in loggers:
+#ANNOTATION: for every name in loggers,
+                    try:
+#ANNOTATION: try,
+                        self.configure_logger(name, loggers[name], True)
+#ANNOTATION: call the method self.configure_logger with 3 arguments: name, value under name key of loggers dictionary and boolean True.
+                    except StandardError as e:
+#ANNOTATION: if StandardError, renamed to e, exception is caught,
+                        raise ValueError('Unable to configure logger '
+                                         '%r: %s' % (name, e))
+#ANNOTATION: raise an ValueError exception with an argument string 'Unable to configure logger %r: %s' formated with name and e.
+                root = config.get('root', None)
+#ANNOTATION: get config dictionary element under 'root' key, if it exists substitute it for root, if not, root is None.
+                if root:
+#ANNOTATION: if root is true,
+                    try:
+#ANNOTATION: try,
+                        self.configure_root(root, True)
+#ANNOTATION: call the method self.configure_root with 2 arguments: root and boolean True.
+                    except StandardError as e:
+#ANNOTATION: if StandardError, renamed to e, exception is caught,
+                        raise ValueError('Unable to configure root '
+                                         'logger: %s' % e)
+#ANNOTATION: raise an ValueError exception with an argument string 'Unable to configure root logger: %s' formated with e.
+            else:
+#ANNOTATION: if not,
+                disable_existing = config.pop('disable_existing_loggers', True)
+#ANNOTATION: remove config dictionary element under 'disable_existing_loggers' key, if it exists substitute it for disable_existing, if not,
+#ANNOTATION: disable_existing is boolean True. 
+
+                logging._handlers.clear()
+#ANNOTATION: call the method logging._handler.clear.
+                del logging._handlerList[:]
+#ANNOTATION: delete logging._handlerList list.
+
+                # Do formatters first - they don't refer to anything else
+                formatters = config.get('formatters', EMPTY_DICT)
+#ANNOTATION: get config dictionary element under 'formatters' key, if it exists substitute it for formatters, if not, formatters is EMPTY_DICT.
+                for name in formatters:
+#ANNOTATION: for every name in formatters,
+                    try:
+#ANNOTATION: try,
+                        formatters[name] = self.configure_formatter(
+                                                            formatters[name])
+#ANNOTATION: call the method self.configure_filter with an argument value under name key of formatters dictionary, 
+#ANNOTATION: substitute the result for formatters dictionary value under name key.
+                    except StandardError as e:
+#ANNOTATION: if StandardError, renamed to e, exception is caught,
+                        raise ValueError('Unable to configure '
+                                         'formatter %r: %s' % (name, e))
+#ANNOTATION: raise an ValueError exception with an argument string 'Unable to configure formatter %r: %s' formated with name and e. 
+                # Next, do filters - they don't refer to anything else, either
+                filters = config.get('filters', EMPTY_DICT)
+#ANNOTATION: get config dictionary element under 'filters' key, if it exists substitute it for filters, if not, filters is EMPTY_DICT.
+                for name in filters:
+#ANNOTATION: for every name in filters,
+                    try:
+#ANNOTATION: try,
+                        filters[name] = self.configure_filter(filters[name])
+#ANNOTATION: call the method self.configure_filter with an argument value under name key of filters dictionary, 
+#ANNOTATION: substitute the result for filters dictionary value under name key.
+                    except StandardError as e:
+#ANNOTATION: if StandardError, renamed to e, exception is caught,
+                        raise ValueError('Unable to configure '
+                                         'filter %r: %s' % (name, e))
+#ANNOTATION: raise an ValueError exception with an argument string 'Unable to configure filter %r: %s' formated with name and e.
+
+                # Next, do handlers - they refer to formatters and filters
+                # As handlers can refer to other handlers, sort the keys
+                # to allow a deterministic order of configuration
+                handlers = config.get('handlers', EMPTY_DICT)
+#ANNOTATION: get config dictionary element under 'handlers' key, if it exists substitute it for handlers, if not, handlers is EMPTY_DICT.
+                for name in sorted(handlers):
+#ANNOTATION: sort elements of handlers, for every name in result,
+                    try:
+#ANNOTATION: try,
+                        handler = self.configure_handler(handlers[name])
+#ANNOTATION: call the method self.configure_handler with an argument value under name key of handlers dictionary, substitute the result for handler.
+                        handler.name = name
+#ANNOTATION: substitute name for handler.name.
+                        handlers[name] = handler
+#ANNOTATION: substitute handler for value under name key of handlers dictionary.
+                    except StandardError as e:
+#ANNOTATION: if StandardError, renamed to e, exception is caught,
+                        raise ValueError('Unable to configure handler '
+                                         '%r: %s' % (name, e))
+#ANNOTATION: raise an ValueError exception with an argument string 'Unable to configure handler %r: %s' formated with name and e.
+                # Next, do loggers - they refer to handlers and filters
+
+                # we don't want to lose the existing loggers,
+                # since other threads may have pointers to them.
+                # existing is set to contain all existing loggers,
+                # and as we go through the new configuration we
+                # remove any which are configured. At the end,
+                # what's left in existing is the set of loggers
+                # which were in the previous configuration but
+                # which are not in the new configuration.
+                root = logging.root
+#ANNOTATION: substitute logging.root for root.
+                existing = list(root.manager.loggerDict)
+#ANNOTATION: convert root.manager.loggerDict into a list, substitute it for existing.
+                # The list needs to be sorted so that we can
+                # avoid disabling child loggers of explicitly
+                # named loggers. With a sorted list it is easier
+                # to find the child loggers.
+                existing.sort()
+#ANNOTATION: sort elements of list existing.
+                # We'll keep the list of existing loggers
+                # which are children of named loggers here...
+                child_loggers = []
+#ANNOTATION: child_loggers is an empty list.
+                # now set up the new ones...
+                loggers = config.get('loggers', EMPTY_DICT)
+#ANNOTATION: get config dictionary element under 'loggers' key, if it exists substitute it for loggers, if not, loggers is EMPTY_DICT.
+                for name in loggers:
+#ANNOTATION: for every name in loggers,
+                    if name in existing:
+#ANNOTATION: if name is contained in existing,
+                        i = existing.index(name)
+#ANNOTATION: get the index of first occurrence of name in existing, substitute it for i.
+                        prefixed = name + "."
+#ANNOTATION: append '.' to name, substitute the result for prefixed.
+                        pflen = len(prefixed)
+#ANNOTATION: substitute length of prefixed for pflen.
+                        num_existing = len(existing)
+#ANNOTATION: substitute length of existing for num_existing.
+                        i = i + 1  # look at the entry after name
+#ANNOTATION: increment i by integer 1, substitute the result for i.
+                        while (i < num_existing) and\
+                              (existing[i][:pflen] == prefixed):
+#ANNOTATION: while i is lesser than num_existing and first pflen elements of i-th element of existing equals prefixed,
+                            child_loggers.append(existing[i])
+#ANNOTATION: append i-th element of existing to child_loggers.
+                            i = i + 1
+#ANNOTATION: increment i by integer 1, substitute the result for i.
+                        existing.remove(name)
+#ANNOTATION: remove name from existing.
+                    try:
+#ANNOTATION: try,
+                        self.configure_logger(name, loggers[name])
+#ANNOTATION: call the method self.configure_logger with 2 arguments: name and value under loggers dictionary key name.
+                    except StandardError as e:
+#ANNOTATION: if StandardError, renamed to e, exception is caught,
+                        raise ValueError('Unable to configure logger '
+                                         '%r: %s' % (name, e))
+#ANNOTATION: raise an ValueError exception with an argument string 'Unable to configure logger %r: %s' formated with name and e.
+
+                # Disable any old loggers. There's no point deleting
+                # them as other threads may continue to hold references
+                # and by disabling them, you stop them doing any logging.
+                # However, don't disable children of named loggers, as that's
+                # probably not what was intended by the user.
+                for log in existing:
+#ANNOTATION: for every log in existing,
+                    logger = root.manager.loggerDict[log]
+#ANNOTATION: get the value under log key of root.manager.loggerDict dictionary, substitute it for logger.
+                    if log in child_loggers:
+#ANNOTATION: if log is contained in child_loggers,
+                        logger.level = logging.NOTSET
+#ANNOTATION: substitute logging.NOTSET for logger.level.
+                        logger.handlers = []
+#ANNOTATION: logger.handlers is an empty list.
+                        logger.propagate = True
+#ANNOTATION: logger.propagate is boolean True.
+                    elif disable_existing:
+#ANNOTATION: otherwise if disable_existing is true,
+                        logger.disabled = True
+#ANNOTATION: logger.disabled is boolean True.
+
+                # And finally, do the root logger
+                root = config.get('root', None)
+#ANNOTATION: get config dictionary element under 'root' key, if it exists substitute it for root, if not, root is None.
+                if root:
+#ANNOTATION: if root is true, 
+                    try:
+#ANNOTATION: try,
+                        self.configure_root(root)
+#ANNOTATION: call the method self.configure_root with an argument root.
+                    except StandardError as e:
+#ANNOTATION: if StandardError, renamed to e, exception is caught,
+                        raise ValueError('Unable to configure root '
+                                         'logger: %s' % e)
+#ANNOTATION: raise an ValueError exception with an argument string ''Unable to configure root logger: %s' formated with e.
+        finally:
+#ANNOTATION: finally perform,
+            logging._releaseLock()
+#ANNOTATION: call the method logging._releaseLock.
+
+    def configure_formatter(self, config):
+#ANNOTATION: define the method configure_formatter with 2 arguments: self and config.
+        """Configure a formatter from a dictionary."""
+#ANNOTATION: docstring
+        if '()' in config:
+#ANNOTATION: if string '()' is contained in config,
+            factory = config['()']  # for use in exception handler
+#ANNOTATION: substitute config dictionary value under '()' key for factory.
+            try:
+#ANNOTATION: try,
+                result = self.configure_custom(config)
+#ANNOTATION: call the method self.configure_custom with an argument config, substitute the result for result.
+            except TypeError as te:
+#ANNOTATION: if TypeError, renamed to te, exception is caught,
+                if "'format'" not in str(te):
+#ANNOTATION: if string "'format'" is not contained in e converted into a string,
+                    raise
+#ANNOTATION: raise an exception.
+                # Name of parameter changed from fmt to format.
+                # Retry with old name.
+                # This is so that code can be used with older Python versions
+                #(e.g. by Django)
+                config['fmt'] = config.pop('format')
+#ANNOTATION: remove config dictionary entry under 'format' key, substitute it for value under 'fmt' key of config dictionary.
+                config['()'] = factory
+#ANNOTATION: substitute factory for value under '()' key of config dictionary.
+                result = self.configure_custom(config)
+#ANNOTATION: call the method self.configure_custom with an argument config, substitute the result for result.
+        else:
+#ANNOTATION: if not,
+            fmt = config.get('format', None)
+#ANNOTATION: get config dictionary element under 'format' key, if it exists substitute it for fmt, if not, fmt is None.
+            dfmt = config.get('datefmt', None)
+#ANNOTATION: get config dictionary element under 'datefmt' key, if it exists substitute it for dfmt, if not, dfmt is None.
+            result = logging.Formatter(fmt, dfmt)
+#ANNOTATION: call the method logging.Formatter with 2 arguments: fmt and dfmt, substitute the result for result.
+        return result
+#ANNOTATION: return result.
+
+    def configure_filter(self, config):
+#ANNOTATION: define the method configure_filter with 2 arguments: self and config.
+        """Configure a filter from a dictionary."""
+#ANNOTATION: docstring
+        if '()' in config:
+#ANNOTATION: if string '()' is contained in config,
+            result = self.configure_custom(config)
+#ANNOTATION: call the method self.configure_custom with an argument config, substitute the result for result.
+        else:
+#ANNOTATION: if not,
+            name = config.get('name', '')
+#ANNOTATION: remove config dictionary element under 'name' key, if it exists substitute it for name, if not, name is an empty string.
+            result = logging.Filter(name)
+#ANNOTATION: call the method logging.Filter with an argument name, substitute the result for result.
+        return result
+#ANNOTATION: return result.
+
+    def add_filters(self, filterer, filters):
+#ANNOTATION: define the method add_filters with 3 arguments: self, filterer and filters.
+        """Add filters to a filterer from a list of names."""
+#ANNOTATION: docstring
+        for f in filters:
+#ANNOTATION: for every f in filters,
+            try:
+#ANNOTATION: try,
+                filterer.addFilter(self.config['filters'][f])
+#ANNOTATION: get the value under f key of dictionary under 'filters' key of self.config dictionary, 
+#ANNOTATION: use the result as an argument for the call to the method filterer.addFilter.
+            except StandardError as e:
+#ANNOTATION: if StandardError, renamed to e, exception is caught,
+                raise ValueError('Unable to add filter %r: %s' % (f, e))
+#ANNOTATION: raise an ValueError exception with an argument string 'Unable to add filter %r: %s' formated with f and e.
+
+    def configure_handler(self, config):
+#ANNOTATION: define the method configure_handler with 2 arguments: self and config.
+        """Configure a handler from a dictionary."""
+#ANNOTATION: docstring
+        formatter = config.pop('formatter', None)
+#ANNOTATION: remove config dictionary element under 'formatter' key, if it exists substitute it for formatter, if not, formatter is None. 
+        if formatter:
+#ANNOTATION: if formatter is true,
+            try:
+#ANNOTATION: try,
+                formatter = self.config['formatters'][formatter]
+#ANNOTATION: get the value under formatter key of dictionary under 'formatters' key of self.config dictionary, substitute the result for formatter.
+            except StandardError as e:
+#ANNOTATION: if StandardError, renamed to e, exception is caught,
+                raise ValueError('Unable to set formatter '
+                                 '%r: %s' % (formatter, e))
+#ANNOTATION: raise an ValueError exception with an argument string 'Unable to set formatter %r: %s' formated with formatter and e.
+        level = config.pop('level', None)
+#ANNOTATION: remove config dictionary element under 'level' key, if it exists substitute it for level, if not, level is None.
+        filters = config.pop('filters', None)
+#ANNOTATION: remove config dictionary element under 'filter' key, if it exists substitute it for filters, if not, filters is None. 
+        if '()' in config:
+#ANNOTATION: if string '()' is contained in config,
+            c = config.pop('()')
+#ANNOTATION: remove config dictionary element under '()' key, substitute it for c.
+            if not hasattr(c, '__call__') and hasattr(types, 'ClassType') and type(c) != types.ClassType:
+#ANNOTATION: if c doesnt have an attribute '__call__', and types has an attribute 'ClassType', and type of c is not equal to types.ClassType,
+                c = self.resolve(c)
+#ANNOTATION: call the method self.resolve with an argument c, substitute the result for c.
+            factory = c
+#ANNOTATION: substitute c for factory.
+        else:
+#ANNOTATION: if not,
+            klass = self.resolve(config.pop('class'))
+#ANNOTATION: remove config dictionary element under 'class' key, use it as an argument for the call to the method self.resolve,
+#ANNOTATION: substitute the result for klass.
+            # Special case for handler which refers to another handler
+            if issubclass(klass, logging.handlers.MemoryHandler) and\
+                'target' in config:
+#ANNOTATION: if klass is a subclass of logging.handlers.MemoryHandler base class and string 'target' is contained in config,
+                try:
+#ANNOTATION: try,
+                    config['target'] = self.config['handlers'][config['target']]
+#ANNOTATION: get value under 'target' key of config dictionary, use it as a key to get the value from the dictionary,
+#ANNOTATION: under the 'handlers' key of self.config dictionary, substitute the result for value under 'target' key of config dictioanry. 
+                except StandardError as e:
+#ANNOTATION: if StandardError, renamed to e, exception is caught,
+                    raise ValueError('Unable to set target handler '
+                                     '%r: %s' % (config['target'], e))
+#ANNOTATION: raise an ValueError exception with an argument string 'Unable to set target handler %r: %s',
+#ANNOTATION: formated with value under 'target' key of config dictionary and e.
+            elif issubclass(klass, logging.handlers.SMTPHandler) and\
+                 in config:
+#ANNOTATION: otherwise if klass is a subclass of logging.handlers.SMTPHandler and string 'mailhost' is contained in config,
+                config['mailhost'] = self.as_tuple(config['mailhost'])
+#ANNOTATION: call the method self.as_tuple with an argument value under 'mailhost' key of config dictionary, 
+#ANNOTATION: substitute the result for value under 'mailhost' key of config dictionary.
+            elif issubclass(klass, logging.handlers.SysLogHandler) and\
+                'address' in config:
+#ANNOTATION: otherwise if klass is subclass of logging.handlers.SysLogHandler class, and string 'address' is contained in config,
+                config['address'] = self.as_tuple(config['address'])
+#ANNOTATION: call the method self.as_tuple with an argument value under 'address' key of config dictionary, 
+#ANNOTATION: substitute the result for value under 'address' key of config dictionary.
+            factory = klass
+#ANNOTATION: substitute klass for factory.
+        kwargs = dict((k, config[k]) for k in config if valid_ident(k))
+#ANNOTATION: kwargs is a dictionary created with tuples with 2 elements: k and value under k key of config dictionary, 
+#ANNOTATION: for every k in config, only if result of the function valid_ident called with an argument k evaluates to true.
+        try:
+#ANNOTATION: try,
+            result = factory(**kwargs)
+#ANNOTATION: call the function factory with an argument unpacked dictionary kwargs, substitute the result for result.
+        except TypeError as te:
+#ANNOTATION: if TypeError, renamed to te, exception is caught,
+            if "'stream'" not in str(te):
+#ANNOTATION: if "'stream'" is not contained in te converted into a string,
+                raise
+#ANNOTATION: raise an exception.
+            # The argument name changed from strm to stream
+            # Retry with old name.
+            # This is so that code can be used with older Python versions
+            #(e.g. by Django)
+            kwargs['strm'] = kwargs.pop('stream')
+#ANNOTATION: remove element under 'stream' key of kwargs dictionary, substitute the result for value under 'strm' key of kwargs dictionary.
+            result = factory(**kwargs)
+#ANNOTATION: call the function factory with an argument unpacked dictionary kwargs, substitute the result for result.
+        if formatter:
+#ANNOTATION: if formatter is true,
+            result.setFormatter(formatter)
+#ANNOTATION: call the method result.setFormatter with an argument formatter.
+        if level is not None:
+#ANNOTATION: if level is not None,
+            result.setLevel(_checkLevel(level))
+#ANNOTATION: call function _checkLevel with an argument level, use the result as an argument for the method result.setLevel.
+        if filters:
+#ANNOTATION: if filters is true,
+            self.add_filters(result, filters)
+#ANNOTATION: call the method self.add_filters with 2 arguments: result and filters.
+        return result
+#ANNOTATION: return result.
+
+    def add_handlers(self, logger, handlers):
+#ANNOTATION: define the method add_handlers with 3 arguments: self, logger and handlers.
+        """Add handlers to a logger from a list of names."""
+#ANNOTATION: docstring
+        for h in handlers:
+#ANNOTATION: for every h in handlers,
+            try:
+#ANNOTATION: try,
+                logger.addHandler(self.config['handlers'][h])
+#ANNOTATION: call the method logger.addHandler with an argument: h-th element of value under 'handlers' key of self.config dictionary.
+            except StandardError as e:
+#ANNOTATION: if StandardError, renamed to e, exception is caught,
+                raise ValueError('Unable to add handler %r: %s' % (h, e))
+#ANNOTATION: raise an ValueError exception with an argument string 'Unable to add handler %r: %s' formated with h and e.
+
+    def common_logger_config(self, logger, config, incremental=False):
+#ANNOTATION: define the method common_logger_config with 4 arguments: self, logger, config and incremental set to boolean False.
+        """
+        Perform configuration which is common to root and non-root loggers.
+        """
+#ANNOTATION: docstring
+        level = config.get('level', None)
+#ANNOTATION: get value under the 'level' key of the config dictioanry, if it exists substitute it for level, if not level is None.
+        if level is not None:
+#ANNOTATION: if level is not None,
+            logger.setLevel(_checkLevel(level))
+#ANNOTATION: call the function _checkLevel with an argument level, use the result as an argument for the call to the method logger.setLevel.
+        if not incremental:
+#ANNOTATION: if incremental is true,
+            # Remove any existing handlers
+            for h in logger.handlers[:]:
+#ANNOTATION: for every h in elements of logger.handlers list,
+                logger.removeHandler(h)
+#ANNOTATION: call the method logger.removeHandler with an argument h.
+            handlers = config.get('handlers', None)
+#ANNOTATION: get value under the 'handlers' key of the config dictioanry, if it exists substitute it for handlers, if not handlers is None.
+            if handlers:
+#ANNOTATION: if handlers is true,
+                self.add_handlers(logger, handlers)
+#ANNOTATION: call the method self.add_handlers with 2 arguments: logger and handlers.
+            filters = config.get('filters', None)
+#ANNOTATION: get value under the 'filters' key of the config dictioanry, if it exists substitute it for filters, if not filters is None.
+            if filters:
+#ANNOTATION: if filters is true,
+                self.add_filters(logger, filters)
+#ANNOTATION: call the method self.add_filters with 2 arguments: logger and filters.
+
+    def configure_logger(self, name, config, incremental=False):
+#ANNOTATION: define the method configure_logger with 4 arguments: self, name, config, incremental set to boolean False.
+        """Configure a non-root logger from a dictionary."""
+#ANNOTATION: docstring
+        logger = logging.getLogger(name)
+#ANNOTATION: call the method logging.getLogger with an argument name, substitute the result for logger.
+        self.common_logger_config(logger, config, incremental)
+#ANNOTATION: call the method self.common_logger_config with 3 arguments: logger, config and incremental.
+        propagate = config.get('propagate', None)
+#ANNOTATION: get value under the 'propagate' key of the config dictioanry, if it exists substitute it for propagate, if not propagate is None.
+        if propagate is not None:
+#ANNOTATION: if propagate is not None,
+            logger.propagate = propagate
+#ANNOTATION: substitute propagate for logger.propagate.
+
+    def configure_root(self, config, incremental=False):
+#ANNOTATION: define the method configure_root with 3 arguments: self, config and incremental set to boolean False.
+        """Configure a root logger from a dictionary."""
+#ANNOTATION: docstring
+        root = logging.getLogger()
+#ANNOTATION: call the method logging.getLogger, substitute the result for root.
+        self.common_logger_config(root, config, incremental)
+#ANNOTATION: call the method self.common_logger_config with 3 arguments: root, config and incremental.
+
+dictConfigClass = DictConfigurator
+#ANNOTATION: substitute DictConfigurator for dictConfigClass.
+
+
+def dictConfig(config):
+#ANNOTATION: define the function dictConfig with an argument config.
+    """Configure logging using a dictionary."""
+#ANNOTATION: docstring
+    dictConfigClass(config).configure()
+#ANNOTATION: call the method dictConfigClass with an argument config, call the method configure on the result.

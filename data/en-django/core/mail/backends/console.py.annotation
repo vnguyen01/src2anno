@@ -1,0 +1,81 @@
+"""
+Email backend that writes messages to console instead of sending them.
+"""
+#ANNOTATION: docstring
+import sys
+#ANNOTATION: import module sys.
+import threading
+#ANNOTATION: import module threading.
+
+from django.core.mail.backends.base import BaseEmailBackend
+#ANNOTATION: from django.core.mail.backends.base import BaseEmailBackend into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+class EmailBackend(BaseEmailBackend):
+#ANNOTATION: derive the class EmailBackend from the BaseEmailBackend base class.
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the __init__ method with arguments: self, unpacked list args and unpacked dictionary kwargs.
+        self.stream = kwargs.pop('stream', sys.stdout)
+#ANNOTATION: pop the value under the 'stream' key of the kwargs dictionary, if it exists replace it for self.stream, if not replace sys.stdout for self.stream.
+        self._lock = threading.RLock()
+#ANNOTATION: call the method threading.RLock, substitute the result for self._lock.
+        super(EmailBackend, self).__init__(*args, **kwargs)
+#ANNOTATION: call the __init__ method from the base class of the EmailBackend class, with arguments: unpacked list args and unpacked dictionary kwargs.
+
+    def write_message(self, message):
+#ANNOTATION: define the method write_message with arguments self and message.
+        msg = message.message()
+#ANNOTATION: call the method message.message, substitute the result for msg.
+        msg_data = msg.as_bytes()
+#ANNOTATION: call the method msg.as_bytes, substitute the result for msg_data.
+        if six.PY3:
+#ANNOTATION: if six.PY3 is boolean True,
+            charset = msg.get_charset().get_output_charset() if msg.get_charset() else 'utf-8'
+#ANNOTATION: if method msg.get_charset evaluates to true, call the get_output_charset method on the return value of the msg.get_charset method, substitute the result for charset, otherwise if it is false, substitute the string 'utf-8' for charset.
+            msg_data = msg_data.decode(charset)
+#ANNOTATION: call the method msg_data.decode with argument charset, substitute the result for msg_data.
+        self.stream.write('%s\n' % msg_data)
+#ANNOTATION: call the method self.stream.write with argument string '%s\n', with '%s' replaced with msg_data. 
+        self.stream.write('-' * 79)
+#ANNOTATION: write 79 '-' characters into self.stream file stream.
+        self.stream.write('\n')
+#ANNOTATION: write a newline into a self.stream file stream.
+
+    def send_messages(self, email_messages):
+#ANNOTATION: define the method send_messages with arguments self and email_messages.
+        """Write all messages to the stream in a thread-safe way."""
+#ANNOTATION: docstring
+        if not email_messages:
+#ANNOTATION: if email_messages is false,
+            return
+#ANNOTATION: return.
+        msg_count = 0
+#ANNOTATION: msg_count is an integer 0.
+        with self._lock:
+#ANNOTATION: call the method self._lock, with the result,
+            try:
+#ANNOTATION: try,
+                stream_created = self.open()
+#ANNOTATION: call the method self.open, substitute the result for stream_created.
+                for message in email_messages:
+#ANNOTATION: for every message in email_messages,
+                    self.write_message(message)
+#ANNOTATION: call the method self.write_message with argument message.
+                    self.stream.flush()  # flush after each message
+#ANNOTATION: call the method self.stream.flush.
+                    msg_count += 1
+#ANNOTATION: increment msg_count by one.
+                if stream_created:
+#ANNOTATION: if stream_created is true,
+                    self.close()
+#ANNOTATION: call the method self.close.
+            except Exception:
+#ANNOTATION: if Exception exception is caught,
+                if not self.fail_silently:
+#ANNOTATION: if self.fail_silently is boolean False,
+                    raise
+#ANNOTATION: raise an exception.
+        return msg_count
+#ANNOTATION: return msg_count.

@@ -1,0 +1,936 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import copy
+#ANNOTATION: import module copy.
+import os
+#ANNOTATION: import module os.
+import re
+#ANNOTATION: import module re.
+import sys
+#ANNOTATION: import module sys.
+from io import BytesIO
+#ANNOTATION: from io import BytesIO into default name space.
+from itertools import chain
+#ANNOTATION: from itertools import chain into default name space.
+from pprint import pformat
+#ANNOTATION: from pprint import pformat into default name space.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core import signing
+#ANNOTATION: from django.core import signing into default name space.
+from django.core.exceptions import DisallowedHost, ImproperlyConfigured
+#ANNOTATION: from django.core.exceptions import DisallowedHost and ImproperlyConfigured into default name space.
+from django.core.files import uploadhandler
+#ANNOTATION: from django.core.files import uploadhandler into default name space.
+from django.http.multipartparser import MultiPartParser, MultiPartParserError
+#ANNOTATION: from django.http.multipartparser import MultiPartParser and MultiPartParserError into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.datastructures import MultiValueDict, ImmutableList
+#ANNOTATION: from django.utils.datastructures import MultiValueDict and ImmutableList into default name space.
+from django.utils.encoding import force_bytes, force_text, force_str, iri_to_uri
+#ANNOTATION: from django.utils.encoding import force_bytes,  force_text,  force_str and iri_to_uri into default name space.
+from django.utils.six.moves.urllib.parse import parse_qsl, urlencode, quote, urljoin, urlsplit
+#ANNOTATION: from django.utils.six.moves.urllib.parse import parse_qsl,  urlencode,  quote,  urljoin and urlsplit into default name space.
+
+
+RAISE_ERROR = object()
+#ANNOTATION: RAISE_ERROR is an instance of object class.
+absolute_http_url_re = re.compile(r"^https?://", re.I)
+#ANNOTATION: compile the regex "^https?://" with an argument re.I, substitute it for absolute_http_url_re.
+host_validation_re = re.compile(r"^([a-z0-9.-]+|\[[a-f0-9]*:[a-f0-9:]+\])(:\d+)?$")
+#ANNOTATION: compile the regex "^([a-z0-9.-]+|\[[a-f0-9]*:[a-f0-9:]+\])(:\d+)?$", substitute it for host_validation_re.
+
+
+class UnreadablePostError(IOError):
+#ANNOTATION: derive the class UnreadablePostError from the base class IOError.
+    pass
+#ANNOTATION: do nothing.
+
+
+class RawPostDataException(Exception):
+#ANNOTATION: derive the class RawPostDataException from the base class Exception.
+    """
+    You cannot access raw_post_data from a request that has
+    multipart/* POST data if it has been accessed via POST,
+    FILES, etc..
+    """
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class HttpRequest(object):
+#ANNOTATION: derive the class HttpRequest from the object base class.
+    """A basic HTTP request."""
+#ANNOTATION: docstring
+
+    # The encoding used in GET/POST dicts. None means use default setting.
+    _encoding = None
+#ANNOTATION: _encoding is None.
+    _upload_handlers = []
+#ANNOTATION: _upload_handlers is an empty list.
+
+    def __init__(self):
+#ANNOTATION: define the method __init__ with an argument self.
+        # WARNING: The `WSGIRequest` subclass doesn't call `super`.
+        # Any variable assignment made here should also happen in
+        # `WSGIRequest.__init__()`.
+
+        self.GET = QueryDict(mutable=True)
+#ANNOTATION: self.GET is an instance of QueryDict class created with an argument mutable set to boolean True.
+        self.POST = QueryDict(mutable=True)
+#ANNOTATION: self.POST is an instance of QueryDict class created with an argument mutable set to boolean True.
+        self.COOKIES = {}
+#ANNOTATION: self.COOKIES is an empty dictionary.
+        self.META = {}
+#ANNOTATION: self.META is an empty dictionary.
+        self.FILES = MultiValueDict()
+#ANNOTATION: self.FILES is an instance of MultiValueDict class.
+
+        self.path = ''
+#ANNOTATION: self.path is an empty string.
+        self.path_info = ''
+#ANNOTATION: self.path_info is an empty string.
+        self.method = None
+#ANNOTATION: self.method is None.
+        self.resolver_match = None
+#ANNOTATION: self.resolver_match is None.
+        self._post_parse_error = False
+#ANNOTATION: self._post_parse_error is boolen False.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return build_request_repr(self)
+#ANNOTATION: call the method build_request_repr with an argument self, return the result.
+
+    def get_host(self):
+#ANNOTATION: define the method get_host with an argument self.
+        """Returns the HTTP host using the environment or request headers."""
+#ANNOTATION: docstring
+        # We try three options, in order of decreasing preference.
+        if settings.USE_X_FORWARDED_HOST and (
+                'HTTP_X_FORWARDED_HOST' in self.META):
+#ANNOTATION: if settings.USE_X_FORWARDED_HOST is true and 'HTTP_X_FORWARDED_HOST' is contained in self.META.
+            host = self.META['HTTP_X_FORWARDED_HOST']
+#ANNOTATION: get the value under the 'HTTP_X_FORWARDED_HOST' key of the self.META dictionary, substitute the result for host.
+        elif 'HTTP_HOST' in self.META:
+#ANNOTATION: if 'HTTP_HOST' is contained in self.META,
+            host = self.META['HTTP_HOST']
+#ANNOTATION: substitute the value under the 'HTTP_HOST' key of the self.META dictionary, substitute it for host. 
+        else:
+#ANNOTATION: if not,
+            # Reconstruct the host using the algorithm from PEP 333.
+            host = self.META['SERVER_NAME']
+#ANNOTATION: substitute the value under the 'SERVER_NAME' key of the self.META dictionary, substitute it for host. 
+            server_port = str(self.META['SERVER_PORT'])
+#ANNOTATION: convert the value under the 'SERVER_NAME' key of the self.META dictionary to a string, substitute result for server_port.
+            if server_port != ('443' if self.is_secure() else '80'):
+#ANNOTATION: if return value of the self.is_secure method is true and server_port is not equal to string '443', 
+#ANNOTATION: if return value of the self.is_secure is false and server port is not equal to string '80',
+                host = '%s:%s' % (host, server_port)
+#ANNOTATION: join host and server_port into a string, separated with ':', substitute the result for host.
+
+        # There is no hostname validation when DEBUG=True
+        if settings.DEBUG:
+#ANNOTATION: if settings.DEBUG is true,
+            return host
+#ANNOTATION: return host.
+
+        domain, port = split_domain_port(host)
+#ANNOTATION: call the function split_domain_port with an argument host, assign the result to domain and port, respectively.
+        if domain and validate_host(domain, settings.ALLOWED_HOSTS):
+#ANNOTATION: if domain is true and return value of the function validate_host called with 2 arguments: domain and settings.ALLOWED_HOSTS, evaluates to true,
+            return host
+#ANNOTATION: return host.
+        else:
+#ANNOTATION: if not,
+            msg = "Invalid HTTP_HOST header: %r." % host
+#ANNOTATION: msg is a string "Invalid HTTP_HOST header: %r.", replace '%r' with host.
+            if domain:
+#ANNOTATION: if domain is true,
+                msg += " You may need to add %r to ALLOWED_HOSTS." % domain
+#ANNOTATION: append string " You may need to add %r to ALLOWED_HOSTS." to msg, where '%s' is replaced with domain.
+            else:
+#ANNOTATION: if not,
+                msg += " The domain name provided is not valid according to RFC 1034/1035."
+#ANNOTATION: append string " The domain name provided is not valid according to RFC 1034/1035." to msg.
+            raise DisallowedHost(msg)
+#ANNOTATION: raise an DisallowedHost exception with an argument msg.
+
+    def get_full_path(self):
+#ANNOTATION: define the method get_full_path with an argument self.
+        # RFC 3986 requires query string arguments to be in the ASCII range.
+        # Rather than crash if this doesn't happen, we encode defensively.
+        return '%s%s' % (self.path, ('?' + iri_to_uri(self.META.get('QUERY_STRING', ''))) if self.META.get('QUERY_STRING', '') else '')
+#ANNOTATION: if the value under the 'QUERY_STRING' key of the self.META dictionary is true, call the function iri_to_uri,
+#ANNOTATION: called with value under the 'QUERY_STRING' key of the self.META dictionary and append it to string '?',
+#ANNOTATION: append the result th the self.path converted into a string and return it, 
+#ANNOTATION: if the value under the 'QUERY_STRING' key of the self.META dictionary is false, return self.path converted into a string.
+
+    def get_signed_cookie(self, key, default=RAISE_ERROR, salt='', max_age=None):
+#ANNOTATION: def the method get_signed_cookie with 5 arguments: self, key, default set to RAISE_ERROR, salt as an empty string, 
+#ANNOTATION: max_age set to None.
+        """
+        Attempts to return a signed cookie. If the signature fails or the
+        cookie has expired, raises an exception... unless you provide the
+        default argument in which case that value will be returned instead.
+        """
+#ANNOTATION: docstring
+        try:
+#ANNOTATION: try,
+            cookie_value = self.COOKIES[key]
+#ANNOTATION: substitute value under the key key of the self.COOKIES dictionary, substitute it for cookie_value.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            if default is not RAISE_ERROR:
+#ANNOTATION: if default is true and RAISE_ERROR is false,
+                return default
+#ANNOTATION: return default.
+            else:
+#ANNOTATION: if not,
+                raise
+#ANNOTATION: raise an exception.
+        try:
+#ANNOTATION: try,
+            value = signing.get_cookie_signer(salt=key + salt).unsign(
+                cookie_value, max_age=max_age)
+#ANNOTATION: call the method signing.get_cookie_signer with an argument salt set to sum of key and salt, call the method unsign on the result,
+#ANNOTATION: with arguments cookie_value and max_age set to max_age.
+        except signing.BadSignature:
+#ANNOTATION: if signing.BadSignature exception is caught,
+            if default is not RAISE_ERROR:
+#ANNOTATION: if default is true and RAISE_ERROR is false,
+                return default
+#ANNOTATION: return default.
+            else:
+#ANNOTATION: if not,
+                raise
+#ANNOTATION: raise an exception.
+        return value
+#ANNOTATION: return value.
+
+    def build_absolute_uri(self, location=None):
+#ANNOTATION: define the method build_absolute_uri with an arguments self and location set to None.
+        """
+        Builds an absolute URI from the location and the variables available in
+        this request. If no ``location`` is specified, the absolute URI is
+        built on ``request.get_full_path()``. Anyway, if the location is
+        absolute, it is simply converted to an RFC 3987 compliant URI and
+        returned and if location is relative or is scheme-relative (i.e.,
+        ``//example.com/``), it is urljoined to a base URL constructed from the
+        request variables.
+        """
+#ANNOTATION: docstring
+        if location is None:
+#ANNOTATION: if location is None,
+            # Make it an absolute url (but schemeless and domainless) for the
+            # edge case that the path starts with '//'.
+            location = '//%s' % self.get_full_path()
+#ANNOTATION: call the method self.get_full_path, append the result to string '//', substitute it for location.
+        bits = urlsplit(location)
+#ANNOTATION: call the function urlsplit with an argument location, substitute the result for bits.
+        if not (bits.scheme and bits.netloc):
+#ANNOTATION: do not perform the following only if bits.scheme and bits.netloc are both true,
+            current_uri = '{scheme}://{host}{path}'.format(scheme=self.scheme,
+                                                           host=self.get_host(),
+                                                           path=self.path)
+#ANNOTATION: format the string '{scheme}://{host}{path}' by replacing scheme with self.scheme, host with return value of the self.get_host method,
+#ANNOTATION: and path with self.path, substitute the result for current_uri.
+            # Join the constructed URL with the provided location, which will
+            # allow the provided ``location`` to apply query strings to the
+            # base path as well as override the host, if it begins with //
+            location = urljoin(current_uri, location)
+#ANNOTATION: call the function urljoin with arguments current_uri and location, substitute the result for location.
+        return iri_to_uri(location)
+#ANNOTATION: call the function iri_to_uri with an argument location, return the result.
+
+    def _get_scheme(self):
+#ANNOTATION: define the method _get_scheme with an argument self.
+        return 'https' if os.environ.get("HTTPS") == "on" else 'http'
+#ANNOTATION: return string 'https' if value under the "HTTPS" key of the os.environ dictionary equals string 'on', if not return 'http'.
+
+    @property
+#ANNOTATION: property decorator.
+    def scheme(self):
+#ANNOTATION: define the method scheme with an argument self.
+        # First, check the SECURE_PROXY_SSL_HEADER setting.
+        if settings.SECURE_PROXY_SSL_HEADER:
+#ANNOTATION: if settings.SECURE_PROXY_SSL_HEADER is true,
+            try:
+#ANNOTATION: try,
+                header, value = settings.SECURE_PROXY_SSL_HEADER
+#ANNOTATION: assign the settings.SECURE_PROXY_SSL_HEADER to header and value, respectively.
+            except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+                raise ImproperlyConfigured('The SECURE_PROXY_SSL_HEADER setting must be a tuple containing two values.')
+#ANNOTATION: raise an ImproperlyConfigured exception with an argument string 'The SECURE_PROXY_SSL_HEADER setting must be a tuple containing two values.'.
+            if self.META.get(header, None) == value:
+#ANNOTATION: if value under the header key of the self.META dictionary is equal to value,
+                return 'https'
+#ANNOTATION: return string 'https'.
+        # Failing that, fall back to _get_scheme(), which is a hook for
+        # subclasses to implement.
+        return self._get_scheme()
+#ANNOTATION: call the method self._get_scheme, return the result.
+
+    def is_secure(self):
+#ANNOTATION: define the method is_secure with an argument self.
+        return self.scheme == 'https'
+#ANNOTATION: if self.scheme equals to string 'https', return boolean True, otherwise return boolean False.
+
+    def is_ajax(self):
+#ANNOTATION: define the method is_ajax with an argument self.
+        return self.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest'
+#ANNOTATION: get the value under the 'HTTP_X_REQUESTED_WITH' key of the self.META dictionary, if it equals string 'XMLHttpRequest', 
+#ANNOTATION: return boolean True, otherwise return boolean False.
+
+    @property
+#ANNOTATION: property decorator.
+    def encoding(self):
+#ANNOTATION: define the method encoding with an argument self.
+        return self._encoding
+#ANNOTATION:return self._encoding.
+
+    @encoding.setter
+#ANNOTATION: encoding.setter decorator,
+    def encoding(self, val):
+#ANNOTATION: define the method encoding with arguments self and val.
+        """
+        Sets the encoding used for GET/POST accesses. If the GET or POST
+        dictionary has already been created, it is removed and recreated on the
+        next access (so that it is decoded correctly).
+        """
+#ANNOTATION: docstring
+        self._encoding = val
+#ANNOTATION: substitute val for self._encoding.
+        if hasattr(self, '_get'):
+#ANNOTATION: if self has an '_get' attribute,
+            del self._get
+#ANNOTATION: delete self._get.
+        if hasattr(self, '_post'):
+#ANNOTATION: if self has an '_post' attribute,
+            del self._post
+#ANNOTATION: del self._post
+
+    def _initialize_handlers(self):
+#ANNOTATION: define the method _initialize_handlers with an argument self.
+        self._upload_handlers = [uploadhandler.load_handler(handler, self)
+                                 for handler in settings.FILE_UPLOAD_HANDLERS]
+#ANNOTATION: for every handler in settings.FILE_UPLOAD_HANDLERS, 
+#ANNOTATION: add to a list result of the method uploadhandler.load_handler called with arguments handler and self, 
+#ANNOTATION: substitute resulting list for self._upload_handlers.
+
+    @property
+#ANNOTATION: property decorator,
+    def upload_handlers(self):
+#ANNOTATION: define the method upload_handlers with an argument self.
+        if not self._upload_handlers:
+#ANNOTATION: if self._upload_handlers is false,
+            # If there are no upload handlers defined, initialize them from settings.
+            self._initialize_handlers()
+#ANNOTATION: call the method self._initialize_handlers,
+        return self._upload_handlers
+#ANNOTATION: return self._upload_handlers.
+
+    @upload_handlers.setter
+#ANNOTATION: upload_handlers.setter decorator.
+    def upload_handlers(self, upload_handlers):
+#ANNOTATION: define the method upload_handlers with arguments: self and upload_handlers.
+        if hasattr(self, '_files'):
+#ANNOTATION: if self has an '_files' attribute.
+            raise AttributeError("You cannot set the upload handlers after the upload has been processed.")
+#ANNOTATION: raise an AttributeError exception with an argument string "You cannot set the upload handlers after the upload has been processed.".
+        self._upload_handlers = upload_handlers
+#ANNOTATION: substitute upload_handlers for self._upload_handlers.
+
+    def parse_file_upload(self, META, post_data):
+#ANNOTATION: define the method parse_file_upload with 3 arguments: self, META and post_data.
+        """Returns a tuple of (POST QueryDict, FILES MultiValueDict)."""
+#ANNOTATION: docstring
+        self.upload_handlers = ImmutableList(
+            self.upload_handlers,
+            warning="You cannot alter upload handlers after the upload has been processed."
+        )
+#ANNOTATION: self.upload_handlers is an instance of ImmutableList, created with 2 arguments: self.upload_handlers,
+#ANNOTATION: and warning as a string "You cannot alter upload handlers after the upload has been processed.".
+        parser = MultiPartParser(META, post_data, self.upload_handlers, self.encoding)
+#ANNOTATION: parser is an instance of MultiPartParser class, created with 4 arguments: META, post_data, self.upload_handlers and self.encoding.
+        return parser.parse()
+#ANNOTATION: call the method parser.parse, return the result.
+
+    @property
+#ANNOTATION: property decorator,
+    def body(self):
+#ANNOTATION: define the method body with an argument self.
+        if not hasattr(self, '_body'):
+#ANNOTATION: if self doesnt have an '_body' attribute,
+            if self._read_started:
+#ANNOTATION: if self._read_started is true,
+                raise RawPostDataException("You cannot access body after reading from request's data stream")
+#ANNOTATION: raise an RawPostDataException exception with an argument string "You cannot access body after reading from request's data stream". 
+            try:
+#ANNOTATION: try,
+                self._body = self.read()
+#ANNOTATION: call the method self.read, substitute the result or self._body.
+            except IOError as e:
+#ANNOTATION: if IOError, renamed to e, exception is caught,
+                six.reraise(UnreadablePostError, UnreadablePostError(*e.args), sys.exc_info()[2])
+#ANNOTATION: call the function six.reraise with 3 arguments: UnreadablePostError, UnreadablePostError instantiated with unpacked list e.args,
+#ANNOTATION: third element of the result of the function sys.exc_info.
+            self._stream = BytesIO(self._body)
+#ANNOTATION: self._stream is an instance of BytesIO class created with an argument self._body.
+        return self._body
+#ANNOTATION: return self._body.
+
+    def _mark_post_parse_error(self):
+#ANNOTATION: define the method_mark_post_parse_error with an argument self.
+        self._post = QueryDict('')
+#ANNOTATION: self._post is an instance of QueryDict class created with an empty string as argument.
+        self._files = MultiValueDict()
+#ANNOTATION: self._files is an instance of MultiValueDict class.
+        self._post_parse_error = True
+#ANNOTATION: self._post_parse_error is boolean True.
+
+    def _load_post_and_files(self):
+#ANNOTATION: define the method _load_post_and_files with an argument self.
+        """Populate self._post and self._files if the content-type is a form type"""
+#ANNOTATION: docstring
+        if self.method != 'POST':
+#ANNOTATION: if self.method is not equal to string 'POST',
+            self._post, self._files = QueryDict('', encoding=self._encoding), MultiValueDict()
+#ANNOTATION: self._post is an instance of QueryDict created with arguments: an empty string and encoding set to self._encoding, 
+#ANNOTATION: self._files is an instance of class MultiValueDict.
+            return
+#ANNOTATION: return nothing.
+        if self._read_started and not hasattr(self, '_body'):
+#ANNOTATION: if self._read_started is true and self doesnt have an '_body' attribute.
+            self._mark_post_parse_error()
+#ANNOTATION: call the method self._mark_post_parse_error.
+            return
+#ANNOTATION: return nothing.
+
+        if self.META.get('CONTENT_TYPE', '').startswith('multipart/form-data'):
+#ANNOTATION: get the value under the 'CONTENT_TYPE' key of the self.META dictionary, if it starts with a string 'multipart/form-data',
+            if hasattr(self, '_body'):
+#ANNOTATION: if self has an attribute '_body',
+                # Use already read data
+                data = BytesIO(self._body)
+#ANNOTATION: data is an instance of BytesIO class, created with an argument: self._body.
+            else:
+#ANNOTATION: if not,
+                data = self
+#ANNOTATION: substitute self for data.
+            try:
+#ANNOTATION: try,
+                self._post, self._files = self.parse_file_upload(self.META, data)
+#ANNOTATION: call the method self.parse_file_upload with arguments self.META and data, assign the result to self._post and self._files.
+            except MultiPartParserError:
+#ANNOTATION: if MultiPartParserError exception is caught,
+                # An error occurred while parsing POST data. Since when
+                # formatting the error the request handler might access
+                # self.POST, set self._post and self._file to prevent
+                # attempts to parse POST data again.
+                # Mark that an error occurred. This allows self.__repr__ to
+                # be explicit about it instead of simply representing an
+                # empty POST
+                self._mark_post_parse_error()
+#ANNOTATION: call the method self._mark_post_parse_error.
+                raise
+#ANNOTATION: raise an exception.
+        elif self.META.get('CONTENT_TYPE', '').startswith('application/x-www-form-urlencoded'):
+#ANNOTATION: otherwise if value under the 'CONTENT_TYPE' key of hte self.META dictionary starts with 'application/x-www-form-urlencoded', 
+            self._post, self._files = QueryDict(self.body, encoding=self._encoding), MultiValueDict()
+#ANNOTATION: self._post is an instance of QueryDict created with arguments: self.body and encoding set to self._encoding, 
+#ANNOTATION: self._files is an instance of class MultiValueDict.
+        else:
+#ANNOTATION: if not,
+            self._post, self._files = QueryDict('', encoding=self._encoding), MultiValueDict()
+#ANNOTATION: self._post is an instance of QueryDict created with arguments: an empty string and encoding set to self._encoding, 
+#ANNOTATION: self._files is an instance of class MultiValueDict.
+
+    def close(self):
+#ANNOTATION: define the method close with an argument self.
+        if hasattr(self, '_files'):
+#ANNOTATION: if self has an attribute '_files',
+            for f in chain.from_iterable(l[1] for l in self._files.lists()):
+#ANNOTATION: for every f in return value of the return value of the method chain.from_iterable called with argument:
+#ANNOTATION: second element of l for every l in return value of the self._files.lists 
+                f.close()
+#ANNOTATION: call the method f.close.
+
+    # File-like and iterator interface.
+    #
+    # Expects self._stream to be set to an appropriate source of bytes by
+    # a corresponding request subclass (e.g. WSGIRequest).
+    # Also when request data has already been read by request.POST or
+    # request.body, self._stream points to a BytesIO instance
+    # containing that data.
+
+    def read(self, *args, **kwargs):
+#ANNOTATION: define the method read with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+        self._read_started = True
+#ANNOTATION: self._read_started is True.
+        try:
+#ANNOTATION: try,
+            return self._stream.read(*args, **kwargs)
+#ANNOTATION: call the method self._stream.read with 2 arguments: unpacked list args and unpacked dictionary kwargs.
+        except IOError as e:
+#ANNOTATION: if IOError, renamed to e, exception is caught,
+            six.reraise(UnreadablePostError, UnreadablePostError(*e.args), sys.exc_info()[2])
+#ANNOTATION: call the function six.reraise with 3 arguments: UnreadablePostError, UnreadablePostError instantiated with unpacked list e.args,
+#ANNOTATION: third element of the result of the function sys.exc_info.
+
+    def readline(self, *args, **kwargs):
+#ANNOTATION: define the method readline with 3 arguments: self, unpacked list args and unpacked list kwargs.
+        self._read_started = True
+#ANNOTATION: self._read_started is boolean True.
+        try:
+#ANNOTATION: try,
+            return self._stream.readline(*args, **kwargs)
+#ANNOTATION: call the method self._stream.readline with 2 arguments: unpacked list args, unpacked dictionary kwargs.
+        except IOError as e:
+#ANNOTATION: if IOError, substituted to e, exception is caught,
+            six.reraise(UnreadablePostError, UnreadablePostError(*e.args), sys.exc_info()[2])
+#ANNOTATION: call the function six.reraise with 3 arguments: UnreadablePostError, UnreadablePostError instantiated with unpacked list e.args,
+#ANNOTATION: third element of the result of the function sys.exc_info.
+
+    def xreadlines(self):
+#ANNOTATION: define the method __init__ with an argument self.
+        while True:
+#ANNOTATION: endless loop,
+            buf = self.readline()
+#ANNOTATION: read one line from self file stream, substitute the result for buf.
+            if not buf:
+#ANNOTATION: if buf is false,
+                break
+#ANNOTATION: break the loop execution.
+            yield buf
+#ANNOTATION: yield buf as return value of the generator.
+
+    __iter__ = xreadlines
+#ANNOTATION: substitute xreadlines for __iter__.
+
+    def readlines(self):
+#ANNOTATION: define the method __init__ with an argument self.
+        return list(iter(self))
+#ANNOTATION: append to a list elements of the iterator self, return the resulting list.
+
+
+class QueryDict(MultiValueDict):
+#ANNOTATION: derive the class QueryDict from the base class MultiValueDict.
+    """
+    A specialized MultiValueDict which represents a query string.
+
+    A QueryDict can be used to represent GET or POST data. It subclasses
+    MultiValueDict since keys in such data can be repeated, for instance
+    in the data from a form with a <select multiple> field.
+
+    By default QueryDicts are immutable, though the copy() method
+    will always return a mutable copy.
+
+    Both keys and values set on this class are converted from the given encoding
+    (DEFAULT_CHARSET by default) to unicode.
+    """
+#ANNOTATION: docstring
+
+    # These are both reset in __init__, but is specified here at the class
+    # level so that unpickling will have valid values
+    _mutable = True
+#ANNOTATION:  _mutable is boolean True.
+    _encoding = None
+#ANNOTATION: _encoding is None.
+
+    def __init__(self, query_string=None, mutable=False, encoding=None):
+#ANNOTATION: define the method __init__ with 4 arguments: self, query_string is None, mutable is boolean False and encoding set to None.
+        super(QueryDict, self).__init__()
+#ANNOTATION: call the __init__ method of the base class of the QueryDict class.
+        if not encoding:
+#ANNOTATION: if encoding is false.
+            encoding = settings.DEFAULT_CHARSET
+#ANNOTATION: substitute settings.DEFAULT_CHARSET for encoding.
+        self.encoding = encoding
+#ANNOTATION: substitute encoding for self.encoding.
+        if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+            if isinstance(query_string, bytes):
+#ANNOTATION: if query_string is an instance of bytes,
+                # query_string contains URL-encoded data, a subset of ASCII.
+                query_string = query_string.decode()
+#ANNOTATION: call the method query_string.decode, substitute the result for query_string. 
+            for key, value in parse_qsl(query_string or '',
+                                        keep_blank_values=True,
+                                        encoding=encoding):
+#ANNOTATION: for every key and value in return value of the parse_qsl with 3 arguments: query_string is it exists or an empty string if not, 
+#ANNOTATION: keep_blank_values set to boolean True, encoding set to encoding.
+                self.appendlist(key, value)
+#ANNOTATION: call the method appendlist with 2 arguments: key and value.
+        else:
+#ANNOTATION: if not,
+            for key, value in parse_qsl(query_string or '',
+                                        keep_blank_values=True):
+#ANNOTATION: for every key and value in parse_gsl with query_string is it exists or an empty string if not and keep_blank_values set to boolean True.
+                self.appendlist(force_text(key, encoding, errors='replace'),
+                                force_text(value, encoding, errors='replace'))
+#ANNOTATION: call the method self.appendlist with 2 arguments: return value of the function force_text with 3 arguments:
+#ANNOTATION: key, encoding and errors set to string 'replace', and return value of the function force_text with 3 arguments:
+#ANNOTATION: value, encoding and errors set to string 'replace'.
+        self._mutable = mutable
+#ANNOTATION: call the method mutable substitute for self._mutable.
+
+    @property
+#ANNOTATION: property decorator,
+    def encoding(self):
+#ANNOTATION: define the method encoding with an argument self.
+        if self._encoding is None:
+#ANNOTATION: if self._encoding is None,
+            self._encoding = settings.DEFAULT_CHARSET
+#ANNOTATION: substitute settings.DEFAULT_CHARSET for self._encoding.
+        return self._encoding
+#ANNOTATION: return self._encoding.
+
+    @encoding.setter
+#ANNOTATION: encoding.setter decorator,
+    def encoding(self, value):
+#ANNOTATION: define the method encoding with arguments self and value.
+        self._encoding = value
+#ANNOTATION: substitute value for self._encoding.
+
+    def _assert_mutable(self):
+#ANNOTATION: define the method _assert_mutable with an argument self.
+        if not self._mutable:
+#ANNOTATION: if not self._mutable,
+            raise AttributeError("This QueryDict instance is immutable")
+#ANNOTATION: raise an AttributeError with an argument string "This QueryDict instance is immutable".
+
+    def __setitem__(self, key, value):
+#ANNOTATION: define the method __setitem__ with 3 arguments: self, key and value.
+        self._assert_mutable()
+#ANNOTATION: call the method self._assert_mutable.
+        key = bytes_to_text(key, self.encoding)
+#ANNOTATION: call the method bytes_to_text with 2 arguments: key and self.encoding, substitute the result for key.
+        value = bytes_to_text(value, self.encoding)
+#ANNOTATION: call the method bytes_to_text with 2 arguments: key and self.encoding, substitute the result for value.
+        super(QueryDict, self).__setitem__(key, value)
+#ANNOTATION: call the method __setitem__ from the base class of the QueryDict class, with arguments key and value.
+
+    def __delitem__(self, key):
+#ANNOTATION: define the method __delitem__ with 3 arguments: self and key.
+        self._assert_mutable()
+#ANNOTATION: call the method self._assert_mutable.
+        super(QueryDict, self).__delitem__(key)
+#ANNOTATION: call the method __delitem__ from the base class of the QueryDict class, with an argument key.
+
+    def __copy__(self):
+#ANNOTATION: define the method __copy__ with an argument self.
+        result = self.__class__('', mutable=True, encoding=self.encoding)
+#ANNOTATION: call the method self.__class__ with 3 arguments: an empty string, mutable is boolean True, encoding is self.encoding, substitute the result for result.
+        for key, value in six.iterlists(self):
+#ANNOTATION: for key and value in return value of the six.iterlists function called with an argument self,
+            result.setlist(key, value)
+#ANNOTATION: call the method result.setlist with the arguments: key and value.
+        return result
+#ANNOTATION: return result.
+
+    def __deepcopy__(self, memo):
+#ANNOTATION: define the method __deepcopy__ with 3 arguments: self and memo.
+        result = self.__class__('', mutable=True, encoding=self.encoding)
+#ANNOTATION: call the method self.__class__ with 3 arguments: an empty string, mutable is boolean True, encoding is self.encoding, substitute the result for result.
+        memo[id(self)] = result
+#ANNOTATION: get the identity of the self object, use it as a key to get the value of the memo dictionary, substitute result for it.
+        for key, value in six.iterlists(self):
+#ANNOTATION: for key and value in result of the function six.iterlists called with an argument,
+            result.setlist(copy.deepcopy(key, memo), copy.deepcopy(value, memo))
+#ANNOTATION: call the method result.setlist with 2 arguments: return value of the function copy.deepcopy called with 2 arguments: key and memo,
+#ANNOTATION: and return value of the function copy.deepcopy called with 2 arguments: value and memo.
+        return result
+#ANNOTATION: return result.
+
+    def setlist(self, key, list_):
+#ANNOTATION: define the method setlist with 3 arguments: self, key and list_.
+        self._assert_mutable()
+#ANNOTATION: call the method self._assert_mutable. 
+        key = bytes_to_text(key, self.encoding)
+#ANNOTATION: call the method bytes_to_text with an arguments key and self.encoding, substitute the result for key.
+        list_ = [bytes_to_text(elt, self.encoding) for elt in list_]
+#ANNOTATION: for every elt in list_ call the method bytes_to_text with 2 argument: elt and self.encoding, append the result into a list,
+#ANNOTATION: substitute the resulting list for list_.  
+        super(QueryDict, self).setlist(key, list_)
+#ANNOTATION: call the method setlist from the base class of the QueryDict class, with arguments key and list_.
+
+    def setlistdefault(self, key, default_list=None):
+#ANNOTATION: define the method setlistdefault with 3 arguments: self, key and default_list set to None.
+        self._assert_mutable()
+#ANNOTATION: call the method self._assert_mutable. 
+        return super(QueryDict, self).setlistdefault(key, default_list)
+#ANNOTATION: call the method setlistdefault from the base class of the class QueryDict, with arguments key and default_list, return the result.
+
+    def appendlist(self, key, value):
+#ANNOTATION: define the method appendlist with 3 arguments: self, key and value.
+        self._assert_mutable()
+#ANNOTATION: call the method self._assert_mutable. 
+        key = bytes_to_text(key, self.encoding)
+#ANNOTATION: call the method bytes_to_text with 2 arguments: key and self.encoding, substitute the result for key.
+        value = bytes_to_text(value, self.encoding)
+#ANNOTATION: call the method bytes_to_text with 2 arguments: value and self.encoding, substitute the result for value.
+        super(QueryDict, self).appendlist(key, value)
+#ANNOTATION: call the method appendlist from the base class of the QueryDict class, with arguments key and value.
+
+    def pop(self, key, *args):
+#ANNOTATION: define the method pop with 3 arguments: self, key and unpacked list args.
+        self._assert_mutable()
+#ANNOTATION: call the method self._assert_mutable. 
+        return super(QueryDict, self).pop(key, *args)
+#ANNOTATION: call the method pop from the base class of the class QueryDict, with arguments key and unpacked list args, return the result.
+
+    def popitem(self):
+#ANNOTATION: define the method popitem with an argument self.
+        self._assert_mutable()
+#ANNOTATION: call the method self._assert_mutable. 
+        return super(QueryDict, self).popitem()
+#ANNOTATION: call the method popitem from the base class of the class QueryDict, return the result.
+
+    def clear(self):
+#ANNOTATION: define the method clear with an argument self.
+        self._assert_mutable()
+#ANNOTATION: call the method self._assert_mutable. 
+        super(QueryDict, self).clear()
+#ANNOTATION: call the method clear from the base class of the class QueryDict, return the result.
+
+    def setdefault(self, key, default=None):
+#ANNOTATION: define the method setdefault with 3 arguments: self, key and default set to None.
+        self._assert_mutable()
+#ANNOTATION: call the method self._assert_mutable. 
+        key = bytes_to_text(key, self.encoding)
+#ANNOTATION: call the method bytes_to_text with 2 arguments: key and self.encoding, substitute the result for key.
+        default = bytes_to_text(default, self.encoding)
+#ANNOTATION: call the method bytes_to_text with 2 arguments: default and self.encoding, substitute the result for default.
+        return super(QueryDict, self).setdefault(key, default)
+#ANNOTATION: call the method setlistdefault from the base class of the class QueryDict, with arguments key and default_list, return the result.
+
+    def copy(self):
+#ANNOTATION: define the method copy with an argument self.
+        """Returns a mutable copy of this object."""
+#ANNOTATION: docstring
+        return self.__deepcopy__({})
+#ANNOTATION: call the method self.__deepcopy__ with an empty dictionary as an argument.
+
+    def urlencode(self, safe=None):
+#ANNOTATION: define the method urlencode with 3 arguments: self and safe set to None.
+        """
+        Returns an encoded string of all query string arguments.
+
+        :arg safe: Used to specify characters which do not require quoting, for
+            example::
+
+                >>> q = QueryDict('', mutable=True)
+                >>> q['next'] = '/a&b/'
+                >>> q.urlencode()
+                'next=%2Fa%26b%2F'
+                >>> q.urlencode(safe='/')
+                'next=/a%26b/'
+
+        """
+#ANNOTATION: docstring
+        output = []
+#ANNOTATION: output is an empty list.
+        if safe:
+#ANNOTATION: if safe is true,
+            safe = force_bytes(safe, self.encoding)
+#ANNOTATION: call the function force_bytes with 2 arguments: safe and self.encoding, substitute it for safe.
+            encode = lambda k, v: '%s=%s' % ((quote(k, safe), quote(v, safe)))
+#ANNOTATION: encode is an lambda function with arguments k and v, return value is string '%s=%s', where '%s' is replaced with:
+#ANNOTATION: return value of the function quote called with arguments k and safe, and with return value of the function quote called with arguments v and safe.
+        else:
+#ANNOTATION: if not,
+            encode = lambda k, v: urlencode({k: v})
+#ANNOTATION: encode is an lambda function with 2 arguments k and v, return value is the result of the function urlencode, called with an argument:
+#ANNOTATION: dictionary containing element v for k.
+        for k, list_ in self.lists():
+#ANNOTATION: for every k and list_ in return value of the method self.lists,
+            k = force_bytes(k, self.encoding)
+#ANNOTATION: call the function force_bytes with arguments k and self.encoding, substitute the result for k.
+            output.extend([encode(k, force_bytes(v, self.encoding))
+                           for v in list_])
+#ANNOTATION: for every v in list_ append to a list result of the function encode, called with arguments: k and result of the function force_bytes,
+#ANNOTATION: called with arguments v and self.encoding, extend the output with the result.
+        return '&'.join(output)
+#ANNOTATION: join elements of the output into a string, separated with '&', return the result.
+
+
+def build_request_repr(request, path_override=None, GET_override=None,
+                       POST_override=None, COOKIES_override=None,
+                       META_override=None):
+#ANNOTATION: define the function build_request_repr with arguments: request, path_override set to None, GET_override set to None,
+#ANNOTATION: POST_override is None, COOKIES_override set to None and META_override set to None.
+    """
+    Builds and returns the request's representation string. The request's
+    attributes may be overridden by pre-processed values.
+    """
+#ANNOTATION: docstring
+    # Since this is called as part of error handling, we need to be very
+    # robust against potentially malformed input.
+    try:
+#ANNOTATION: try,
+        get = (pformat(GET_override)
+               if GET_override is not None
+               else pformat(request.GET))
+#ANNOTATION: get is a tuple containing elements generated by the call to the function pformat with an argument GET_override,
+#ANNOTATION: if GET_override is not None, or otherwise generated with the call to the function pformat with an argument request.GET. 
+    except Exception:
+#ANNOTATION: if Exception exception is caught,
+        get = '<could not parse>'
+#ANNOTATION: get is a string '<could not parse>'.
+    if request._post_parse_error:
+#ANNOTATION: if request._post_parse_error is true,
+        post = '<could not parse>'
+#ANNOTATION: post is a string '<could not parse>'.
+    else:
+#ANNOTATION: if not,
+        try:
+#ANNOTATION: try,
+            post = (pformat(POST_override)
+                    if POST_override is not None
+                    else pformat(request.POST))
+#ANNOTATION: get is a tuple containing elements generated by the call to the function pformat with an argument POST_override,
+#ANNOTATION: if POST_override is not None, or otherwise generated with the call to the function pformat with an argument request.POST. 
+        except Exception:
+#ANNOTATION: if Exception exception is caught,
+            post = '<could not parse>'
+#ANNOTATION: post is a string '<could not parse>'.
+    try:
+#ANNOTATION: try,
+        cookies = (pformat(COOKIES_override)
+                   if COOKIES_override is not None
+                   else pformat(request.COOKIES))
+#ANNOTATION: get is a tuple containing elements generated by the call to the function pformat with an argument COOKIES_override,
+#ANNOTATION: if COOKIES_override is not None, or otherwise generated with the call to the function pformat with an argument request.COOKIES. 
+    except Exception:
+#ANNOTATION: if Exception exception is caught,
+        cookies = '<could not parse>'
+#ANNOTATION: cookies is a string '<could not parse>'.
+    try:
+#ANNOTATION: try,
+        meta = (pformat(META_override)
+                if META_override is not None
+                else pformat(request.META))
+#ANNOTATION: get is a tuple containing elements generated by the call to the function pformat with an argument META_override,
+#ANNOTATION: if META_override is not None, or otherwise generated with the call to the function pformat with an argument request.META. 
+    except Exception:
+#ANNOTATION: if Exception exception is caught,
+        meta = '<could not parse>'
+#ANNOTATION: meta is a string '<could not parse>'.
+    path = path_override if path_override is not None else request.path
+#ANNOTATION: substitute path_override for path if path_override is not None, otherwise substitute request.path for path
+    return force_str('<%s\npath:%s,\nGET:%s,\nPOST:%s,\nCOOKIES:%s,\nMETA:%s>' %
+                     (request.__class__.__name__,
+                      path,
+                      six.text_type(get),
+                      six.text_type(post),
+                      six.text_type(cookies),
+                      six.text_type(meta)))
+#ANNOTATION: call the function force_str with an argument string '<%s\npath:%s,\nGET:%s,\nPOST:%s,\nCOOKIES:%s,\nMETA:%s>', 
+#ANNOTATION: where '%s' is replaced with request.__class__.__name__, path, return value of the function six.text_type called with an argument get,
+#ANNOTATION: return value of the function six.text_type called with an argument post, return value of the function six.text_type, 
+#ANNOTATION: called with an argument cookies and return value of the function six.text_type called with an argument meta.
+
+
+# It's neither necessary nor appropriate to use
+# django.utils.encoding.smart_text for parsing URLs and form inputs. Thus,
+# this slightly more restricted function, used by QueryDict.
+def bytes_to_text(s, encoding):
+#ANNOTATION: define the function bytes_to_text with 2 arguments s and encoding. 
+    """
+    Converts basestring objects to unicode, using the given encoding. Illegally
+    encoded input characters are replaced with Unicode "unknown" codepoint
+    (\ufffd).
+
+    Returns any non-basestring objects without change.
+    """
+#ANNOTATION: docstring
+    if isinstance(s, bytes):
+#ANNOTATION: if s is an instance of bytes class,
+        return six.text_type(s, encoding, 'replace')
+#ANNOTATION: call the method six.text_type with 3 arguments: s, encoding and string 'replace'.
+    else:
+#ANNOTATION: if not,
+        return s
+#ANNOTATION: return s.
+
+
+def split_domain_port(host):
+#ANNOTATION: define the function split_domain_port with an argument host. 
+    """
+    Return a (domain, port) tuple from a given host.
+
+    Returned domain is lower-cased. If the host is invalid, the domain will be
+    empty.
+    """
+#ANNOTATION: docstring
+    host = host.lower()
+#ANNOTATION: convert host to lowercase.
+
+    if not host_validation_re.match(host):
+#ANNOTATION: call the method host_validation_re.match with an argument host.
+        return '', ''
+#ANNOTATION: return an empty string and an empty string.
+
+    if host[-1] == ']':
+#ANNOTATION: if last element of host equals character ']',
+        # It's an IPv6 address without a port.
+        return host, ''
+#ANNOTATION: return host and an empty string.
+    bits = host.rsplit(':', 1)
+#ANNOTATION: split host from the right side into 2 parts at the ':', substitute the result for bits. 
+    if len(bits) == 2:
+#ANNOTATION: if length of bits equals integer 2,
+        return tuple(bits)
+#ANNOTATION: add bits to a tuple, return it.
+    return bits[0], ''
+#ANNOTATION: return the first element of bits and an empty string.
+
+
+def validate_host(host, allowed_hosts):
+#ANNOTATION: define the method validate_host with 2 arguments: host and allowed_hosts. 
+    """
+    Validate the given host for this site.
+
+    Check that the host looks valid and matches a host or host pattern in the
+    given list of ``allowed_hosts``. Any pattern beginning with a period
+    matches a domain and all its subdomains (e.g. ``.example.com`` matches
+    ``example.com`` and any subdomain), ``*`` matches anything, and anything
+    else must match exactly.
+
+    Note: This function assumes that the given host is lower-cased and has
+    already had the port, if any, stripped off.
+
+    Return ``True`` for a valid host, ``False`` otherwise.
+
+    """
+#ANNOTATION: docstring
+    host = host[:-1] if host.endswith('.') else host
+#ANNOTATION: if host ends with '.', remove the last element from host.
+
+    for pattern in allowed_hosts:
+#ANNOTATION: for every pattern in allowed_hosts:
+        pattern = pattern.lower()
+#ANNOTATION: convert pattern to lowercase, substitute it for pattern.
+        match = (
+            pattern == '*' or
+            pattern.startswith('.') and (
+                host.endswith(pattern) or host == pattern[1:]
+            ) or
+            pattern == host
+        )
+#ANNOTATION: if pattern equals '*' or pattern starts with '.' or pattern equals host, and only if:
+#ANNOTATION: host ends with '.' and host ends with pattern or host is equal to all but first elements of pattern, 
+#ANNOTATION: substitute boolean true for match, otherwise substitute boolean False for match.
+        if match:
+#ANNOTATION: if match is true,
+            return True
+#ANNOTATION: return boolean True.
+
+    return False
+#ANNOTATION: return boolean False.

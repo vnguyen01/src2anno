@@ -1,0 +1,190 @@
+"Implementation of tzinfo classes for use with datetime.datetime."
+#ANNOTATION: docstring
+
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from datetime import timedelta, tzinfo
+#ANNOTATION: from datetime import timedelta and tzinfo into default name space.
+import time
+#ANNOTATION: import module time.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+from django.utils.encoding import force_str, force_text, DEFAULT_LOCALE_ENCODING
+#ANNOTATION: from django.utils.encoding import force_str,  force_text and DEFAULT_LOCALE_ENCODING into default name space.
+
+warnings.warn(
+    "django.utils.tzinfo will be removed in Django 1.9. "
+    "Use django.utils.timezone instead.",
+    RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the function warnings.warn with 3 arguments: string "django.utils.tzinfo will be removed in Django 1.9. " 
+#ANNOTATION: "Use django.utils.timezone instead.", RemovedInDjango19Warning and stacklevel set to 2.
+
+
+# Python's doc say: "A tzinfo subclass must have an __init__() method that can
+# be called with no arguments". FixedOffset and LocalTimezone don't honor this
+# requirement. Defining __getinitargs__ is sufficient to fix copy/deepcopy as
+# well as pickling/unpickling.
+
+class FixedOffset(tzinfo):
+#ANNOTATION: derive the class FixedOffset from the tzinfo base class.
+    "Fixed offset in minutes east from UTC."
+#ANNOTATION: docstring
+    def __init__(self, offset):
+#ANNOTATION: define the method __init__ with 2 arguments: self and offset.
+        warnings.warn(
+            "django.utils.tzinfo.FixedOffset will be removed in Django 1.9. "
+            "Use django.utils.timezone.get_fixed_timezone instead.",
+            RemovedInDjango19Warning)
+#ANNOTATION: call the function warnings.warn with 2 arguments: "django.utils.tzinfo.FixedOffset will be removed in Django 1.9. "
+#ANNOTATION: "Use django.utils.timezone.get_fixed_timezone instead." and RemovedInDjango19Warning.
+        if isinstance(offset, timedelta):
+#ANNOTATION: if offset is an instance of timedelta class,
+            self.__offset = offset
+#ANNOTATION: substitute offset for self.__offset.
+            offset = self.__offset.seconds // 60
+#ANNOTATION: substitute self.__offset.seconds for offset.
+        else:
+#ANNOTATION: if not,
+            self.__offset = timedelta(minutes=offset)
+#ANNOTATION: call the function timedelta with an argument minutes set to offset, substitute the result for self.__offset.
+
+        sign = '-' if offset < 0 else '+'
+#ANNOTATION: if offset is lesser than integer 0, sign is set to '-', otherwise sign is '+',
+        self.__name = "%s%02d%02d" % (sign, abs(offset) / 60., abs(offset) % 60)
+#ANNOTATION: self.__name is a string "%s%02d%02d", replace '%s' with sign, '%02d' is replaced with absolute value of offset divided by 60,
+#ANNOTATION: and placed into 2 character spaces, and '%02d' is replaced with reminder of the division of absolute offset by integer 60,
+#ANNOTATION: and placed into 2 character spaces.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return self.__name
+#ANNOTATION: return self.__name.
+
+    def __getinitargs__(self):
+#ANNOTATION: define the method __getinitargs__ with an argument self.
+        return self.__offset,
+#ANNOTATION: return a tuple with an element self.__offset.
+
+    def utcoffset(self, dt):
+#ANNOTATION: define the method utcoffset with 2 arguments self and dt.
+        return self.__offset
+#ANNOTATION: return self.__offset.
+
+    def tzname(self, dt):
+#ANNOTATION: define the method tzname with 2 arguments self and dt.
+        return self.__name
+#ANNOTATION: return self.__name.
+
+    def dst(self, dt):
+#ANNOTATION: define the method dst with 2 arguments self and dt.
+        return timedelta(0)
+#ANNOTATION: call the function timedelta with an argument integer 0, return the result.
+
+
+# This implementation is used for display purposes. It uses an approximation
+# for DST computations on dates >= 2038.
+
+# A similar implementation exists in django.utils.timezone. It's used for
+# timezone support (when USE_TZ = True) and focuses on correctness.
+
+class LocalTimezone(tzinfo):
+#ANNOTATION: derive the class LocalTimezone from the tzinfo base class.
+    "Proxy timezone information from time module."
+#ANNOTATION: docstring
+    def __init__(self, dt):
+#ANNOTATION: define the method __init__ with 2 arguments self and dt.
+        warnings.warn(
+            "django.utils.tzinfo.LocalTimezone will be removed in Django 1.9. "
+            "Use django.utils.timezone.get_default_timezone instead.",
+            RemovedInDjango19Warning)
+#ANNOTATION: call the function warnings.warn with 2 arguments: string "django.utils.tzinfo.LocalTimezone will be removed in Django 1.9. "
+#ANNOTATION: "Use django.utils.timezone.get_default_timezone instead." and RemovedInDjango19Warning.
+        tzinfo.__init__(self)
+#ANNOTATION: call the method tzinfo.__init__ with an argument self.
+        self.__dt = dt
+#ANNOTATION: substitute dt for self.__dt.
+        self._tzname = self.tzname(dt)
+#ANNOTATION: call the method self.tzname with an argument dt, substitute the result for self._tzname.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return force_str(self._tzname)
+#ANNOTATION: call the function force_str with an argument self._tzname, return the result.
+
+    def __getinitargs__(self):
+#ANNOTATION: define the method __getinitargs__ with an argument self.
+        return self.__dt,
+#ANNOTATION: return a tuple with an element self.__dt.
+
+    def utcoffset(self, dt):
+#ANNOTATION: define the method utcoffset with 2 arguments self and dt.
+        if self._isdst(dt):
+#ANNOTATION: call the nethod self._isdst with an argument dt, if it evaluates to true,
+            return timedelta(seconds=-time.altzone)
+#ANNOTATION: call the function timedelta with an argument seconds as negative time.altzone, return the result.
+        else:
+#ANNOTATION: if not,
+            return timedelta(seconds=-time.timezone)
+#ANNOTATION: call the function timedelta with an argument seconds as negative time.timezone, return the result.
+
+    def dst(self, dt):
+#ANNOTATION: define the method dst with 2 arguments self and dt.
+        if self._isdst(dt):
+#ANNOTATION: call the nethod self._isdst with an argument dt, if it evaluates to true,
+            return timedelta(seconds=-time.altzone) - timedelta(seconds=-time.timezone)
+#ANNOTATION: call the function timedelta with an argument seconds as negative time.timezone, subtract the result from the result of the call, 
+#ANNOTATION: to the function timedelta called with an argument seconds as negative time.altzone, return the result.
+        else:
+#ANNOTATION: if not,
+            return timedelta(0)
+#ANNOTATION: call the function timedelta with an argument integer 0, return the result.
+
+    def tzname(self, dt):
+#ANNOTATION: define the method tzname with 2 arguments self and dt.
+        is_dst = False if dt is None else self._isdst(dt)
+#ANNOTATION: if dt is None is_dst is boolean False, otherwise call the method self._isdst with an argument dt, substitute the result for is_dst.
+        try:
+#ANNOTATION: try,
+            return force_text(time.tzname[is_dst], DEFAULT_LOCALE_ENCODING)
+#ANNOTATION: call the function force_text with 2 arguments: value under the is_dst key of the time.tzname and DEFAULT_LOCALE_ENCODING,
+#ANNOTATION: return the result.
+        except UnicodeDecodeError:
+#ANNOTATION: if UnicodeDecodeError exception is caught,
+            return None
+#ANNOTATION: return None.
+
+    def _isdst(self, dt):
+#ANNOTATION: define the method _isdst with 2 arguments self and dt.
+        tt = (dt.year, dt.month, dt.day,
+              dt.hour, dt.minute, dt.second,
+              dt.weekday(), 0, 0)
+#ANNOTATION: tt is an tuple with 9 elements: dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, result of the function dt.weekday, 
+#ANNOTATION: integer 0 and integer 0.
+        try:
+#ANNOTATION: try,
+            stamp = time.mktime(tt)
+#ANNOTATION: call the method time.mktime with an argument tt, substitute the result for stamp.
+        except (OverflowError, ValueError):
+#ANNOTATION: if OverflowError or ValueError exceptions are caught,
+            # 32 bit systems can't handle dates after Jan 2038, and certain
+            # systems can't handle dates before ~1901-12-01:
+            #
+            # >>> time.mktime((1900, 1, 13, 0, 0, 0, 0, 0, 0))
+            # OverflowError: mktime argument out of range
+            # >>> time.mktime((1850, 1, 13, 0, 0, 0, 0, 0, 0))
+            # ValueError: year out of range
+            #
+            # In this case, we fake the date, because we only care about the
+            # DST flag.
+            tt = (2037,) + tt[1:]
+#ANNOTATION: create a tuple out a tuple with an element integer 2037 and a list tt elements without the first element, substitute the result for tt.
+            stamp = time.mktime(tt)
+#ANNOTATION: call the method time.mktime with an argument tt, substitute the result for stamp.
+        tt = time.localtime(stamp)
+#ANNOTATION: call the method time.localtime with an argument stamp, substitute the result for tt.
+        return tt.tm_isdst > 0
+#ANNOTATION: if tt.tm_isdst is greater than intger 0, return boolean True, otherwise return boolean False.

@@ -1,0 +1,196 @@
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.db import connections, DEFAULT_DB_ALIAS, migrations
+#ANNOTATION: from django.db import connections,  DEFAULT_DB_ALIAS and migrations into default name space.
+from django.db.migrations.loader import AmbiguityError
+#ANNOTATION: from django.db.migrations.loader import AmbiguityError into default name space.
+from django.db.migrations.executor import MigrationExecutor
+#ANNOTATION: from django.db.migrations.executor import MigrationExecutor into default name space.
+from django.db.migrations.writer import MigrationWriter
+#ANNOTATION: from django.db.migrations.writer import MigrationWriter into default name space.
+from django.db.migrations.optimizer import MigrationOptimizer
+#ANNOTATION: from django.db.migrations.optimizer import MigrationOptimizer into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand class.
+    help = "Squashes an existing set of migrations (from first until specified) into a single new one."
+#ANNOTATION: help is a string "Squashes an existing set of migrations (from first until specified) into a single new one.".
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with 2 arguments self and parser.
+        parser.add_argument('app_label',
+            help='App label of the application to squash migrations for.')
+#ANNOTATION: call the method parser.add_argument with 2 arguments: string 'app_label',
+#ANNOTATION: and help is a string 'App label of the application to squash migrations for.'.
+        parser.add_argument('migration_name',
+            help='Migrations will be squashed until and including this migration.')
+#ANNOTATION: call the method parser.add_argument with 2 arguments: string 'migration_name',
+#ANNOTATION: and help is a string 'Migrations will be squashed until and including this migration.'.
+        parser.add_argument('--no-optimize', action='store_true', dest='no_optimize', default=False,
+            help='Do not try to optimize the squashed operations.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--no-optimize', action as a string 'store_true', 
+#ANNOTATION: dest as a string 'no_optimize', default set to boolean False and help as a string 'Do not try to optimize the squashed operations.'.
+        parser.add_argument('--noinput', action='store_false', dest='interactive', default=True,
+            help='Tells Django to NOT prompt the user for input of any kind.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--noinput', action set to string 'store_false', 
+#ANNOTATION: dest as a string 'interactive', default as boolean True help as a string 'Tells Django to NOT prompt the user for input of any kind.'.
+
+    def handle(self, **options):
+#ANNOTATION: define the method handle with 3 arguments: self and unpacked dictionary options.
+
+        self.verbosity = options.get('verbosity')
+#ANNOTATION: get the value under the 'verbosity' key of the options dictionary, substitute it for self.verbosity.
+        self.interactive = options.get('interactive')
+#ANNOTATION: get the value under the 'interactive' key of the options dictionary, substitute it for self.interactive.
+        app_label, migration_name = options['app_label'], options['migration_name']
+#ANNOTATION: get the values under the 'app_label' and 'migration_name' keys of the options dictionary, 
+#ANNOTATION: substitute them for app_label and migration_name, respectively.
+
+        # Load the current graph state, check the app and migration they asked for exists
+        executor = MigrationExecutor(connections[DEFAULT_DB_ALIAS])
+#ANNOTATION: executor is an instance of MigrationExecutor, created with value under the DEFAULT_DB_ALIAS key of the connections dictionary. 
+        if app_label not in executor.loader.migrated_apps:
+#ANNOTATION: if app_label is not contained in executor.loader.migrated_apps,
+            raise CommandError("App '%s' does not have migrations (so squashmigrations on it makes no sense)" % app_label)
+#ANNOTATION: raise an CommandError with an argument string "App '%s' does not have migrations (so squashmigrations on it makes no sense)",
+#ANNOTATION: where '%s' is replaced with app_label.
+        try:
+#ANNOTATION: try,
+            migration = executor.loader.get_migration_by_prefix(app_label, migration_name)
+#ANNOTATION: call the method executor.loader.get_migration_by_prefix with arguments app_label, migration_name, substitute the result for migration.
+        except AmbiguityError:
+#ANNOTATION: if AmbiguityError exception is caught,
+            raise CommandError("More than one migration matches '%s' in app '%s'. Please be more specific." % (migration_name, app_label))
+#ANNOTATION: raise an CommandError with an argument string "More than one migration matches '%s' in app '%s'. Please be more specific.",
+#ANNOTATION: where '%s' is replaced with migration_name and app_label.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            raise CommandError("Cannot find a migration matching '%s' from app '%s'." % (migration_name, app_label))
+#ANNOTATION: raise an CommandError with an argument string "Cannot find a migration matching '%s' from app '%s'.",
+#ANNOTATION: where '%s' is replaced with migration_name and app_label.
+
+        # Work out the list of predecessor migrations
+        migrations_to_squash = [
+            executor.loader.get_migration(al, mn)
+            for al, mn in executor.loader.graph.forwards_plan((migration.app_label, migration.name))
+            if al == migration.app_label
+        ]
+#ANNOTATION: migrations_to_squash is a list created dynamically with elements: return value of the method executor.loader.get_migration called,
+#ANNOTATION: with arguments al and mn, for every al, mn in executor.loader.graph.forwards_plan method return value called with 2 arguments:
+#ANNOTATION: migration.app_label, migration.name, only if al equals migration.app_label.
+
+        # Tell them what we're doing and optionally ask if we should proceed
+        if self.verbosity > 0 or self.interactive:
+#ANNOTATION: if self.verbosity is greater than integer 0 or self.interactive is true,
+            self.stdout.write(self.style.MIGRATE_HEADING("Will squash the following migrations:"))
+#ANNOTATION: call the method self.style.MIGRATE_HEADING with an argument string "Will squash the following migrations:", 
+#ANNOTATION: write it to self.stdout.
+            for migration in migrations_to_squash:
+#ANNOTATION: for every migration in migrations_to_squash,
+                self.stdout.write(" - %s" % migration.name)
+#ANNOTATION: append migration.name to string ' - ', write it to self.stdout stream.
+
+            if self.interactive:
+#ANNOTATION: if self.interactive is true,
+                answer = None
+#ANNOTATION: answer is None.
+                while not answer or answer not in "yn":
+#ANNOTATION: while answer is false or answer is not contained in string "yn", perform the following,
+                    answer = six.moves.input("Do you wish to proceed? [yN] ")
+#ANNOTATION: call the method six.moves.input with an argument string "Do you wish to proceed? [yN] ", substitute the result for answer.
+                    if not answer:
+#ANNOTATION: if answer is false,
+                        answer = "n"
+#ANNOTATION: substitute 'n' for answer.
+                        break
+#ANNOTATION: break from the loop execution,
+                    else:
+#ANNOTATION: if not,
+                        answer = answer[0].lower()
+#ANNOTATION: convert first element of answer to lowercase and substitute it for answer.
+                if answer != "y":
+#ANNOTATION: if answer equals a string 'y',
+                    return
+#ANNOTATION: return nothing.
+
+        # Load the operations from all those migrations and concat together
+        operations = []
+#ANNOTATION: operations is an empty list.
+        for smigration in migrations_to_squash:
+#ANNOTATION: for every smigration in migrations_to_squash,
+            operations.extend(smigration.operations)
+#ANNOTATION: call the method operations.extend with an argument smigration.operations.
+
+        if self.verbosity > 0:
+#ANNOTATION: if self.verbosity is greater than integer 0,
+            self.stdout.write(self.style.MIGRATE_HEADING("Optimizing..."))
+#ANNOTATION: call the method self.style.MIGRATE_HEADING with an argument string "Optimizing...", write it to self.stdout.
+
+        optimizer = MigrationOptimizer()
+#ANNOTATION: optimizer is an instance of MigrationOptimizer class. 
+        new_operations = optimizer.optimize(operations, migration.app_label)
+#ANNOTATION: call the method optimizer.optimize with 2 arguments operations and migration.app_label, substitute the result for new_operations.
+
+        if self.verbosity > 0:
+#ANNOTATION: if self.verbosity is greater than integer 0,
+            if len(new_operations) == len(operations):
+#ANNOTATION: if lengths of new_operations and operations are the same,
+                self.stdout.write("  No optimizations possible.")
+#ANNOTATION: write string "  No optimizations possible." to self.stdout stream.
+            else:
+#ANNOTATION: if not,
+                self.stdout.write("  Optimized from %s operations to %s operations." % (len(operations), len(new_operations)))
+#ANNOTATION: replace '%s' in string "  Optimized from %s operations to %s operations." with lengths of operations and ew_operations, respectively,
+#ANNOTATION: write it to self.stdout stream.
+
+        # Work out the value of replaces (any squashed ones we're re-squashing)
+        # need to feed their replaces into ours
+        replaces = []
+#ANNOTATION: replaces is an empty list.
+        for migration in migrations_to_squash:
+#ANNOTATION: for every migration in migrations_to_squash,
+            if migration.replaces:
+#ANNOTATION: if migration.replaces is true,
+                replaces.extend(migration.replaces)
+#ANNOTATION: extend replaces list with migration.replaces,
+            else:
+#ANNOTATION: if not,
+                replaces.append((migration.app_label, migration.name))
+#ANNOTATION: append tuple with 2 elements: migration.app_label and migration.name to replaces.
+
+        # Make a new migration with those operations
+        subclass = type("Migration", (migrations.Migration, ), {
+            "dependencies": [],
+            "operations": new_operations,
+            "replaces": replaces,
+        })
+#ANNOTATION: subclass is a class named Migration, sub classed from migrations.Migration base class, with fields dependencies set to an empty list,
+#ANNOTATION: dependencies set to new_operations and replaces set to replaces.
+        new_migration = subclass("0001_squashed_%s" % migration.name, app_label)
+#ANNOTATION: call the function subclass with 2 arguments string "0001_squashed_%s", where '%s' is replaced with migration.name and app_label,
+#ANNOTATION: substitute the result for new_migration.
+
+        # Write out the new migration file
+        writer = MigrationWriter(new_migration)
+#ANNOTATION: writer is an instance of a class MigrationWriter, created with an argument new_migration.
+        with open(writer.path, "wb") as fh:
+#ANNOTATION: open writer.path file in write mode, with file descriptor as fh, perform the following,
+            fh.write(writer.as_string())
+#ANNOTATION: call the method writer.as_string, write the result to file fh.
+
+        if self.verbosity > 0:
+#ANNOTATION: if self.verbosity is greater than integer 0,
+            self.stdout.write(self.style.MIGRATE_HEADING("Created new squashed migration %s" % writer.path))
+#ANNOTATION: replace '%s' in a string "Created new squashed migration %s" with writer.path, use it as an argument for the call to the method,
+#ANNOTATION: self.style.MIGRATE_HEADING, write the result to self.stdout.
+            self.stdout.write("  You should commit this migration but leave the old ones in place;")
+#ANNOTATION: write string "  You should commit this migration but leave the old ones in place;" to self.stdout.
+            self.stdout.write("  the new migration will be used for new installs. Once you are sure")
+#ANNOTATION: write string "  the new migration will be used for new installs. Once you are sure" to self.stdout.
+            self.stdout.write("  all instances of the codebase have applied the migrations you squashed,")
+#ANNOTATION: write string "  all instances of the codebase have applied the migrations you squashed," to self.stdout.
+            self.stdout.write("  you can delete them.")
+#ANNOTATION: write string "  you can delete them." to self.stdout.

@@ -1,0 +1,424 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import logging
+#ANNOTATION: import module logging.
+import sys
+#ANNOTATION: import module sys.
+import types
+#ANNOTATION: import module types.
+
+from django import http
+#ANNOTATION: from django import http into default name space.
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core import urlresolvers
+#ANNOTATION: from django.core import urlresolvers into default name space.
+from django.core import signals
+#ANNOTATION: from django.core import signals into default name space.
+from django.core.exceptions import MiddlewareNotUsed, PermissionDenied, SuspiciousOperation
+#ANNOTATION: from django.core.exceptions import MiddlewareNotUsed, PermissionDenied and SuspiciousOperation into default name space.
+from django.db import connections, transaction
+#ANNOTATION: from django.db import connections and transaction into default name space.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+from django.utils.module_loading import import_string
+#ANNOTATION: from django.utils.module_loading import import_string into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.views import debug
+#ANNOTATION: from django.views import debug into default name space.
+
+logger = logging.getLogger('django.request')
+#ANNOTATION: call the function logging.getLogger with string 'django.request' as the argument, assign the return object handle to logger.  
+
+
+class BaseHandler(object):
+#ANNOTATION: derive class BaseHandler, derive from the base class object, making this a new style class.
+    # Changes that are always applied to a response (in this order).
+    response_fixes = [
+        http.fix_location_header,
+        http.conditional_content_removal,
+    ]
+#ANNOTATION: response_fixes is a list with  http.fix_location_header and http.conditional_content_removal as elements.
+
+    def __init__(self):
+#ANNOTATION: define initialization method __init__, with self class instance as the argument.
+        self._request_middleware = self._view_middleware = self._template_response_middleware = self._response_middleware = self._exception_middleware = None
+#ANNOTATION: set class fields _request_middleware, _view_middleware, _template_response_middleware, _response_middleware and _exception_middleware to None.
+
+    def load_middleware(self):
+#ANNOTATION: define method load_middleware with class instance self as the argument.
+        """
+        Populate middleware lists from settings.MIDDLEWARE_CLASSES.
+
+        Must be called after the environment is fixed (see __call__ in subclasses).
+        """
+#ANNOTATION: docstring
+        self._view_middleware = []
+#ANNOTATION: self._view_middleware is an empty list.
+        self._template_response_middleware = []
+#ANNOTATION:  self._template_response_middleware is an empty list.
+        self._response_middleware = []
+#ANNOTATION: _response_middleware is an empty list.
+        self._exception_middleware = []
+#ANNOTATION: exception_middleware is an empty list.
+
+        request_middleware = []
+#ANNOTATION: request_middleware is an empty list. 
+        for middleware_path in settings.MIDDLEWARE_CLASSES:
+#ANNOTATION: for every middleware_path in settings.MIDDLEWARE_CLASSES:
+            mw_class = import_string(middleware_path)
+#ANNOTATION: evaluate the function import_string with middleware_path as argument, substitute the result for my_class. 
+            try:
+#ANNOTATION: try,
+                mw_instance = mw_class()
+#ANNOTATION: call the mw_class function, store the result in the mw_instance.
+            except MiddlewareNotUsed:
+#ANNOTATION: if MiddlewareNotUsed exception is raised,
+                continue
+#ANNOTATION: skip this iteration of he smallest enclosing loop.
+
+            if hasattr(mw_instance, 'process_request'):
+#ANNOTATION: if mw_instance has an attribute named 'process_request'.
+                request_middleware.append(mw_instance.process_request)
+#ANNOTATION: append mw_instance.process_request at the end of request_middleware.
+            if hasattr(mw_instance, 'process_view'):
+#ANNOTATION: if mw_instance has an attribute named 'process_view'.
+                self._view_middleware.append(mw_instance.process_view)
+#ANNOTATION: append mw_instance.process_view at the end of self._view_middleware.
+            if hasattr(mw_instance, 'process_template_response'):
+#ANNOTATION: if mw_instance has an attribute named 'process_template_response'.
+                self._template_response_middleware.insert(0, mw_instance.process_template_response)
+#ANNOTATION: insert mw_instance.process_template_response at the beginning of self._template_response_middleware.
+            if hasattr(mw_instance, 'process_response'):
+#ANNOTATION: if mw_instance has an attribute named 'process_response'.
+                self._response_middleware.insert(0, mw_instance.process_response)
+#ANNOTATION: insert mw_instance.process_response at the beginning of self._response_middleware.
+            if hasattr(mw_instance, 'process_exception'):
+#ANNOTATION: if mw_instance has an attribute named 'process_exception'.
+                self._exception_middleware.insert(0, mw_instance.process_exception)
+#ANNOTATION: insert mw_instance.process_exception at the beginning of self._exception_middleware.
+
+        # We only assign to this when initialization is complete as it is used
+        # as a flag for initialization being complete.
+        self._request_middleware = request_middleware
+#ANNOTATION: substitute self._request_middleware for request_middleware.
+
+    def make_view_atomic(self, view):
+#ANNOTATION: define the method make_view_atomic, with self class instance and view as the arguments.
+        non_atomic_requests = getattr(view, '_non_atomic_requests', set())
+#ANNOTATION: get attribute '_non_atomic_requests' from the view object, if the attribute doesnt exist return the empty set, substitute the result for non_atomic_requests.
+        for db in connections.all():
+#ANNOTATION: call the method connections.all(), perform the following for every db in the result,
+            if (db.settings_dict['ATOMIC_REQUESTS']
+                    and db.alias not in non_atomic_requests):
+#ANNOTATION: if value under the key 'ATOMIC_REQUESTS of db.settings_dic dictionary is True and db.alias is not present in the non_atomic_requests,
+                view = transaction.atomic(using=db.alias)(view)
+#ANNOTATION: call the function transaction.atomic, with using set to db.alias as the argument, return value is a function which is called,
+#ANNOTATION: with the argument view, store the result in the view. 
+        return view
+#ANNOTATION: return view
+
+    def get_exception_response(self, request, resolver, status_code):
+#ANNOTATION: define method get_exception_response, with self class instance, request, resolver and status_code as the arguments.
+        try:
+#ANNOTATION: try,
+            callback, param_dict = resolver.resolve_error_handler(status_code)
+#ANNOTATION: call the function resolver.resolve_error_handler with status_code as an argument, assign the result to the callback and param_dict, respectively.
+            response = callback(request, **param_dict)
+#ANNOTATION: call the callback function with request and dictionary argument param_dict as the arguments, substitute it for response.
+        except:
+#ANNOTATION: if an exception occurred,
+            signals.got_request_exception.send(sender=self.__class__, request=request)
+#ANNOTATION: call the method signals.got_request_exception.send with the sender set to the type of this class, and request set to request as the arguments.
+            response = self.handle_uncaught_exception(request, resolver, sys.exc_info())
+#ANNOTATION: call the method self.handle_uncaught_exception with request, resolver and return value of the function sys.exec_info as the arguments.
+
+        return response
+#ANNOTATION: return response
+
+    def get_response(self, request):
+#ANNOTATION: define the method get_response, with self class instance and request as the arguments.
+        "Returns an HttpResponse object for the given HttpRequest"
+#ANNOTATION: docstring
+
+        # Setup default url resolver for this thread, this code is outside
+        # the try/except so we don't get a spurious "unbound local
+        # variable" exception in the event an exception is raised before
+        # resolver is set
+        urlconf = settings.ROOT_URLCONF
+#ANNOTATION: substitute settings.ROOT_URLCONF for urlconf.
+        urlresolvers.set_urlconf(urlconf)
+#ANNOTATION: call the method urlresolvers.set_urlconf with urlconf as the argument.
+        resolver = urlresolvers.RegexURLResolver(r'^/', urlconf)
+#ANNOTATION: call the method urlresolvers.RegexURLResolver with raw literal string '^/' and urlconf as the arguments, substitute the result for resolver.
+        try:
+#ANNOTATION: try,
+            response = None
+#ANNOTATION: set response to None.
+            # Apply request middleware
+            for middleware_method in self._request_middleware:
+#ANNOTATION: for every middleware_method in self._request_middleware,
+                response = middleware_method(request)
+#ANNOTATION: call the middleware_method with the request as an argument, substitute the result for response.
+                if response:
+#ANNOTATION: if response is True,
+                    break
+#ANNOTATION: breaks from the smallest enclosing loop execution.
+
+            if response is None:
+#ANNOTATION: if response is None,
+                if hasattr(request, 'urlconf'):
+#ANNOTATION: if request has an attribute named 'urlconf',
+                    # Reset url resolver with a custom urlconf.
+                    urlconf = request.urlconf
+#ANNOTATION: substitute request.urlconf for urlconf.
+                    urlresolvers.set_urlconf(urlconf)
+#ANNOTATION: call the function urlresolvers.set_urlconf with urlconf as the argument. 
+                    resolver = urlresolvers.RegexURLResolver(r'^/', urlconf)
+#ANNOTATION: call the method urlresolvers.RegexURLResolver with raw literal string '^/' and urlconf as the arguments, substitute the result for resolver.
+
+                resolver_match = resolver.resolve(request.path_info)
+#ANNOTATION: call to the resolver.resolve method with request.path_info as an argument.
+                callback, callback_args, callback_kwargs = resolver_match
+#ANNOTATION: assign the values to the callback, callback_args, callback_kwargs, respectively, from the resolver_match tuple.
+                request.resolver_match = resolver_match
+#ANNOTATION: substitute resolver_match for request.resolver_match.
+
+                # Apply view middleware
+                for middleware_method in self._view_middleware:
+#ANNOTATION: for every middleware_method in self._view_middleware,
+                    response = middleware_method(request, callback, callback_args, callback_kwargs)
+#ANNOTATION: call the middleware_method with request, callback, callback_args and callback_kwargs as the arguments, substitute the result for response.
+                    if response:
+#ANNOTATION: if response is True, 
+                        break
+#ANNOTATION: break from the smallest enclosing loop execution.
+
+            if response is None:
+#ANNOTATION: if response is None,
+                wrapped_callback = self.make_view_atomic(callback)
+#ANNOTATION: call the method self.make_view_atomic with callback as the argument, substitute the result for the wrapped_callback.
+                try:
+#ANNOTATION: try,
+                    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+#ANNOTATION: call the function wrapped_callback with request, list or arguments callback_args and dictionary arguments callback_kwargs,
+#ANNOTATION: as the arguments, substitute the result for response. 
+                except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+                    # If the view raised an exception, run it through exception
+                    # middleware, and if the exception middleware returns a
+                    # response, use that. Otherwise, reraise the exception.
+                    for middleware_method in self._exception_middleware:
+#ANNOTATION: for every middleware_method in self._exception_middleware,
+                        response = middleware_method(request, e)
+#ANNOTATION: call the middleware_method with request and e as the arguments, substitute the result for response.
+                        if response:
+#ANNOTATION: if response is True,
+                            break
+#ANNOTATION: break from the smallest enclosing loop execution.
+                    if response is None:
+#ANNOTATION: if response is None,
+                        raise
+#ANNOTATION: raise the exception.
+
+            # Complain if the view returned None (a common error).
+            if response is None:
+#ANNOTATION: if response is None,
+                if isinstance(callback, types.FunctionType):    # FBV
+#ANNOTATION: if callback is of instance types.FunctionType,
+                    view_name = callback.__name__
+#ANNOTATION: get the name of the callback, substitute it for view_name.
+                else:                                           # CBV
+#ANNOTATION: if not,
+                    view_name = callback.__class__.__name__ + '.__call__'
+#ANNOTATION: get the name of the type of the callback, append the string '.__call__' to it, substitute it for view_name.
+                raise ValueError("The view %s.%s didn't return an HttpResponse object. It returned None instead."
+                                 % (callback.__module__, view_name))
+#ANNOTATION: substitute the '%s' in the string "The view %s.%s didn't return an HttpResponse object. It returned None instead.",
+#ANNOTATION: with the name of the module callback is in and the view_name, respectively, use it as the argument for the ValueError exception raise.
+
+            # If the response supports deferred rendering, apply template
+            # response middleware and then render the response
+            if hasattr(response, 'render') and callable(response.render):
+#ANNOTATION: if response has an attribute named 'render' and response.render is a callable function,
+                for middleware_method in self._template_response_middleware:
+#ANNOTATION: for every middleware_method in self._template_response_middleware,
+                    response = middleware_method(request, response)
+#ANNOTATION: call the function middleware_method with the request and response as the arguments, assign the result to response.
+                    # Complain if the template response middleware returned None (a common error).
+                    if response is None:
+#ANNOTATION: if response is None,
+                        raise ValueError(
+                            "%s.process_template_response didn't return an "
+                            "HttpResponse object. It returned None instead."
+                            % (middleware_method.__self__.__class__.__name__))
+#ANNOTATION: replace '%s' in the string  "%s.process_template_response didn't return an HttpResponse object. It returned None instead.", 
+#ANNOTATION: with name of the class type of the middleware_method instance, use it as the argument for call to the ValueError exception raise.
+                response = response.render()
+#ANNOTATION: call the response.render() method and assign the return to the response. 
+
+        except http.Http404 as e:
+#ANNOTATION: if exception http.Http404 as e is caught,
+            logger.warning('Not Found: %s', request.path,
+                        extra={
+                            'status_code': 404,
+                            'request': request
+                        })
+#ANNOTATION: substitute '%s' in 'Not Found: %s' with request.path, extra is an dictionary with two pairs of elements 'status_code' with value 404,
+#ANNOTATION: and 'request with value request, respectively use the previous as the arguments for the call to the logger.warning function. 
+            if settings.DEBUG:
+#ANNOTATION: if settings.DEBUG is True,
+                response = debug.technical_404_response(request, e)
+#ANNOTATION: call the function debug.technical_404_response with request and e as arguments, assign the result to response.
+            else:
+#ANNOTATION: if not,
+                response = self.get_exception_response(request, resolver, 404)
+#ANNOTATION: call the method self.get_exception_response with request, resolver and integer 404 as the arguments, assign the result to response.
+
+        except PermissionDenied:
+#ANNOTATION: if exception PermissionDenied is caught,
+            logger.warning(
+                'Forbidden (Permission denied): %s', request.path,
+                extra={
+                    'status_code': 403,
+                    'request': request
+                })
+#ANNOTATION: substitute '%s' in 'Forbidden (Permission denied): %s' with request.path, extra is an dictionary with two pairs of elements,
+#ANNOTATION: 'status_code' with value 403, and 'request with value request, 
+#ANNOTATION: respectively use the previous as the arguments for the call to the logger.warning function.
+            response = self.get_exception_response(request, resolver, 403)
+#ANNOTATION: call the method self.get_exception_response with request, resolver and integer 403 as the arguments, assign the result to response.
+
+        except SuspiciousOperation as e:
+#ANNOTATION: if exception SuspiciousOperation as e is caught,
+            # The request logger receives events for any problematic request
+            # The security logger receives events for all SuspiciousOperations
+            security_logger = logging.getLogger('django.security.%s' %
+                            e.__class__.__name__)
+#ANNOTATION: substitute '%s' in 'django.security.%s' with the name of the type of the class object e, use it as the argument for the call to the,
+#ANNOTATION: function logging.getLogger, assign the result to the security_logger.
+            security_logger.error(
+                force_text(e),
+                extra={
+                    'status_code': 400,
+                    'request': request
+                })
+#ANNOTATION: evaluate the function force_text with e as an argument, extra is an dictionary with two pair of elements,
+#ANNOTATION: 'status code' with integer value of 400 and 'request' with value request, respectively use the previous to call the function security_logger.error.
+            if settings.DEBUG:
+#ANNOTATION: if settings.DEBUG is True,
+                return debug.technical_500_response(request, *sys.exc_info(), status_code=400)
+#ANNOTATION: evaluate the function debug.technical_500_response with request, evaluated value of function sys.exc_info as a list, 
+#ANNOTATION: status code set to integer 400, return the result.
+
+            response = self.get_exception_response(request, resolver, 400)
+#ANNOTATION: call the method self.get_exception_response with the request, resolver and integer 400 as the arguments, substitute the result for response.
+
+        except SystemExit:
+#ANNOTATION: if SystemExit exception is caught, 
+            # Allow sys.exit() to actually exit. See tickets #1023 and #4701
+            raise
+#ANNOTATION: raise an exception.
+
+        except:  # Handle everything else.
+#ANNOTATION: otherwise if any other exception is caught,
+            # Get the exception info now, in case another exception is thrown later.
+            signals.got_request_exception.send(sender=self.__class__, request=request)
+#ANNOTATION: call the method signals.got_request_exception.send with sender set to type of the self class instance and request set to request.
+            response = self.handle_uncaught_exception(request, resolver, sys.exc_info())
+#ANNOTATION: call to the self.handle_uncaught_exception method with request, resolver and value of the evaluated function sys.exec_info,
+#ANNOTATION: as the arguments, substitute the result for response.
+
+        try:
+#ANNOTATION: try,
+            # Apply response middleware, regardless of the response
+            for middleware_method in self._response_middleware:
+#ANNOTATION: for every middleware_method in self._response_middleware,
+                response = middleware_method(request, response)
+#ANNOTATION: call the function middleware_method with request and response as the arguments, substitute the result for response.
+                # Complain if the response middleware returned None (a common error).
+                if response is None:
+#ANNOTATION: if response is None,
+                    raise ValueError(
+                        "%s.process_response didn't return an "
+                        "HttpResponse object. It returned None instead."
+                        % (middleware_method.__self__.__class__.__name__))
+#ANNOTATION: substitute '%s' is "%s.process_response didn't return an HttpResponse object. It returned None instead.", 
+#ANNOTATION: with the name of the type of the self class instance of the middleware_method, raise the ValueError with the previous as the argument.
+            response = self.apply_response_fixes(request, response)
+#ANNOTATION: call the method self.apply_response_fixes with the request and response as the arguments, substitute the result for response.
+        except:  # Any exception should be gathered and handled
+#ANNOTATION: if any exception is caught,
+            signals.got_request_exception.send(sender=self.__class__, request=request)
+#ANNOTATION: call the signals.got_request_exception.send method with sender set to type of the self class instance and request set to request. 
+            response = self.handle_uncaught_exception(request, resolver, sys.exc_info())
+#ANNOTATION: call to the self.handle_uncaught_exception method with request, resolver and value of the evaluated function sys.exec_info,
+#ANNOTATION: as the arguments, substitute the result for response.
+
+        response._closable_objects.append(request)
+#ANNOTATION: append the request to the end of the protected class member response._closable_objects.
+
+        return response
+#ANNOTATION: return response.
+
+    def handle_uncaught_exception(self, request, resolver, exc_info):
+#ANNOTATION: define the method handle_uncaught_exception with self class instance, request, resolver and exec_info as arguments.
+        """
+        Processing for any otherwise uncaught exceptions (those that will
+        generate HTTP 500 responses). Can be overridden by subclasses who want
+        customised 500 handling.
+
+        Be *very* careful when overriding this because the error could be
+        caused by anything, so assuming something like the database is always
+        available would be an error.
+        """
+#ANNOTATION: docstring 
+        if settings.DEBUG_PROPAGATE_EXCEPTIONS:
+#ANNOTATION: if settings.DEBUG_PROPAGATE_EXCEPTIONS is True,
+            raise
+#ANNOTATION: raise an exception.
+
+        logger.error('Internal Server Error: %s', request.path,
+            exc_info=exc_info,
+            extra={
+                'status_code': 500,
+                'request': request
+            }
+        )
+#ANNOTATION: substitute '%s' in 'Internal Server Error: %s' with request.path, exc_info set to exc_info, 
+#ANNOTATION: extra is an dictionary with two pairs of elements 'status_code' with value 500, and 'request with value request,
+#ANNOTATION: respectively use the previous as the arguments for the call to the logger.error function. 
+
+        if settings.DEBUG:
+#ANNOTATION: if settings.DEBUG is True,
+            return debug.technical_500_response(request, *exc_info)
+#ANNOTATION: evaluate debug.technical_500_response with request and list of arguments exec_info, return the result.
+
+        # If Http500 handler is not installed, re-raise last exception
+        if resolver.urlconf_module is None:
+#ANNOTATION: if resolver.urlconf_module is None:
+            six.reraise(*exc_info)
+#ANNOTATION: call the function reraise from the module six, with list of arguments exec_info.
+        # Return an HttpResponse that displays a friendly error message.
+        callback, param_dict = resolver.resolve_error_handler(500)
+#ANNOTATION: call the resolver.resolve_error_handler with integer 500 as the argument, assign the resulting tuple elements to the callback,
+#ANNOTATION: and param_dict, respectively.
+        return callback(request, **param_dict)
+#ANNOTATION: evaluate the function callback with request and dictionary of parameters param_dict as the arguments, return the result.
+
+    def apply_response_fixes(self, request, response):
+#ANNOTATION: define the method apply_response_fixes with self class instance, request and response as the arguments.
+        """
+        Applies each of the functions in self.response_fixes to the request and
+        response, modifying the response in the process. Returns the new
+        response.
+        """
+#ANNOTATION: docstring
+        for func in self.response_fixes:
+#ANNOTATION: for every func in self.response_fixes,
+            response = func(request, response)
+#ANNOTATION: call the function func with request and response as arguments, assign the result to response.
+        return response
+#ANNOTATION: return response.

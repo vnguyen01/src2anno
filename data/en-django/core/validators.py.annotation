@@ -1,0 +1,490 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import re
+#ANNOTATION: import module re.
+
+from django.core.exceptions import ValidationError
+#ANNOTATION: from django.core.exceptions import ValidationError into default name space.
+from django.utils.deconstruct import deconstructible
+#ANNOTATION: from django.utils.deconstruct import deconstructible into default name space.
+from django.utils.translation import ugettext_lazy as _, ungettext_lazy
+#ANNOTATION: from django.utils.translation import ugettext_lazy as _ and ungettext_lazy into default name space.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+from django.utils.ipv6 import is_valid_ipv6_address
+#ANNOTATION: from django.utils.ipv6 import is_valid_ipv6_address into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.six.moves.urllib.parse import urlsplit, urlunsplit
+#ANNOTATION: from django.utils.six.moves.urllib.parse import urlsplit and urlunsplit into default name space.
+
+
+# These values, if given to validate(), will trigger the self.required check.
+EMPTY_VALUES = (None, '', [], (), {})
+#ANNOTATION: EMPTY_VALUES is a tuple containing 5 initial elements: None, empty string, empty list, empty tuple and an empty dictionary. 
+
+
+@deconstructible
+#ANNOTATION: decorator deconstructible,
+class RegexValidator(object):
+#ANNOTATION: derive the class RegexValidator form the object base class.
+    regex = ''
+#ANNOTATION: regex is an empty string.
+    message = _('Enter a valid value.')
+#ANNOTATION: call a function _ with a string 'Enter a valid value.' as an argument, substitute the result for message.
+    code = 'invalid'
+#ANNOTATION: code is a string 'invalid'
+    inverse_match = False
+#ANNOTATION: inverse_match is boolean False.
+    flags = 0
+#ANNOTATION: flags is a integer 0.
+
+    def __init__(self, regex=None, message=None, code=None, inverse_match=None, flags=None):
+#ANNOTATION: define the method __init__ with 6 arguments: self, regex set to None, message set to None, code set to None,
+#ANNOTATION: inverse_match set to None and flags set to None.
+        if regex is not None:
+#ANNOTATION: if regex is not None,
+            self.regex = regex
+#ANNOTATION: substitute regex for self.regex.
+        if message is not None:
+#ANNOTATION: if message is not None,
+            self.message = message
+#ANNOTATION: substitute message for self.message.
+        if code is not None:
+#ANNOTATION: if code is not None,
+            self.code = code
+#ANNOTATION: substitute code for self.code.
+        if inverse_match is not None:
+#ANNOTATION: if inverse_match is not None,
+            self.inverse_match = inverse_match
+#ANNOTATION: substitute inverse_match for self.inverse_match.
+        if flags is not None:
+#ANNOTATION: if flags is not None,
+            self.flags = flags
+#ANNOTATION: substitute flags for self.flags.
+        if self.flags and not isinstance(self.regex, six.string_types):
+#ANNOTATION: if self.flags is true and self.regex is not an instance of a six.string_types type, 
+            raise TypeError("If the flags are set, regex must be a regular expression string.")
+#ANNOTATION: raise an TypeError exception with an argument string "If the flags are set, regex must be a regular expression string.".
+
+        # Compile the regex if it was not passed pre-compiled.
+        if isinstance(self.regex, six.string_types):
+#ANNOTATION: if self.regex is not an instance of a six.string_types type,
+            self.regex = re.compile(self.regex, self.flags)
+#ANNOTATION: call the re.compile function with self.regex and self.flags as arguments, substitute the result for self.regex.
+
+    def __call__(self, value):
+#ANNOTATION: define the method __call__ with arguments self and value.
+        """
+        Validates that the input matches the regular expression
+        if inverse_match is False, otherwise raises ValidationError.
+        """
+#ANNOTATION: docstring
+        if not (self.inverse_match is not bool(self.regex.search(
+                force_text(value)))):
+#ANNOTATION: if self.inverse_match equals to return value of the self.regex.search method converted to boolean, called with argument force_text(value),
+            raise ValidationError(self.message, code=self.code)
+#ANNOTATION: raise a ValidationError exception with arguments self.message and code set to self.code.
+
+    def __eq__(self, other):
+#ANNOTATION: define the method __eq__ with arguments self and other.
+        return (
+            isinstance(other, RegexValidator) and
+            self.regex.pattern == other.regex.pattern and
+            self.regex.flags == other.regex.flags and
+            (self.message == other.message) and
+            (self.code == other.code) and
+            (self.inverse_match == other.inverse_match)
+        )
+#ANNOTATION: evaluate the logical expression, if other is an instance of RegexValidator and self.regex.pattern equals to other.regex.pattern,
+#ANNOTATION: and self.regex.flags equals to other.regex.flags and self.message equals to other.message and self.code equals to other.code,
+#ANNOTATION: and self.inverse_match equals to other.inverse_match, return the result.
+    def __ne__(self, other):
+#ANNOTATION: define the method __ne__ with arguments self and other.
+        return not (self == other)
+#ANNOTATION: if self equals to other return boolean False, otherwise return boolean True.
+
+
+@deconstructible
+#ANNOTATION: decorator deconstructible,
+class URLValidator(RegexValidator):
+#ANNOTATION: derive the class URLValidator form the RegexValidator base class.
+    regex = re.compile(
+        r'^(?:[a-z0-9\.\-]*)://'  # scheme is validated separately
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}(?<!-)\.?)|'  # domain...
+        r'localhost|'  # localhost...
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|'  # ...or ipv4
+        r'\[?[A-F0-9]*:[A-F0-9:]+\]?)'  # ...or ipv6
+        r'(?::\d+)?'  # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+#ANNOTATION: call the re.compile function with 2 arguments: raw string "^(?:[a-z0-9\.\-]*)://(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+",
+#ANNOTATION: "(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}(?<!-)\.?)|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[?[A-F0-9]*:[A-F0-9:]+\]?)(?::\d+)?(?::\d+)?(?:/",
+#ANNOTATION: "?|[/?]\S+)$" and re.IGNORECASE, substitute the result for regex.
+    message = _('Enter a valid URL.')
+#ANNOTATION: call a function _ with a string 'Enter a valid value.' as an argument, substitute the result for message.
+    schemes = ['http', 'https', 'ftp', 'ftps']
+#ANNOTATION: schemes is a list containing 4 initial elements: 'http', 'https', 'ftp' and 'ftps'.
+
+    def __init__(self, schemes=None, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self, schemes set to None and unpacked dictionary kwargs.
+        super(URLValidator, self).__init__(**kwargs)
+#ANNOTATION: call the __init__ method of the base class of the class URLValidator, with unpacked dictionary kwargs as argument.
+        if schemes is not None:
+#ANNOTATION: if schemes is not None,
+            self.schemes = schemes
+#ANNOTATION: substitute schemes for self.schemes.
+
+    def __call__(self, value):
+#ANNOTATION: define the method __call__ with arguments self and value.
+        value = force_text(value)
+#ANNOTATION: call the function force_text with an argument value, substitute the result for value.
+        # Check first if the scheme is valid
+        scheme = value.split('://')[0].lower()
+#ANNOTATION: call the value.split method with '://' as argument, convert first element of the result to lower case, substitute the result for scheme. 
+        if scheme not in self.schemes:
+#ANNOTATION: if scheme is not contained in self.schemes,
+            raise ValidationError(self.message, code=self.code)
+#ANNOTATION: raise a ValidationError exception with arguments self.message and code set to self.code.
+
+        # Then check full URL
+        try:
+#ANNOTATION: try,
+            super(URLValidator, self).__call__(value)
+#ANNOTATION: call the __call__ method from the base class of the class URLValidator, with an argument value.
+        except ValidationError as e:
+#ANNOTATION: if ValidationError, renamed to e, is caught,
+            # Trivial case failed. Try for possible IDN domain
+            if value:
+#ANNOTATION: if value is true,
+                scheme, netloc, path, query, fragment = urlsplit(value)
+#ANNOTATION: call the function urlsplit with an argument value, assign the result to scheme, netloc, path, query and fragment, respectively.
+                try:
+#ANNOTATION: try,
+                    netloc = netloc.encode('idna').decode('ascii')  # IDN -> ACE
+#ANNOTATION: call the method netloc.encode with an argument string 'idna', on the return value call the decode method with string 'ascii' as argument, substitute the result for netloc.
+                except UnicodeError:  # invalid domain part
+#ANNOTATION: if UnicodeError exception is caught,
+                    raise e
+#ANNOTATION: raise an exception e.
+                url = urlunsplit((scheme, netloc, path, query, fragment))
+#ANNOTATION: call the function urlunsplit with a tuple containing 5 elements: scheme, netloc, path, query and fragment, as an argument, substitute the result for url.
+                super(URLValidator, self).__call__(url)
+#ANNOTATION: call the __call__ method from the base class of the URLValidator class, with an argument url.
+            else:
+#ANNOTATION: if not,
+                raise
+#ANNOTATION: raise an exception.
+        else:
+#ANNOTATION: if not,
+            url = value
+#ANNOTATION: substitute value for url.
+
+
+def validate_integer(value):
+#ANNOTATION: define the function validate_integer with an argument value.
+    try:
+#ANNOTATION: try,
+        int(value)
+#ANNOTATION: convert value into an integer.
+    except (ValueError, TypeError):
+#ANNOTATION: if ValueError or TypeError exceptions are caught,
+        raise ValidationError(_('Enter a valid integer.'), code='invalid')
+#ANNOTATION: raise a ValidationError exception with 2 arguments: return value of the function _ with an string argument 'Enter a valid integer.',
+#ANNOTATION: and code set to string 'invalid'.
+
+
+@deconstructible
+#ANNOTATION: decorator deconstructible,
+class EmailValidator(object):
+#ANNOTATION: derive the class EmailValidator form the object base class.
+    message = _('Enter a valid email address.')
+#ANNOTATION: call a function _ with a string 'Enter a valid value.' as an argument, substitute the result for message.
+    code = 'invalid'
+#ANNOTATION: code is a string 'invalid'.
+    user_regex = re.compile(
+        r"(^[-!#$%&'*+/=?^_`{}|~0-9A-Z]+(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*$"  # dot-atom
+        r'|^"([\001-\010\013\014\016-\037!#-\[\]-\177]|\\[\001-\011\013\014\016-\177])*"$)',  # quoted-string
+        re.IGNORECASE)
+#ANNOTATION: call the re.compile function with 2 arguments: raw string "(^[-!#$%&'*+/=?^_`{}|~0-9A-Z]+(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*$",
+#ANNOTATION: "|^"([\001-\010\013\014\016-\037!#-\[\]-\177]|\\[\001-\011\013\014\016-\177])*"$)" and re.IGNORECASE, substitute the result for user_regex.
+    domain_regex = re.compile(
+        # max length of the domain is 249: 254 (max email length) minus one
+        # period, two characters for the TLD, @ sign, & one character before @.
+        r'(?:[A-Z0-9](?:[A-Z0-9-]{0,247}[A-Z0-9])?\.)+(?:[A-Z]{2,6}|[A-Z0-9-]{2,}(?<!-))$',
+        re.IGNORECASE)
+#ANNOTATION:  call the re.compile function with 2 arguments: raw string '(?:[A-Z0-9](?:[A-Z0-9-]{0,247}[A-Z0-9])?\.)+(?:[A-Z]{2,6}|[A-Z0-9-]{2,}(?<!-))$',
+#ANNOTATION: and re.IGNORECASE, substitute the result for domain_regex.
+    literal_regex = re.compile(
+        # literal form, ipv4 or ipv6 address (SMTP 4.1.3)
+        r'\[([A-f0-9:\.]+)\]$',
+        re.IGNORECASE)
+#ANNOTATION: call the re.compile function with 2 arguments: raw string '\[([A-f0-9:\.]+)\]$' and re.IGNORECASE, substitute the result for literal_regex.
+    domain_whitelist = ['localhost']
+#ANNOTATION: domain_whitelist is a list containing string 'localhost'.
+
+    def __init__(self, message=None, code=None, whitelist=None):
+#ANNOTATION: define the __init__ method with 4 arguments: self, message set to None, code set to None and whitelist set to None.
+        if message is not None:
+#ANNOTATION: if message is not None
+            self.message = message
+#ANNOTATION: substitute message for self.message.
+        if code is not None:
+#ANNOTATION: if code is not None
+            self.code = code
+#ANNOTATION:  substitute code for self.code.
+        if whitelist is not None:
+#ANNOTATION: if whitelist is not None
+            self.domain_whitelist = whitelist
+#ANNOTATION:  substitute whitelist for self.domain_whitelist.
+
+    def __call__(self, value):
+#ANNOTATION: define the method __call__ with arguments self and value.
+        value = force_text(value)
+#ANNOTATION: call the function force_text with an argument value, substitute the result for value.
+
+        if not value or '@' not in value:
+#ANNOTATION: if value is false or character '@' is not contained in value,
+            raise ValidationError(self.message, code=self.code)
+#ANNOTATION: raise a ValidationError exception with arguments self.message and code set to self.code.
+
+        user_part, domain_part = value.rsplit('@', 1)
+#ANNOTATION: call the method value.rsplit with arguments character '@' and integer 1, assign the result to user_part and domain_part, respectively.
+
+        if not self.user_regex.match(user_part):
+#ANNOTATION: call the self.user_regex.match method with an argument user_part, if it evaluates to false,
+            raise ValidationError(self.message, code=self.code)
+#ANNOTATION: raise a ValidationError exception with arguments self.message and code set to self.code.
+
+        if (domain_part not in self.domain_whitelist and
+                not self.validate_domain_part(domain_part)):
+#ANNOTATION: if domain_part is not contained in self.domain_whitelist and method self.validate_domain_part with an argument domain_part evaluates to false,
+            # Try for possible IDN domain-part
+            try:
+#ANNOTATION: try,
+                domain_part = domain_part.encode('idna').decode('ascii')
+#ANNOTATION: call the method domain_part.encode with an argument string 'idna', on the return value call the decode method with string 'ascii' as argument, substitute the result for domain_part.
+                if self.validate_domain_part(domain_part):
+#ANNOTATION: if method self.validate_domain_part with an argument domain_part evaluates to true,
+                    return
+#ANNOTATION: return nothing.
+            except UnicodeError:
+#ANNOTATION: if UnicodeError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+            raise ValidationError(self.message, code=self.code)
+#ANNOTATION: raise a ValidationError exception with arguments self.message and code set to self.code.
+
+    def validate_domain_part(self, domain_part):
+#ANNOTATION: define the method validate_domain_part with arguments self and domain_part.
+        if self.domain_regex.match(domain_part):
+#ANNOTATION: call the self.domain_regex.match method with an argument domain_part, if it evaluates to true,
+            return True
+#ANNOTATION: return boolean True.
+
+        literal_match = self.literal_regex.match(domain_part)
+#ANNOTATION: evaluate method self.literal_regex.match with an argument domain_part, substitute the result for literal_match.
+        if literal_match:
+#ANNOTATION: if literal_match is true,
+            ip_address = literal_match.group(1)
+#ANNOTATION: call the method literal_match.group with an integer 1, substitute the result for ip_address.
+            try:
+#ANNOTATION: try,
+                validate_ipv46_address(ip_address)
+#ANNOTATION: call the function validate_ipv46_address with an argument ip_address.
+                return True
+#ANNOTATION: return boolean True.
+            except ValidationError:
+#ANNOTATION: if ValidationError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+        return False
+#ANNOTATION: return boolean False.
+
+    def __eq__(self, other):
+#ANNOTATION: define the method __eq__ with arguments self and other.
+        return isinstance(other, EmailValidator) and (self.domain_whitelist == other.domain_whitelist) and (self.message == other.message) and (self.code == other.code)
+#ANNOTATION: if other is instance of EmailValidator and, self.domain_whitelist equals to other.domain_whitelist,
+#ANNOTATION: and self.message equals to other.message, and self.code equals to other.code, return boolean True, otherwise return boolean False.
+
+validate_email = EmailValidator()
+#ANNOTATION: validate_email is an instance of EmailValidator class.
+
+slug_re = re.compile(r'^[-a-zA-Z0-9_]+$')
+#ANNOTATION: call the re.compile function with an argument raw string '^[-a-zA-Z0-9_]+$', substitute the result for slug_re.
+validate_slug = RegexValidator(slug_re, _("Enter a valid 'slug' consisting of letters, numbers, underscores or hyphens."), 'invalid')
+#ANNOTATION: validate_slug is a instance of a RegexValidator class, created with 3 arguments: slug_re, return value of the call to the function,
+#ANNOTATION: _ with an argument string "Enter a valid 'slug' consisting of letters, numbers, underscores or hyphens.",
+#ANNOTATION: and string 'invalid'.
+
+ipv4_re = re.compile(r'^(25[0-5]|2[0-4]\d|[0-1]?\d?\d)(\.(25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}$')
+#ANNOTATION: call the re.compile function with an argument raw string '^(25[0-5]|2[0-4]\d|[0-1]?\d?\d)(\.(25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}$',
+#ANNOTATION: substitute the result for ipv4_re.
+validate_ipv4_address = RegexValidator(ipv4_re, _('Enter a valid IPv4 address.'), 'invalid')
+#ANNOTATION: validate_ipv4_address is a instance of a RegexValidator class, created with 3 arguments: ipv4_re, 
+#ANNOTATION: return value of the call to the function _ with an argument string 'Enter a valid IPv4 address.' and string 'invalid'.
+
+
+def validate_ipv6_address(value):
+#ANNOTATION: define the function validate_ipv6_address with an argument value.
+    if not is_valid_ipv6_address(value):
+#ANNOTATION: call the function is_valid_ipv6_address with an argument value, if it evaluates to false,
+        raise ValidationError(_('Enter a valid IPv6 address.'), code='invalid')
+#ANNOTATION: raise a ValidationError exception with 2 arguments: return value of the function _ called with an argument string 'Enter a valid IPv6 address.', and code set to string 'invalid'.
+
+
+def validate_ipv46_address(value):
+#ANNOTATION: define the function validate_ipv46_address with an argument value.
+    try:
+#ANNOTATION: try,
+        validate_ipv4_address(value)
+#ANNOTATION: call the function validate_ipv4_address with an argument value.
+    except ValidationError:
+#ANNOTATION: if ValidationError exception is caught,
+        try:
+#ANNOTATION: try,
+            validate_ipv6_address(value)
+#ANNOTATION: call the function validate_ipv6_address with an argument value.
+        except ValidationError:
+#ANNOTATION: if ValidationError exception is caught,
+            raise ValidationError(_('Enter a valid IPv4 or IPv6 address.'), code='invalid')
+#ANNOTATION: raise a ValidationError exception with 2 arguments: return value of the function _ called with an argument string 'Enter a valid IPv4 or IPv6 address.', and code set to string 'invalid'.
+
+ip_address_validator_map = {
+    'both': ([validate_ipv46_address], _('Enter a valid IPv4 or IPv6 address.')),
+    'ipv4': ([validate_ipv4_address], _('Enter a valid IPv4 address.')),
+    'ipv6': ([validate_ipv6_address], _('Enter a valid IPv6 address.')),
+}
+#ANNOTATION: ip_address_validator_map is a dictionary containing 3 initial entries: tuple containing 2 elements: list with an element, #ANNOTATION: validate_ipv46_address and return value of the function _ with an argument string 'Enter a valid IPv4 or IPv6 address.' for 'both',
+#ANNOTATION: tuple containing 2 elements: list with an element validate_ipv4_address and return value of the function _ with an argument string,
+#ANNOTATION: 'Enter a valid IPv4 address.' for 'ipv4' and tuple containing 2 elements: list with an element validate_ipv6_address,
+#ANNOTATION: and return value of the function _ with an argument string 'Enter a valid IPv6 address.' for 'ipv6'.
+
+
+def ip_address_validators(protocol, unpack_ipv4):
+#ANNOTATION: define the function ip_address_validators with arguments protocol and unpack_ipv4.
+    """
+    Depending on the given parameters returns the appropriate validators for
+    the GenericIPAddressField.
+
+    This code is here, because it is exactly the same for the model and the form field.
+    """
+#ANNOTATION: docstring
+    if protocol != 'both' and unpack_ipv4:
+#ANNOTATION: if protocol is not equal to string 'both' and unpack_ipv4 is true,
+        raise ValueError(
+            "You can only use `unpack_ipv4` if `protocol` is set to 'both'")
+#ANNOTATION: raise a ValueError exception with an argument "You can only use `unpack_ipv4` if `protocol` is set to 'both'".
+    try:
+#ANNOTATION: try,
+        return ip_address_validator_map[protocol.lower()]
+#ANNOTATION: convert protocol to lowercase, use it as a key to get a value from the ip_address_validator_map dictionary, return it.
+    except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+        raise ValueError("The protocol '%s' is unknown. Supported: %s"
+                         % (protocol, list(ip_address_validator_map)))
+#ANNOTATION: raise a ValueError exception with an argument "The protocol '%s' is unknown. Supported: %s", replace '%s' with protocol,
+#ANNOTATION: and ip_address_validator_map converted to a list, respectively.
+
+comma_separated_int_list_re = re.compile('^[\d,]+$')
+#ANNOTATION: call the re.compile function with an argument raw string '^[\d,]+$', substitute the result for comma_separated_int_list_re.
+validate_comma_separated_integer_list = RegexValidator(comma_separated_int_list_re, _('Enter only digits separated by commas.'), 'invalid')
+#ANNOTATION: validate_comma_separated_integer_list is a instance of a RegexValidator class, created with 3 arguments: comma_separated_int_list_re, 
+#ANNOTATION: return value of the call to the function _ with an argument string 'Enter only digits separated by commas.' and string 'invalid'.
+
+
+@deconstructible
+#ANNOTATION: decorator deconstructible,
+class BaseValidator(object):
+#ANNOTATION: derive the class BaseValidator form the object base class.
+    compare = lambda self, a, b: a is not b
+#ANNOTATION: compare is a lambda function with arguments self, a and b, return value is boolean True if a is not b, otherwise it is False.
+    clean = lambda self, x: x
+#ANNOTATION: clean is a lambda function with arguments self and x, return value is x.
+    message = _('Ensure this value is %(limit_value)s (it is %(show_value)s).')
+#ANNOTATION: call the function _ with the argument string 'Ensure this value is %(limit_value)s (it is %(show_value)s).', substitute the result for message.
+    code = 'limit_value'
+#ANNOTATION: code is a string 'limit_value'
+
+    def __init__(self, limit_value):
+#ANNOTATION: define the method __init__ with self and limit_value as arguments.
+        self.limit_value = limit_value
+#ANNOTATION: substitute the limit_value for self.limit_value.
+
+    def __call__(self, value):
+#ANNOTATION: define the method __call__ with arguments self and value.
+        cleaned = self.clean(value)
+#ANNOTATION: call the method self.clean with value as argument, substitute the result for cleaned.
+        params = {'limit_value': self.limit_value, 'show_value': cleaned}
+#ANNOTATION: params is a dictionary with 2 initial entries: self.limit_value for 'limit_value' and cleaned for 'show_value'.
+        if self.compare(cleaned, self.limit_value):
+#ANNOTATION: call the self.compare method with arguments cleaned and self.limit_value, if it evaluates to true,
+            raise ValidationError(self.message, code=self.code, params=params)
+#ANNOTATION: raise a ValidationError exception with arguments self.message, code set to self.code and params set to params.
+
+    def __eq__(self, other):
+#ANNOTATION: define the method __eq__ with arguments self and other.
+        return isinstance(other, self.__class__) and (self.limit_value == other.limit_value) and (self.message == other.message) and (self.code == other.code)
+#ANNOTATION: if other is an instance of self.__class__ and, self.limit_value equals to other.limit_value, and self.message equals to other.message,
+#ANNOTATION: and self.code equals to other.code, return boolean True, otherwise return boolean False.
+
+
+@deconstructible
+#ANNOTATION: decorator deconstructible,
+class MaxValueValidator(BaseValidator):
+#ANNOTATION: derive the class MaxValueValidator form the BaseValidator base class.
+    compare = lambda self, a, b: a > b
+#ANNOTATION: compare is a lambda function with arguments self, a and b, return value is boolean true if a is greater than b, otherwise is false.
+    message = _('Ensure this value is less than or equal to %(limit_value)s.')
+#ANNOTATION: call the function _ with an argument string 'Ensure this value is less than or equal to %(limit_value)s.', substitute the result for message.
+    code = 'max_value'
+#ANNOTATION: code is a string 'max_value'
+
+
+@deconstructible
+#ANNOTATION: decorator deconstructible,
+class MinValueValidator(BaseValidator):
+#ANNOTATION: derive the class MinValueValidator form the BaseValidator base class.
+    compare = lambda self, a, b: a < b
+#ANNOTATION: compare is a lambda function with arguments self, a and b, return value is boolean true if a is lesser than b, otherwise is false.
+    message = _('Ensure this value is greater than or equal to %(limit_value)s.')
+#ANNOTATION: call the function _ with an argument string 'Ensure this value is greater than or equal to %(limit_value)s.', substitute the result for message.
+    code = 'min_value'
+#ANNOTATION: code is a string 'min_value'
+
+
+@deconstructible
+#ANNOTATION: decorator deconstructible,
+class MinLengthValidator(BaseValidator):
+#ANNOTATION: derive the class MinLengthValidator form the BaseValidator base class.
+    compare = lambda self, a, b: a < b
+#ANNOTATION: compare is a lambda function with arguments self, a and b, return value is boolean true if a is lesser than b, otherwise is false.
+    clean = lambda self, x: len(x)
+#ANNOTATION: clean is a lambda function with self and x as arguments, return value is length of x.
+    message = ungettext_lazy(
+        'Ensure this value has at least %(limit_value)d character (it has %(show_value)d).',
+        'Ensure this value has at least %(limit_value)d characters (it has %(show_value)d).',
+        'limit_value')
+#ANNOTATION: call the function ungettext_lazy with 3 arguments: string 'Ensure this value has at least %(limit_value)d character (it has %(show_value)d), 
+#ANNOTATION: string 'Ensure this value has at least %(limit_value)d characters (it has %(show_value)d).' and string 'limit_value', substitute the result for message.
+    code = 'min_length'
+#ANNOTATION: code is a string 'min_length'
+
+
+@deconstructible
+#ANNOTATION: decorator deconstructible,
+class MaxLengthValidator(BaseValidator):
+#ANNOTATION: derive the class MaxLengthValidator form the BaseValidator base class.
+    compare = lambda self, a, b: a > b
+#ANNOTATION: compare is a lambda function with arguments self, a and b, return value is boolean true if a is greater than b, otherwise is false.
+    clean = lambda self, x: len(x)
+#ANNOTATION: clean is a lambda function with self and x as arguments, return value is length of x.
+    message = ungettext_lazy(
+        'Ensure this value has at most %(limit_value)d character (it has %(show_value)d).',
+        'Ensure this value has at most %(limit_value)d characters (it has %(show_value)d).',
+        'limit_value')
+#ANNOTATION: call the function ungettext_lazy with 3 arguments: string 'Ensure this value has at most %(limit_value)d character (it has %(show_value)d), 
+#ANNOTATION: string 'Ensure this value has at most %(limit_value)d characters (it has %(show_value)d).' and string 'limit_value', substitute the result for message.
+'limit_value'
+    code = 'max_length'
+#ANNOTATION: code is a string 'max_length'

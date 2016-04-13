@@ -1,0 +1,768 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import datetime
+#ANNOTATION: import module datetime.
+import json
+#ANNOTATION: import module json.
+import sys
+#ANNOTATION: import module sys.
+import time
+#ANNOTATION: import module time.
+from email.header import Header
+#ANNOTATION: from email.header import Header into default name space.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core import signals
+#ANNOTATION: from django.core import signals into default name space.
+from django.core import signing
+#ANNOTATION: from django.core import signing into default name space.
+from django.core.exceptions import DisallowedRedirect
+#ANNOTATION: from django.core.exceptions import DisallowedRedirect into default name space.
+from django.core.serializers.json import DjangoJSONEncoder
+#ANNOTATION: from django.core.serializers.json import DjangoJSONEncode into default name space.
+from django.http.cookie import SimpleCookie
+#ANNOTATION: from django.http.cookie import SimpleCookie into default name space.
+from django.utils import six, timezone
+#ANNOTATION: from django.utils import six and timezone into default name space.
+from django.utils.encoding import force_bytes, force_text, iri_to_uri
+#ANNOTATION: from django.utils.encoding import force_bytes,  force_text and iri_to_uri into default name space.
+from django.utils.http import cookie_date
+#ANNOTATION: from django.utils.http import cookie_date into default name space.
+from django.utils.six.moves import map
+#ANNOTATION: from django.utils.six.moves import map into default name space.
+from django.utils.six.moves.urllib.parse import urlparse
+#ANNOTATION: from django.utils.six.moves.urllib.parse import urlparse into default name space.
+
+
+# See http://www.iana.org/assignments/http-status-codes
+REASON_PHRASES = {
+    100: 'CONTINUE',
+    101: 'SWITCHING PROTOCOLS',
+    102: 'PROCESSING',
+    200: 'OK',
+    201: 'CREATED',
+    202: 'ACCEPTED',
+    203: 'NON-AUTHORITATIVE INFORMATION',
+    204: 'NO CONTENT',
+    205: 'RESET CONTENT',
+    206: 'PARTIAL CONTENT',
+    207: 'MULTI-STATUS',
+    208: 'ALREADY REPORTED',
+    226: 'IM USED',
+    300: 'MULTIPLE CHOICES',
+    301: 'MOVED PERMANENTLY',
+    302: 'FOUND',
+    303: 'SEE OTHER',
+    304: 'NOT MODIFIED',
+    305: 'USE PROXY',
+    306: 'RESERVED',
+    307: 'TEMPORARY REDIRECT',
+    308: 'PERMANENT REDIRECT',
+    400: 'BAD REQUEST',
+    401: 'UNAUTHORIZED',
+    402: 'PAYMENT REQUIRED',
+    403: 'FORBIDDEN',
+    404: 'NOT FOUND',
+    405: 'METHOD NOT ALLOWED',
+    406: 'NOT ACCEPTABLE',
+    407: 'PROXY AUTHENTICATION REQUIRED',
+    408: 'REQUEST TIMEOUT',
+    409: 'CONFLICT',
+    410: 'GONE',
+    411: 'LENGTH REQUIRED',
+    412: 'PRECONDITION FAILED',
+    413: 'REQUEST ENTITY TOO LARGE',
+    414: 'REQUEST-URI TOO LONG',
+    415: 'UNSUPPORTED MEDIA TYPE',
+    416: 'REQUESTED RANGE NOT SATISFIABLE',
+    417: 'EXPECTATION FAILED',
+    418: "I'M A TEAPOT",
+    422: 'UNPROCESSABLE ENTITY',
+    423: 'LOCKED',
+    424: 'FAILED DEPENDENCY',
+    426: 'UPGRADE REQUIRED',
+    428: 'PRECONDITION REQUIRED',
+    429: 'TOO MANY REQUESTS',
+    431: 'REQUEST HEADER FIELDS TOO LARGE',
+    500: 'INTERNAL SERVER ERROR',
+    501: 'NOT IMPLEMENTED',
+    502: 'BAD GATEWAY',
+    503: 'SERVICE UNAVAILABLE',
+    504: 'GATEWAY TIMEOUT',
+    505: 'HTTP VERSION NOT SUPPORTED',
+    506: 'VARIANT ALSO NEGOTIATES',
+    507: 'INSUFFICIENT STORAGE',
+    508: 'LOOP DETECTED',
+    510: 'NOT EXTENDED',
+    511: 'NETWORK AUTHENTICATION REQUIRED',
+}
+#ANNOTATION: REASON_PHRASES is a dictionary containing 59 initial entries: 'CONTINUE' for 100, 'SWITCHING PROTOCOLS' for 101, 
+#ANNOTATION: 'PROCESSING' for 102, 'OK' for 200, 'CREATED' for 201, 'ACCEPTED' for 202, 'NON-AUTHORITATIVE INFORMATION' for 203, 
+#ANNOTATION: 'NO CONTENT' for 204, 'RESET CONTENT' for 205, 'PARTIAL CONTENT' for 206, 'MULTI-STATUS' for 207, 'ALREADY REPORTED' for 208, 
+#ANNOTATION: 'IM USED' for 226, 'MULTIPLE CHOICES' for 300, 'MOVED PERMANENTLY' for 301, 'FOUND' for 302, 'SEE OTHER' for 303, 
+#ANNOTATION: 'NOT MODIFIED' for 304, 'USE PROXY' for 305, 'RESERVED' for 306, 'TEMPORARY REDIRECT' for 307, 'PERMANENT REDIRECT' for 308, 
+#ANNOTATION: 'BAD REQUEST' for 400, 'UNAUTHORIZED' for 401, 'PAYMENT REQUIRED' for 402, 'FORBIDDEN' for 403, 'NOT FOUND' for 404, 
+#ANNOTATION: 'METHOD NOT ALLOWED' for 405, 'NOT ACCEPTABLE' for 406, 'PROXY AUTHENTICATION REQUIRED' for 407, 'REQUEST TIMEOUT' for 408,
+#ANNOTATION: 'CONFLICT' for 409, 'GONE' for 410, 'LENGTH REQUIRED' for 411, 'PRECONDITION FAILED' for 412, 'REQUEST ENTITY TOO LARGE' for 413,
+#ANNOTATION: 'REQUEST-URI TOO LONG' for 414, 'UNSUPPORTED MEDIA TYPE' for 415, 'REQUESTED RANGE NOT SATISFIABLE' for 416, 
+#ANNOTATION: 'EXPECTATION FAILED' for 417, 'I'M A TEAPOT' for 418, 'UNPROCESSABLE ENTITY' for 422, 'LOCKED' for 423, 'FAILED DEPENDENCY' for 424,
+#ANNOTATION: 'UPGRADE REQUIRED' for 426, 'PRECONDITION REQUIRED' for 428, 'TOO MANY REQUESTS' for 429, 'REQUEST HEADER FIELDS TOO LARGE' for 431,
+#ANNOTATION: 'INTERNAL SERVER ERROR' for 500, 'NOT IMPLEMENTED' for 501, 'BAD GATEWAY' for 502, 'SERVICE UNAVAILABLE' for 503, 
+#ANNOTATION: 'GATEWAY TIMEOUT' for 504, 'HTTP VERSION NOT SUPPORTED' for 505, 'VARIANT ALSO NEGOTIATES' for 506, 'INSUFFICIENT STORAGE' for 507,
+#ANNOTATION: 'LOOP DETECTED' for 508, 'NOT EXTENDED' for 510 and 'NETWORK AUTHENTICATION REQUIRED' for 511.
+
+
+class BadHeaderError(ValueError):
+#ANNOTATION: derive the class BadHeaderError from the ValueError base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+class HttpResponseBase(six.Iterator):
+#ANNOTATION: derive the class HttpResponseBase from the six.Iterator base class.
+    """
+    An HTTP response base class with dictionary-accessed headers.
+
+    This class doesn't handle content. It should not be used directly.
+    Use the HttpResponse and StreamingHttpResponse subclasses instead.
+    """
+#ANNOTATION: docstring
+
+    status_code = 200
+#ANNOTATION: status_code is an integer 200.
+    reason_phrase = None        # Use default reason phrase for status code.
+#ANNOTATION: reason_phrase is None. 
+
+    def __init__(self, content_type=None, status=None, reason=None):
+#ANNOTATION: define the method __init__ with 4 arguments: self, content_type set to None, status set to None, reason set to None.
+        # _headers is a mapping of the lower-case name to the original case of
+        # the header (required for working with legacy systems) and the header
+        # value. Both the name of the header and its value are ASCII strings.
+        self._headers = {}
+#ANNOTATION:  self._headers is an empty dictionary.
+        self._charset = settings.DEFAULT_CHARSET
+#ANNOTATION: substitute settings.DEFAULT_CHARSET for self._charset.
+        self._closable_objects = []
+#ANNOTATION: self._closable_objects is an empty list.
+        # This parameter is set by the handler. It's necessary to preserve the
+        # historical behavior of request_finished.
+        self._handler_class = None
+#ANNOTATION: self._handler_class is None.
+        if not content_type:
+#ANNOTATION: if content_type is false,
+            content_type = "%s; charset=%s" % (settings.DEFAULT_CONTENT_TYPE,
+                    self._charset)
+#ANNOTATION: replace '%s' in string "%s; charset=%s" with settings.DEFAULT_CONTENT_TYPE and self._charset, substitute it for content_type.
+        self.cookies = SimpleCookie()
+#ANNOTATION: self.cookies is an instance of a class SimpleCookie.
+        if status is not None:
+#ANNOTATION: if status is not None.
+            self.status_code = status
+#ANNOTATION: substitute status for self.status_code.
+        if reason is not None:
+#ANNOTATION: if reason is not None,
+            self.reason_phrase = reason
+#ANNOTATION: substitute reason for self.reason_phrase.
+        elif self.reason_phrase is None:
+#ANNOTATION: otherwise if self.reason_phrase is None,
+            self.reason_phrase = REASON_PHRASES.get(self.status_code,
+                                                    'UNKNOWN STATUS CODE')
+#ANNOTATION: get the value under the self.status_code key of the REASON_PHRASES dictionary, if it exists substitute it for the self.reason_phrase,
+#ANNOTATION: if not, self.reason_phrase is a string 'UNKNOWN STATUS CODE'. 
+        self['Content-Type'] = content_type
+#ANNOTATION: substitute content_type for value under the 'Content-Type' key of the self dictionary.
+
+    def serialize_headers(self):
+#ANNOTATION: define the method serialize_headers with an argument self.
+        """HTTP headers as a bytestring."""
+#ANNOTATION: docstring
+        def to_bytes(val, encoding):
+#ANNOTATION: define the function to_bytes with arguments val and encoding.
+            return val if isinstance(val, bytes) else val.encode(encoding)
+#ANNOTATION: if val is an instance of bytes, return val, otherwise return result of the method val.encode called with an argument encoding.
+
+        headers = [
+            (b': '.join([to_bytes(key, 'ascii'), to_bytes(value, 'latin-1')]))
+            for key, value in self._headers.values()
+        ]
+#ANNOTATION: for every key and value in return value of the self._headers.values method, call the function to_bytes with 2 arguments: key,
+#ANNOTATION: and string 'ascii' and call the function to_bytes with 2 arguments: value and string 'latin-1', 
+#ANNOTATION: join the previous 2 results into a string, separated by ': ', append it to a list, substitute the resulting list for headers.
+        return b'\r\n'.join(headers)
+#ANNOTATION: join headers into a string, separated by string '\r\n'.
+
+    if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+        __bytes__ = serialize_headers
+#ANNOTATION: substitute serialize_headers for __bytes__.
+    else:
+#ANNOTATION: if not,
+        __str__ = serialize_headers
+#ANNOTATION: substitute serialize_headers for __str__.
+
+    def _convert_to_charset(self, value, charset, mime_encode=False):
+#ANNOTATION: define the method _convert_to_charset with 4 arguments: self, value, charset and mime_encode set to boolean False. 
+        """Converts headers key/value to ascii/latin-1 native strings.
+
+        `charset` must be 'ascii' or 'latin-1'. If `mime_encode` is True and
+        `value` can't be represented in the given charset, MIME-encoding
+        is applied.
+        """
+#ANNOTATION: docstring
+        if not isinstance(value, (bytes, six.text_type)):
+#ANNOTATION: if value is not an instance of bytes or six.text_type classes,
+            value = str(value)
+#ANNOTATION: convert value to an string and substitute it for value.
+        try:
+#ANNOTATION: try,
+            if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+                if isinstance(value, str):
+#ANNOTATION: if value is an instance of str type,
+                    # Ensure string is valid in given charset
+                    value.encode(charset)
+#ANNOTATION: call the method value.encode with an argument charset.
+                else:
+#ANNOTATION: if not,
+                    # Convert bytestring using given charset
+                    value = value.decode(charset)
+#ANNOTATION: call the method value.decode with an argument charset, substitute the result for value.
+            else:
+#ANNOTATION: if not,
+                if isinstance(value, str):
+#ANNOTATION: if value is an instance of str type,
+                    # Ensure string is valid in given charset
+                    value.decode(charset)
+#ANNOTATION: call the method value.decode with an argument charset.
+                else:
+#ANNOTATION: if not,
+                    # Convert unicode string to given charset
+                    value = value.encode(charset)
+#ANNOTATION: call the method value.encode with an argument charset, substitute the result for value.
+        except UnicodeError as e:
+#ANNOTATION: if UnicodeError, renamed to e, exception is caught,
+            if mime_encode:
+#ANNOTATION: if mime_encode is true,
+                # Wrapping in str() is a workaround for #12422 under Python 2.
+                value = str(Header(value, 'utf-8', maxlinelen=sys.maxsize).encode())
+#ANNOTATION: instantiate class Header with 3 arguments: value, string 'utf-8', maxlinelen set to sys.maxsize, call the encode method on it,
+#ANNOTATION: convert the result into a string and substitute it for value.
+            else:
+#ANNOTATION: if not,
+                e.reason += ', HTTP response headers must be in %s format' % charset
+#ANNOTATION: replace '%s' in string ', HTTP response headers must be in %s format' for charset, append it to e.reason.
+                raise
+#ANNOTATION: raise an exception.
+        if str('\n') in value or str('\r') in value:
+#ANNOTATION: convert '\n' to a string, if it is contained in value or '\r' converted to an string is contained in value,
+            raise BadHeaderError("Header values can't contain newlines (got %r)" % value)
+#ANNOTATION: raise an BadHeaderError exception with an argument string "Header values can't contain newlines (got %r)", where '%r' is replaced with value.
+        return value
+#ANNOTATION: return value.
+
+    def __setitem__(self, header, value):
+#ANNOTATION: define the method __setitem__ with 3 arguments: self, header and value.
+        header = self._convert_to_charset(header, 'ascii')
+#ANNOTATION: call the method self._convert_to_charset with arguments: header and string 'ascii', substitute the result for header.
+        value = self._convert_to_charset(value, 'latin-1', mime_encode=True)
+#ANNOTATION: call the method self._convert_to_charset with arguments: header, string 'latin-1' and mime_encode set to boolean True, 
+#ANNOTATION: substitute the result for value.
+        self._headers[header.lower()] = (header, value)
+#ANNOTATION: substitute tuple containing 2 elements: header and value for the value under the header converted to lowercase key of the self._headers dictionary.
+
+    def __delitem__(self, header):
+#ANNOTATION: define the method __delitem__ with 2 arguments: self and header.
+        try:
+#ANNOTATION: try,
+            del self._headers[header.lower()]
+#ANNOTATION: delete the value under the header converted to lowercase key of the self._headers dictionary.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            pass
+#ANNOTATION: do nothing.
+
+    def __getitem__(self, header):
+#ANNOTATION: define the method __getitem__ with 2 arguments: self and header.
+        return self._headers[header.lower()][1]
+#ANNOTATION: convert header to lowercase, use it as the key to get the value from the self._headers dictionary, return the second element of the result.
+
+    def __getstate__(self):
+#ANNOTATION: define the method __getstate__ with an argument self.
+        # SimpleCookie is not pickleable with pickle.HIGHEST_PROTOCOL, so we
+        # serialize to a string instead
+        state = self.__dict__.copy()
+#ANNOTATION: call the method self.__dict__.copy, substitute the result for state.
+        state['cookies'] = str(state['cookies'])
+#ANNOTATION: get the value under the 'cookies' key of the state dictionary, 
+#ANNOTATION: convert it to a string and substitute it for value under the 'cookies' key of the state dictionary.
+        return state
+#ANNOTATION: return state.
+
+    def __setstate__(self, state):
+#ANNOTATION: define the method __setstate__ with 2 arguments: self and state.
+        self.__dict__.update(state)
+#ANNOTATION: add state element to self.__dict__ dictionary.
+        self.cookies = SimpleCookie(self.cookies)
+#ANNOTATION: self.cookies is an instance of SimpleCookie class created with self.cookies as an argument. 
+
+    def has_header(self, header):
+#ANNOTATION: define the method has_header with 2 arguments: self and header.
+        """Case-insensitive check for a header."""
+#ANNOTATION: docstring
+        return header.lower() in self._headers
+#ANNOTATION: convert deader to lowercase, if it is contained in self._headers return boolean True, if not, return boolean False.
+
+    __contains__ = has_header
+#ANNOTATION: substitute has_header for __contains__.
+
+    def items(self):
+#ANNOTATION: define the method items with an argument self.
+        return self._headers.values()
+#ANNOTATION: call the method self._headers.values, return the result,
+
+    def get(self, header, alternate=None):
+#ANNOTATION: define the method get with 3 arguments: self, header and alternate set to None.
+        return self._headers.get(header.lower(), (None, alternate))[1]
+#ANNOTATION: convert header to lowercase, use it to as a key to get the value of the self._headers dictionary, 
+#ANNOTATION: if it exists return the second element of the result, if not, return alternate.
+
+    def set_cookie(self, key, value='', max_age=None, expires=None, path='/',
+                   domain=None, secure=False, httponly=False):
+#ANNOTATION: define the method set_cookie with 9 arguments: self, key, value set to an empty string, max_age set to None, expires set to None,
+#ANNOTATION: path set to a character '/', domain set to None, secure set to boolean False and httponly set to boolean False.
+        """
+        Sets a cookie.
+
+        ``expires`` can be:
+        - a string in the correct format,
+        - a naive ``datetime.datetime`` object in UTC,
+        - an aware ``datetime.datetime`` object in any time zone.
+        If it is a ``datetime.datetime`` object then ``max_age`` will be calculated.
+
+        """
+#ANNOTATION: docstring
+        self.cookies[key] = value
+#ANNOTATION: substitute value for self.cookies dictionary value under the key key.
+        if expires is not None:
+#ANNOTATION: if expires is not None,
+            if isinstance(expires, datetime.datetime):
+#ANNOTATION: if expires is an instance of datetime.datetime class,
+                if timezone.is_aware(expires):
+#ANNOTATION: call the method timezone.is_aware with an argument expires, if it evaluates to true,
+                    expires = timezone.make_naive(expires, timezone.utc)
+#ANNOTATION: call the method timezone.make_naive with arguments: expires, timezone.utc, substitute the result for expires.
+                delta = expires - expires.utcnow()
+#ANNOTATION: call the method expires.utcnow, subtract the result from expires, substitute the result for delta.
+                # Add one second so the date matches exactly (a fraction of
+                # time gets lost between converting to a timedelta and
+                # then the date string).
+                delta = delta + datetime.timedelta(seconds=1)
+#ANNOTATION: call the method datetime.timedelta with an argument seconds set to integer 1, increment delta by it.
+                # Just set max_age - the max_age logic will set expires.
+                expires = None
+#ANNOTATION: expires is None.
+                max_age = max(0, delta.days * 86400 + delta.seconds)
+#ANNOTATION: multiply delta.days with an integer 86400 add to the result delta.seconds, if the result is greater than integer 0, 
+#ANNOTATION: substitute it for max_age, if not, max_age is integer 0.
+            else:
+#ANNOTATION: if not,
+                self.cookies[key]['expires'] = expires
+#ANNOTATION: get the value under the key key of the self.cookies dictionary, substitute expires for 'expires' key of the returned dictionary.
+        if max_age is not None:
+#ANNOTATION: if max_age is not None,
+            self.cookies[key]['max-age'] = max_age
+#ANNOTATION: get the value under the key key of the self.cookies dictionary, substitute max-age for 'max-age' key of the returned dictionary.
+            # IE requires expires, so set it if hasn't been already.
+            if not expires:
+#ANNOTATION: if expires is false,
+                self.cookies[key]['expires'] = cookie_date(time.time() +
+                                                           max_age)
+#ANNOTATION: get the value under the key key of the self.cookies dictionary, call the cookie_date function with an argument: 
+#ANNOTATION: sum of the result of the function time.time and max_age, substitute it for 'expires' key of the previously returned dictionary.
+        if path is not None:
+#ANNOTATION: if path is not None,
+            self.cookies[key]['path'] = path
+#ANNOTATION: get the value under the key key of the self.cookies dictionary, substitute path for 'path' key of the returned dictionary.
+        if domain is not None:
+#ANNOTATION: if domain is not None,
+            self.cookies[key]['domain'] = domain
+#ANNOTATION: get the value under the key key of the self.cookies dictionary, domain expires for 'domain' key of the returned dictionary.
+        if secure:
+#ANNOTATION: if secure is true,
+            self.cookies[key]['secure'] = True
+#ANNOTATION: get the value under the key key of the self.cookies dictionary, substitute boolean True for 'secure' key of the returned dictionary.
+        if httponly:
+#ANNOTATION: if httponly is true,
+            self.cookies[key]['httponly'] = True
+#ANNOTATION: get the value under the key key of the self.cookies dictionary, substitute boolean True for 'httponly' key of the returned dictionary.
+
+    def set_signed_cookie(self, key, value, salt='', **kwargs):
+#ANNOTATION: define the method set_signed_cookie with 5 arguments: self, key, value, salt as an empty string and unpacked dictionary kwarg.
+        value = signing.get_cookie_signer(salt=key + salt).sign(value)
+#ANNOTATION: call the method signing.get_cookie_signer with an argument salt set to sum of key and salt, 
+#ANNOTATION: call the method sign on the result with an argument value, substitute the result for value.
+        return self.set_cookie(key, value, **kwargs)
+#ANNOTATION: call the method self.set_cookie with 3 arguments: key, value and unpacked dictionary kwargs, return the result. 
+
+    def delete_cookie(self, key, path='/', domain=None):
+#ANNOTATION: define the method delete_cookie with 4 arguments: self, key, path set to character '/' and domain set to None.
+        self.set_cookie(key, max_age=0, path=path, domain=domain,
+                        expires='Thu, 01-Jan-1970 00:00:00 GMT')
+#ANNOTATION: call the method self.set_cookie with 5 arguments: key, max_age as integer 0, path as path, domain as domain,
+#ANNOTATION: expires as a string 'Thu, 01-Jan-1970 00:00:00 GMT', return the result.
+
+    # Common methods used by subclasses
+
+    def make_bytes(self, value):
+#ANNOTATION: define the method make_bytes with 2 arguments: self and value.
+        """Turn a value into a bytestring encoded in the output charset."""
+#ANNOTATION: docstring
+        # Per PEP 3333, this response body must be bytes. To avoid returning
+        # an instance of a subclass, this function returns `bytes(value)`.
+        # This doesn't make a copy when `value` already contains bytes.
+
+        # If content is already encoded (eg. gzip), assume bytes.
+        if self.has_header('Content-Encoding'):
+#ANNOTATION: call the method self.has_header with string 'Content-Encoding' as an argument, if it evaluates to true,
+            return bytes(value)
+#ANNOTATION: call the function bytes with an argument value, return the result.
+
+        # Handle string types -- we can't rely on force_bytes here because:
+        # - under Python 3 it attempts str conversion first
+        # - when self._charset != 'utf-8' it re-encodes the content
+        if isinstance(value, bytes):
+#ANNOTATION: if value is an instance of bytes class,
+            return bytes(value)
+#ANNOTATION: call the function bytes with an argument value, return the result.
+        if isinstance(value, six.text_type):
+#ANNOTATION: if value is an instance of six.text_type class,
+            return bytes(value.encode(self._charset))
+#ANNOTATION: call the method value.encode with an argument self._charset, use the result as an argument for the call to the bytes function,
+#ANNOTATION: return the result.
+
+        # Handle non-string types (#16494)
+        return force_bytes(value, self._charset)
+#ANNOTATION: call the function force_bytes with arguments value and self._charset, return the result.
+
+    # These methods partially implement the file-like object interface.
+    # See http://docs.python.org/lib/bltin-file-objects.html
+
+    # The WSGI server must call this method upon completion of the request.
+    # See http://blog.dscpl.com.au/2012/10/obligations-for-calling-close-on.html
+    def close(self):
+#ANNOTATION: define the method close with an argument self.
+        for closable in self._closable_objects:
+#ANNOTATION: for every closable in self._closable_objects,
+            try:
+#ANNOTATION: try,
+                closable.close()
+#ANNOTATION: call the method closable.close.
+            except Exception:
+#ANNOTATION: if Exception exception is caught,
+                pass
+#ANNOTATION: do nothing.
+        signals.request_finished.send(sender=self._handler_class)
+#ANNOTATION: call the method signals.request_finished.send with an argument sender set to self._handler_class.
+
+    def write(self, content):
+#ANNOTATION: define the method write with 2 arguments: self and value.
+        raise Exception("This %s instance is not writable" % self.__class__.__name__)
+#ANNOTATION: raise an Exception exception with an argument string "This %s instance is not writable", 
+#ANNOTATION: where '%s' is replaced with self.__class__.__name__.
+
+    def flush(self):
+#ANNOTATION: define the method flush with an argument self.
+        pass
+#ANNOTATION: do nothing.
+
+    def tell(self):
+#ANNOTATION: define the method tell with an argument self.
+        raise Exception("This %s instance cannot tell its position" % self.__class__.__name__)
+#ANNOTATION: raise an Exception exception with an argument string "This %s instance cannot tell its position", 
+#ANNOTATION: where '%s' is replaced with self.__class__.__name__.
+
+
+class HttpResponse(HttpResponseBase):
+#ANNOTATION: derive the class HttpResponse from the HttpResponseBase base class.
+    """
+    An HTTP response class with a string as content.
+
+    This content that can be read, appended to or replaced.
+    """
+#ANNOTATION: docstring
+
+    streaming = False
+#ANNOTATION: streaming is boolean False.
+
+    def __init__(self, content=b'', *args, **kwargs):
+#ANNOTATION: define the method __init__ with 4 arguments: self, content set to an empty list, unpacked list args and unpacked dictionary kwargs.
+        super(HttpResponse, self).__init__(*args, **kwargs)
+#ANNOTATION: call the __init__ method from the base class of the HttpResponse class, with the arguments: unpacked list args and unpacked dictionary kwargs.
+        # Content is a bytestring. See the `content` property methods.
+        self.content = content
+#ANNOTATION: substitute content for self.content.
+
+    def serialize(self):
+#ANNOTATION: define the serialize content with an argument self.
+        """Full HTTP message, including headers, as a bytestring."""
+#ANNOTATION: docstring
+        return self.serialize_headers() + b'\r\n\r\n' + self.content
+#ANNOTATION: call method self.serialize_headers, append bytes string '\r\n\r\n' to the result, append self.content to the result, return it.
+
+    if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+        __bytes__ = serialize
+#ANNOTATION: substitute serialize for __bytes__.
+    else:
+#ANNOTATION: if not,
+        __str__ = serialize
+#ANNOTATION: substitute serialize for __str__.
+
+    @property
+#ANNOTATION: property decorator,
+    def content(self):
+#ANNOTATION: define the method content with an argument self.
+        return b''.join(self._container)
+#ANNOTATION: join self._container elements into a string, return it.
+
+    @content.setter
+#ANNOTATION: content.setter decorator,
+    def content(self, value):
+#ANNOTATION: define the method content with 2 arguments: self and value.
+        # Consume iterators upon assignment to allow repeated iteration.
+        if hasattr(value, '__iter__') and not isinstance(value, (bytes, six.string_types)):
+#ANNOTATION: if value has an '__iter__' attribute and value is not an instance of bytes or six.string_types class.
+            if hasattr(value, 'close'):
+#ANNOTATION: if value has an 'close' attribute,
+                self._closable_objects.append(value)
+#ANNOTATION: append value to the self._closable_objects list.
+            value = b''.join(self.make_bytes(chunk) for chunk in value)
+#ANNOTATION: call the self.make_bytes method with an argument chunk, for every chunk in value join the result to a bytes string, 
+#ANNOTATION: substitute the result for value.
+        else:
+#ANNOTATION: if not,
+            value = self.make_bytes(value)
+#ANNOTATION: call the method self.make_bytes with an argument value, substitute the result for value.
+        # Create a list of properly encoded bytestrings to support write().
+        self._container = [value]
+#ANNOTATION: self._container is a list containing element value.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        return iter(self._container)
+#ANNOTATION: return self._container converted into a iterable.
+
+    def write(self, content):
+#ANNOTATION: define the method write with 2 arguments: self and content.
+        self._container.append(self.make_bytes(content))
+#ANNOTATION: call the method self.make_bytes with an argument content, append it to self._container.
+
+    def tell(self):
+#ANNOTATION: define the method tell with an argument self.
+        return len(self.content)
+#ANNOTATION: return the length of self.content.
+
+
+class StreamingHttpResponse(HttpResponseBase):
+#ANNOTATION: derive the class StreamingHttpResponse from the HttpResponseBase base class.
+    """
+    A streaming HTTP response class with an iterator as content.
+
+    This should only be iterated once, when the response is streamed to the
+    client. However, it can be appended to or replaced with a new iterator
+    that wraps the original content (or yields entirely new content).
+    """
+#ANNOTATION: docstring
+
+    streaming = True
+#ANNOTATION: streaming is boolean True.
+
+    def __init__(self, streaming_content=(), *args, **kwargs):
+#ANNOTATION: define the method __init__ with 4 arguments: self, result of the function streaming_content=(), unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+        super(StreamingHttpResponse, self).__init__(*args, **kwargs)
+#ANNOTATION: call the __init__ method from the base class of the StreamingHttpResponse class, called with arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+        # `streaming_content` should be an iterable of bytestrings.
+        # See the `streaming_content` property methods.
+        self.streaming_content = streaming_content
+#ANNOTATION: substitute streaming_content for self.streaming_content.
+
+    @property
+#ANNOTATION: property decorator,
+    def content(self):
+#ANNOTATION: define the method content with an argument self.
+        raise AttributeError("This %s instance has no `content` attribute. "
+            "Use `streaming_content` instead." % self.__class__.__name__)
+#ANNOTATION: raise an AttributeError with an argument string "This %s instance has no `content` attribute. "Use `streaming_content` instead.",
+#ANNOTATION: where '%s' is replaced with self.__class__.__name__.
+
+    @property
+#ANNOTATION: property decorator,
+    def streaming_content(self):
+#ANNOTATION: define the method serialize_headers with an argument self.
+        return map(self.make_bytes, self._iterator)
+#ANNOTATION: map elements of self._iterator through self.make_bytes function, return the result.
+
+    @streaming_content.setter
+#ANNOTATION: streaming_content.setter decorator,
+    def streaming_content(self, value):
+#ANNOTATION: define the method streaming_content with 2 arguments: self and value.
+        # Ensure we can never iterate on "value" more than once.
+        self._iterator = iter(value)
+#ANNOTATION: convert value into a iterator, substitute the result for self._iterator.
+        if hasattr(value, 'close'):
+#ANNOTATION: if value has an attribute 'close', 
+            self._closable_objects.append(value)
+#ANNOTATION: append value to self._closable_objects list.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        return self.streaming_content
+#ANNOTATION: return self.streaming_content
+
+
+class HttpResponseRedirectBase(HttpResponse):
+#ANNOTATION: derive the class HttpResponseRedirectBase from the HttpResponse base class.
+    allowed_schemes = ['http', 'https', 'ftp']
+#ANNOTATION: allowed_schemes is an list containing 3 elements: strings 'http', 'https' and 'ftp'.
+
+    def __init__(self, redirect_to, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 4 arguments: self, redirect_to, unpacked list args and unpacked dictionary kwargs.
+        parsed = urlparse(force_text(redirect_to))
+#ANNOTATION: call the function force_text with an argument redirect_to, use the result as an argument for the call to the function urlparse,
+#ANNOTATION: substitute the result for parsed.
+        if parsed.scheme and parsed.scheme not in self.allowed_schemes:
+#ANNOTATION: if parsed.scheme is true and parsed.scheme is not contained in self.allowed_schemes,
+            raise DisallowedRedirect("Unsafe redirect to URL with protocol '%s'" % parsed.scheme)
+#ANNOTATION: raise an DisallowedRedirect exception with an argument string "Unsafe redirect to URL with protocol '%s'",
+#ANNOTATION: where '%s' is replaced with parsed.scheme.
+        super(HttpResponseRedirectBase, self).__init__(*args, **kwargs)
+#ANNOTATION: call the __init__ method from the base class of the HttpResponseRedirectBase class, called with arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+        self['Location'] = iri_to_uri(redirect_to)
+#ANNOTATION: call the function iri_to_uri with an argument redirect_to, substitute the result for the value under the 'Location' key of the self dictionary.
+
+    url = property(lambda self: self['Location'])
+#ANNOTATION: url is a property of the class, lambda function is getter attribute with an argument self and return value is the value under the 'Location' key of the self dictionary.
+
+
+class HttpResponseRedirect(HttpResponseRedirectBase):
+#ANNOTATION: derive the class HttpResponseRedirect from the HttpResponseRedirectBase base class.
+    status_code = 302
+#ANNOTATION: status_code is an integer 302.
+
+
+class HttpResponsePermanentRedirect(HttpResponseRedirectBase):
+#ANNOTATION: derive the class HttpResponsePermanentRedirect from the HttpResponseRedirectBase base class.
+    status_code = 301
+#ANNOTATION: status_code is an integer 301.
+
+
+class HttpResponseNotModified(HttpResponse):
+#ANNOTATION: derive the class HttpResponseNotModified from the HttpResponse base class.
+    status_code = 304
+#ANNOTATION: status_code is an integer 304.
+
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+        super(HttpResponseNotModified, self).__init__(*args, **kwargs)
+#ANNOTATION: call the __init__ method from the base class of the HttpResponseNotModified class, called with arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+        del self['content-type']
+#ANNOTATION: delete the value under the 'content-type' key of the self dictionary.
+
+    @HttpResponse.content.setter
+#ANNOTATION: HttpResponse.content.setter property,
+    def content(self, value):
+#ANNOTATION: define the method content with self and value.
+        if value:
+#ANNOTATION: if value,
+            raise AttributeError("You cannot set content to a 304 (Not Modified) response")
+#ANNOTATION: raise an AttributeError exception with an argument string "You cannot set content to a 304 (Not Modified) response".
+        self._container = []
+#ANNOTATION: self._container is an list.
+
+
+class HttpResponseBadRequest(HttpResponse):
+#ANNOTATION: derive the class HttpResponseBadRequest from the HttpResponse base class.
+    status_code = 400
+#ANNOTATION: status_code is an integer 400.
+
+
+class HttpResponseNotFound(HttpResponse):
+#ANNOTATION: derive the class HttpResponseNotFound from the HttpResponse base class.
+    status_code = 404
+#ANNOTATION: status_code is an integer 404.
+
+
+class HttpResponseForbidden(HttpResponse):
+#ANNOTATION: derive the class HttpResponseForbidden from the HttpResponse base class.
+    status_code = 403
+#ANNOTATION: status_code is an integer 403.
+
+
+class HttpResponseNotAllowed(HttpResponse):
+#ANNOTATION: derive the class HttpResponseNotAllowed from the HttpResponse base class.
+    status_code = 405
+#ANNOTATION: status_code is an integer 405.
+
+    def __init__(self, permitted_methods, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 4 arguments: self, permitted_methods, unpacked list args and unpacked dictionary kwargs.
+        super(HttpResponseNotAllowed, self).__init__(*args, **kwargs)
+#ANNOTATION: call the __init__ method from the base class of the HttpResponseNotAllowed class, called with arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+        self['Allow'] = ', '.join(permitted_methods)
+#ANNOTATION: join into a string permitted_methods, separated by string ', ', substitute it for value under the 'Allow' key of the self dictionary. 
+
+
+class HttpResponseGone(HttpResponse):
+#ANNOTATION: derive the class HttpResponseGone from the HttpResponse base class.
+    status_code = 410
+#ANNOTATION: status_code is an integer 410.
+
+
+class HttpResponseServerError(HttpResponse):
+#ANNOTATION: derive the class HttpResponseServerError from the HttpResponse base class.
+    status_code = 500
+#ANNOTATION: status_code is an integer 500.
+
+
+class Http404(Exception):
+#ANNOTATION: derive the class Http404 from the Exception base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+class JsonResponse(HttpResponse):
+#ANNOTATION: derive the class JsonResponse from the HttpResponse base class.
+    """
+    An HTTP response class that consumes data to be serialized to JSON.
+
+    :param data: Data to be dumped into json. By default only ``dict`` objects
+      are allowed to be passed due to a security flaw before EcmaScript 5. See
+      the ``safe`` parameter for more information.
+    :param encoder: Should be an json encoder class. Defaults to
+      ``django.core.serializers.json.DjangoJSONEncoder``.
+    :param safe: Controls if only ``dict`` objects may be serialized. Defaults
+      to ``True``.
+    """
+#ANNOTATION: docstring
+
+    def __init__(self, data, encoder=DjangoJSONEncoder, safe=True, **kwargs):
+#ANNOTATION: define the method __init__ with 5 arguments: self, data, encoder set to DjangoJSONEncoder, safe set to boolean True,
+#ANNOTATION: and unpacked dictionary kwargs.
+        if safe and not isinstance(data, dict):
+#ANNOTATION: if safe is true and data is not an instance of dict type.
+            raise TypeError('In order to allow non-dict objects to be '
+                'serialized set the safe parameter to False')
+#ANNOTATION: raise an TypeError exception with an argument string 'In order to allow non-dict objects to be serialized set the safe parameter to False'.
+        kwargs.setdefault('content_type', 'application/json')
+#ANNOTATION: if 'content_type' key doesnt exist in kwargs, set its value to 'application/json'.
+        data = json.dumps(data, cls=encoder)
+#ANNOTATION: serialize data to JSON format with cls set to encoder, substitute it for data.  
+        super(JsonResponse, self).__init__(content=data, **kwargs)
+#ANNOTATION: call the __init__ method from the base class of the JsonResponse class, called with arguments: content set to data,
+#ANNOTATION: and unpacked dictionary kwargs.

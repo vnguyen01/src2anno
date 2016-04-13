@@ -1,0 +1,41 @@
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+from django.db import connections, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import connections and DEFAULT_DB_ALIAS into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand base class.
+    help = ("Runs the command-line client for specified database, or the "
+        "default database if none is provided.")
+#ANNOTATION: help is a tuple containing a string "Runs the command-line client for specified database, or the default database if none is provided.". 
+
+    requires_system_checks = False
+#ANNOTATION: requires_system_checks is boolean False.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with self and parser. 
+        parser.add_argument('--database', action='store', dest='database',
+            default=DEFAULT_DB_ALIAS, help='Nominates a database onto which to '
+            'open a shell. Defaults to the "default" database.')
+#ANNOTATION: call the method parser.add_argument with arguments: string '--database', action set to string 'store', dest set to string 'database',
+#ANNOTATION: default set to DEFAULT_DB_ALIAS and help set to string 'Nominates a database onto which to open a shell. Defaults to the "default" database.'.
+
+    def handle(self, **options):
+#ANNOTATION: define the method handle with arguments self and unpacked dictionary options.
+        connection = connections[options.get('database')]
+#ANNOTATION: get the value under the 'database' key of the options dictionary, use it as a key to access the element under the connections dictionary, substitute it for connection.
+        try:
+#ANNOTATION: try,
+            connection.client.runshell()
+#ANNOTATION: call the method connection.client.runshell.
+        except OSError:
+#ANNOTATION: if OSError exception is caught,
+            # Note that we're assuming OSError means that the client program
+            # isn't installed. There's a possibility OSError would be raised
+            # for some other reason, in which case this error message would be
+            # inaccurate. Still, this message catches the common case.
+            raise CommandError('You appear not to have the %r program installed or on your path.' %
+                connection.client.executable_name)
+#ANNOTATION: raise an CommandError exception with an argument string 'You appear not to have the %r program installed or on your path.',
+#ANNOTATION: where '%s' is replaced with connection.client.executable_name.

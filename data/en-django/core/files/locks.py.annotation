@@ -1,0 +1,176 @@
+"""
+Portable file locking utilities.
+
+Based partially on an example by Jonathan Feignberg in the Python
+Cookbook [1] (licensed under the Python Software License) and a ctypes port by
+Anatoly Techtonik for Roundup [2] (license [3]).
+
+[1] http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/65203
+[2] http://sourceforge.net/p/roundup/code/ci/default/tree/roundup/backends/portalocker.py
+[3] http://sourceforge.net/p/roundup/code/ci/default/tree/COPYING.txt
+
+Example Usage::
+
+    >>> from django.core.files import locks
+    >>> with open('./file', 'wb') as f:
+    ...     locks.lock(f, locks.LOCK_EX)
+    ...     f.write('Django')
+"""
+#ANNOTATION: docstring
+import os
+#ANNOTATION: import module os.
+
+__all__ = ('LOCK_EX', 'LOCK_SH', 'LOCK_NB', 'lock', 'unlock')
+#ANNOTATION: __all__ is a tuple containing strings: 'LOCK_EX', 'LOCK_SH', 'LOCK_NB', 'lock' and 'unlock'.
+
+
+def _fd(f):
+#ANNOTATION: define the _fd function with argument f.
+    """Get a filedescriptor from something which could be a file or an fd."""
+#ANNOTATION: docstring
+    return f.fileno() if hasattr(f, 'fileno') else f
+#ANNOTATION: return result of the f.fileno method if f has an 'fileno' attribute, otherwise return f.
+
+
+if os.name == 'nt':
+#ANNOTATION: if os.name equals to 'nt',
+    import msvcrt
+#ANNOTATION: import msvcrt.
+    from ctypes import (sizeof, c_ulong, c_void_p, c_int64,
+                        Structure, Union, POINTER, windll, byref)
+#ANNOTATION: from ctypes import sizeof, c_ulong, c_void_p, c_int64, Structure, Union, POINTER, windll and byref into default name space.
+    from ctypes.wintypes import BOOL, DWORD, HANDLE
+#ANNOTATION: from ctypes.wintypes import BOOL, DWORD and HANDLE into default name space.
+
+    LOCK_SH = 0  # the default
+#ANNOTATION: LOCK_SH is a integer 0.
+    LOCK_NB = 0x1  # LOCKFILE_FAIL_IMMEDIATELY
+#ANNOTATION: LOCK_NB is a hexadecimal 1.
+    LOCK_EX = 0x2  # LOCKFILE_EXCLUSIVE_LOCK
+#ANNOTATION: LOCK_EX is a hexadecimal 2.
+
+    # --- Adapted from the pyserial project ---
+    # detect size of ULONG_PTR
+    if sizeof(c_ulong) != sizeof(c_void_p):
+#ANNOTATION: if size of c_ulong does not equals to size of c_void_p,
+        ULONG_PTR = c_int64
+#ANNOTATION: substitute c_int64 for ULONG_PTR.
+    else:
+#ANNOTATION: if not,
+        ULONG_PTR = c_ulong
+#ANNOTATION: substitute c_ulong for ULONG_PTR.
+    PVOID = c_void_p
+#ANNOTATION: substitute c_void_p for PVOID.
+
+    # --- Union inside Structure by stackoverflow:3480240 ---
+    class _OFFSET(Structure):
+#ANNOTATION: derive the class _OFFSET from the Structure base class.
+        _fields_ = [
+            ('Offset', DWORD),
+            ('OffsetHigh', DWORD)]
+#ANNOTATION: _fields_ is a list containing 2 tuples: first tuple contains: string 'Offset' and DWORD, second contains: string 'OffsetHigh' and DWORD.
+
+    class _OFFSET_UNION(Union):
+#ANNOTATION: derive the class _OFFSET_UNION from the Union base class.
+        _anonymous_ = ['_offset']
+#ANNOTATION: _anonymous_ is a list containing one string: '_offset'.
+        _fields_ = [
+            ('_offset', _OFFSET),
+            ('Pointer', PVOID)]
+#ANNOTATION: _fields_ is a list containing 2 tuples: first tuple contains: string '_offset' and _OFFSET, second contains: string 'Pointer' and PVOID.
+
+    class OVERLAPPED(Structure):
+#ANNOTATION: derive the class OVERLAPPED from the Structure base class.
+        _anonymous_ = ['_offset_union']
+#ANNOTATION: _anonymous_ is a list containing one string: '_offset_union'.
+        _fields_ = [
+            ('Internal', ULONG_PTR),
+            ('InternalHigh', ULONG_PTR),
+            ('_offset_union', _OFFSET_UNION),
+            ('hEvent', HANDLE)]
+#ANNOTATION: _fields_ is a list containing 4 tuples: first tuple contains: string 'Internal' and ULONG_PTR, 
+#ANNOTATION: second contains: string 'InternalHigh and ULONG_PTR, third: '_offset_union' and _OFFSET_UNION, forth 'hEvent' and HANDLE.
+
+    LPOVERLAPPED = POINTER(OVERLAPPED)
+#ANNOTATION: call the function POINTER with argument OVERLAPPED, substitute the result for LPOVERLAPPED.
+
+    # --- Define function prototypes for extra safety ---
+    LockFileEx = windll.kernel32.LockFileEx
+#ANNOTATION: substitute windll.kernel32.LockFileEx for LockFileEx.
+    LockFileEx.restype = BOOL
+#ANNOTATION: substitute BOOL for LockFileEx.restype.
+    LockFileEx.argtypes = [HANDLE, DWORD, DWORD, DWORD, DWORD, LPOVERLAPPED]
+#ANNOTATION: LockFileEx.argtypes is a list containing 6 elements: HANDLE, DWORD, DWORD, DWORD, DWORD and LPOVERLAPPED.
+    UnlockFileEx = windll.kernel32.UnlockFileEx
+#ANNOTATION: substitute windll.kernel32.UnlockFileEx for UnlockFileEx.
+    UnlockFileEx.restype = BOOL
+#ANNOTATION: substitute BOOL for UnlockFileEx.restype.
+    UnlockFileEx.argtypes = [HANDLE, DWORD, DWORD, DWORD, LPOVERLAPPED]
+#ANNOTATION: UnlockFileEx.argtypes is a list containing 5 elements: HANDLE, DWORD, DWORD, DWORD and LPOVERLAPPED.
+
+    def lock(f, flags):
+#ANNOTATION: define the function lock with arguments f and flags.
+        hfile = msvcrt.get_osfhandle(_fd(f))
+#ANNOTATION: call the function msvcrt.get_osfhandle with return value of the _fd(f) function as argument, substitute the result for hfile.
+        overlapped = OVERLAPPED()
+#ANNOTATION: call the OVERLAPPED function, substitute the result for overlapped.
+        ret = LockFileEx(hfile, flags, 0, 0, 0xFFFF0000, byref(overlapped))
+#ANNOTATION: call the LockFileEx function with 6 arguments: hfile, flags, integer 0, integer 0, hexadecimal value FFFF0000, return value of the byref function called with argument overlapped, substitute the result for ret.
+        return bool(ret)
+#ANNOTATION: convert ret to a boolean, return it.
+
+    def unlock(f):
+#ANNOTATION: define the function unlock with argument f.
+        hfile = msvcrt.get_osfhandle(_fd(f))
+#ANNOTATION: call the function msvcrt.get_osfhandle with return value of the _fd(f) function as argument, substitute the result for hfile.
+        overlapped = OVERLAPPED()
+#ANNOTATION: call the OVERLAPPED function, substitute the result for overlapped.
+        ret = UnlockFileEx(hfile, 0, 0, 0xFFFF0000, byref(overlapped))
+#ANNOTATION: call the LockFileEx function with 5 arguments: hfile, integer 0, integer 0, hexadecimal value FFFF0000, return value of the byref function called with argument overlapped, substitute the result for ret.
+        return bool(ret)
+#ANNOTATION: convert ret to a boolean, return it.
+else:
+#ANNOTATION: if not,
+    try:
+#ANNOTATION: try,
+        import fcntl
+#ANNOTATION: import fcntl.
+        LOCK_SH = fcntl.LOCK_SH  # shared lock
+#ANNOTATION: substitute fcntl.LOCK_SH for LOCK_SH.
+        LOCK_NB = fcntl.LOCK_NB  # non-blocking
+#ANNOTATION: substitute fcntl.LOCK_NB for LOCK_NB.
+        LOCK_EX = fcntl.LOCK_EX
+#ANNOTATION: substitute fcntl.LOCK_EX for LOCK_EX.
+    except (ImportError, AttributeError):
+#ANNOTATION: if ImportError or AttributeError exception occurred,
+        # File locking is not supported.
+        LOCK_EX = LOCK_SH = LOCK_NB = 0
+#ANNOTATION: LOCK_EX, LOCK_SH and LOCK_NB are all equal to integer 0.
+
+        # Dummy functions that don't do anything.
+        def lock(f, flags):
+#ANNOTATION: define the function lock with arguments f and flags.
+            # File is not locked
+            return False
+#ANNOTATION: return boolean False.
+
+        def unlock(f):
+#ANNOTATION: define the function unlock with argument f.
+            # File is unlocked
+            return True
+#ANNOTATION: return boolean True.
+    else:
+#ANNOTATION: if not,
+        def lock(f, flags):
+#ANNOTATION: define the function lock with arguments f and flags.
+            ret = fcntl.flock(_fd(f), flags)
+#ANNOTATION: call the function fcntl.flock with return value of the _fd(f) function and flags as arguments, substitute the result for ret.
+            return (ret == 0)
+#ANNOTATION: if ret equals to integer 0, return boolean True, otherwise return boolean False.
+
+        def unlock(f):
+#ANNOTATION: define the function unlock with argument f.
+            ret = fcntl.flock(_fd(f), fcntl.LOCK_UN)
+#ANNOTATION: all the function fcntl.flock with return value of the _fd(f) function and fcntl.LOCK_UN as arguments, substitute the result for ret.
+            return (ret == 0)
+#ANNOTATION: if ret equals to integer 0, return boolean True, otherwise return boolean False.

@@ -1,0 +1,60 @@
+# Wrapper for loading templates from eggs via pkg_resources.resource_string.
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+try:
+#ANNOTATION: try,
+    from pkg_resources import resource_string
+#ANNOTATION: from pkg_resources import resource_string into default name space.
+except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+    resource_string = None
+#ANNOTATION: resource_string is None.
+
+from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.template.base import TemplateDoesNotExist
+#ANNOTATION: from django.template.base import TemplateDoesNotExist into default name space.
+from django.template.loader import BaseLoader
+#ANNOTATION: from django.template.loader import BaseLoader into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+class Loader(BaseLoader):
+#ANNOTATION: derive the class Loader from the BaseLoader base class.
+    is_usable = resource_string is not None
+#ANNOTATION: if resource_string is not None, is_usable is boolean True, otherwise is_usable is boolean False.
+
+    def load_template_source(self, template_name, template_dirs=None):
+#ANNOTATION: define the method load_template_source with 3 arguments: self, template_name, template_dirs set to None.
+        """
+        Loads templates from Python eggs via pkg_resource.resource_string.
+
+        For every installed app, it tries to get the resource (app, template_name).
+        """
+#ANNOTATION: docstring
+        if resource_string is not None:
+#ANNOTATION: if resource_string is not None,
+            pkg_name = 'templates/' + template_name
+#ANNOTATION: concatenate string 'templates/' and template_name, substitute the result for pkg_name.
+            for app_config in apps.get_app_configs():
+#ANNOTATION: call the method apps.get_app_configs, for app_config in the result,
+                try:
+#ANNOTATION: try,
+                    resource = resource_string(app_config.name, pkg_name)
+#ANNOTATION: call the function resource_string with 2 arguments app_config.name and pkg_name, substitute the result for resource.
+                except Exception:
+#ANNOTATION: if Exception exception is caught,
+                    continue
+#ANNOTATION: skip this loop iteration.
+                if six.PY2:
+#ANNOTATION: if six.PY2 is true,
+                    resource = resource.decode(settings.FILE_CHARSET)
+#ANNOTATION: call the method resource.decode with an argument settings.FILE_CHARSET, substitute the result for resource.
+                return (resource, 'egg:%s:%s' % (app_config.name, pkg_name))
+#ANNOTATION: return a tuple with 2 elements: resource and string 'egg:%s:%s', where '%s' is replaced with app_config.name and pkg_name, respective.
+        raise TemplateDoesNotExist(template_name)
+#ANNOTATION: raise an TemplateDoesNotExist exception with an argument template_name.

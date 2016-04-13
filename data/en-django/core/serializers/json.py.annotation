@@ -1,0 +1,194 @@
+"""
+Serialize data to/from JSON
+"""
+#ANNOTATION: docstring
+
+# Avoid shadowing the standard library json module
+from __future__ import absolute_import
+#ANNOTATION: from __future__ import absolute_import into default name space.
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import datetime
+#ANNOTATION: import module datetime.
+import decimal
+#ANNOTATION: import module decimal.
+import json
+#ANNOTATION: import module json.
+import sys
+#ANNOTATION: import module sys.
+
+from django.core.serializers.base import DeserializationError
+#ANNOTATION: from django.core.serializers.base import DeserializationError into default name space.
+from django.core.serializers.python import Serializer as PythonSerializer
+#ANNOTATION: from django.core.serializers.python import Serializer as PythonSerializer into default name space.
+from django.core.serializers.python import Deserializer as PythonDeserializer
+#ANNOTATION: from django.core.serializers.python import Deserializer as PythonDeserializer into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.timezone import is_aware
+#ANNOTATION: from django.utils.timezone import is_aware into default name space.
+
+
+class Serializer(PythonSerializer):
+#ANNOTATION: define the class Serializer from the PythonSerializer base class.
+    """
+    Convert a queryset to JSON.
+    """
+#ANNOTATION: docstring
+    internal_use_only = False
+#ANNOTATION: internal_use_only is boolean False.
+
+    def start_serialization(self):
+#ANNOTATION: define the method start_serialization with an argument self.
+        if json.__version__.split('.') >= ['2', '1', '3']:
+#ANNOTATION: call the method json.__version__.split with an argument '.', if the result is respectively greater than list containing strings '2', '1' and '3',
+            # Use JS strings to represent Python Decimal instances (ticket #16850)
+            self.options.update({'use_decimal': False})
+#ANNOTATION: call the method self.options.update with dictionary as an argument, containing 1 element: boolean False for 'use_decimal'. 
+        self._current = None
+#ANNOTATION: self._current is None.
+        self.json_kwargs = self.options.copy()
+#ANNOTATION: call the method self.options.copy, substitute the result for self.json_kwargs.
+        self.json_kwargs.pop('stream', None)
+#ANNOTATION: remove the entry under the 'stream' key of the self.json_kwargs dictionary.
+        self.json_kwargs.pop('fields', None)
+#ANNOTATION: remove the entry under the 'fields' key of the self.json_kwargs dictionary.
+        if self.options.get('indent'):
+#ANNOTATION: get the value under the 'indent' key of self.options dictionary, if it is true,
+            # Prevent trailing spaces
+            self.json_kwargs['separators'] = (',', ': ')
+#ANNOTATION: substitute a tuple with 2 elements: characters ',' and ': ' for value under the 'separators' key of the self.json_kwargs dictionary.
+        self.stream.write("[")
+#ANNOTATION: write a '[' to the self.stream file stream. 
+
+    def end_serialization(self):
+#ANNOTATION: define the method end_serialization with an argument self.
+        if self.options.get("indent"):
+#ANNOTATION: if value under the 'indent' key of the self.options dictionary is true,
+            self.stream.write("\n")
+#ANNOTATION: write a new line to the self.stream file stream. 
+        self.stream.write("]")
+#ANNOTATION: write ']' to the self.stream file stream.
+        if self.options.get("indent"):
+#ANNOTATION: if value under the 'indent' key of the self.options dictionary is true,
+            self.stream.write("\n")
+#ANNOTATION: write a new line to the self.stream file stream. 
+
+    def end_object(self, obj):
+#ANNOTATION: define the method end_object with arguments self and obj.
+        # self._current has the field data
+        indent = self.options.get("indent")
+#ANNOTATION: get the value under the 'indent' key of the self.options dictionary, substitute it for indent.
+        if not self.first:
+#ANNOTATION: if self.first is false,
+            self.stream.write(",")
+#ANNOTATION: write ',' to the self.stream file stream.
+            if not indent:
+#ANNOTATION: if indent is false,
+                self.stream.write(" ")
+#ANNOTATION: write a white space to the self.stream file stream.
+        if indent:
+#ANNOTATION: if indent is true,
+            self.stream.write("\n")
+#ANNOTATION: write new line to the self.stream file stream.
+        json.dump(self.get_dump_object(obj), self.stream,
+                  cls=DjangoJSONEncoder, **self.json_kwargs)
+#ANNOTATION: call the json.dump function with 4 arguments: return value of the method self.get_dump_object called with an argument obj, #ANNOTATION: self.stream, cls set to DjangoJSONEncoder and unpacked dictionary self.json_kwargs.
+        self._current = None
+#ANNOTATION: self._current is None.
+
+    def getvalue(self):
+#ANNOTATION: define the method getvalue with an argument self.
+        # Grand-parent super
+        return super(PythonSerializer, self).getvalue()
+#ANNOTATION: call the getvalue method from the base class of the class PythonSerializer, return the result.
+
+
+def Deserializer(stream_or_string, **options):
+#ANNOTATION: define the function Deserializer with arguments stream_or_string and unpacked dictionary options.
+    """
+    Deserialize a stream or string of JSON data.
+    """
+#ANNOTATION: docstring
+    if not isinstance(stream_or_string, (bytes, six.string_types)):
+#ANNOTATION: if stream_or_string is not an instance of bytes or six.string_types,
+        stream_or_string = stream_or_string.read()
+#ANNOTATION: call the stream_or_string.read function, substitute the result for stream_or_string.
+    if isinstance(stream_or_string, bytes):
+#ANNOTATION: if stream_or_string is instance of bytes type,
+        stream_or_string = stream_or_string.decode('utf-8')
+#ANNOTATION: call the method stream_or_string.decode with an argument string 'utf-8', substitute the result for stream_or_string.
+    try:
+#ANNOTATION: try,
+        objects = json.loads(stream_or_string)
+#ANNOTATION: call the function json.loads with an argument stream_or_string, substitute the result for objects.
+        for obj in PythonDeserializer(objects, **options):
+#ANNOTATION: for every obj in PythonDeserializer called with arguments objects and unpacked dictionary options,
+            yield obj
+#ANNOTATION: yield obj as generator return value,
+    except GeneratorExit:
+#ANNOTATION: if GeneratorExit exception is caught,
+        raise
+#ANNOTATION: raise an exception,
+    except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+        # Map to deserializer error
+        six.reraise(DeserializationError, DeserializationError(e), sys.exc_info()[2])
+#ANNOTATION: call the six.reraise function with 3 arguments: DeserializationError, DeserializationError called with an argument e, 
+#ANNOTATION: third element of the return value of the function sys.exc_info.
+
+
+class DjangoJSONEncoder(json.JSONEncoder):
+#ANNOTATION: define the class DjangoJSONEncoder from the json.JSONEncoder base class.
+    """
+    JSONEncoder subclass that knows how to encode date/time and decimal types.
+    """
+#ANNOTATION: docstring
+    def default(self, o):
+#ANNOTATION: define the method defalt with arguments self and o.
+        # See "Date Time String Format" in the ECMA-262 specification.
+        if isinstance(o, datetime.datetime):
+#ANNOTATION: if o is an instance of datetime.datetime object.
+            r = o.isoformat()
+#ANNOTATION: call the method o.isoformat substitute the result for r.
+            if o.microsecond:
+#ANNOTATION: if o.microsecond is true,
+                r = r[:23] + r[26:]
+#ANNOTATION: remove 3 elements from r starting at the index 23. 
+            if r.endswith('+00:00'):
+#ANNOTATION: if r ends with string '+00:00',
+                r = r[:-6] + 'Z'
+#ANNOTATION: cut the last 6 elemetns from r, append character 'Z' to it, substitute the result for r.
+            return r
+#ANNOTATION: return r.
+        elif isinstance(o, datetime.date):
+#ANNOTATION: otherwise if o is an instance of datetime.date object,
+            return o.isoformat()
+#ANNOTATION: call the method o.isoformat, return the result.
+        elif isinstance(o, datetime.time):
+#ANNOTATION: otherwise if o is an instance of datetime.time object,
+            if is_aware(o):
+#ANNOTATION: call the function is_aware with an argument o, if it evaluates to true,
+                raise ValueError("JSON can't represent timezone-aware times.")
+#ANNOTATION: raise a ValueError exception with an argument string "JSON can't represent timezone-aware times.".
+            r = o.isoformat()
+#ANNOTATION: call the method o.isoformat substitute the result for r.
+            if o.microsecond:
+#ANNOTATION: if o.microsecond is true,
+                r = r[:12]
+#ANNOTATION: substitute first 12 elements of r for r.
+            return r
+#ANNOTATION: return r.
+        elif isinstance(o, decimal.Decimal):
+#ANNOTATION: otherwise if o is an instance of decimal.Decimal object,
+            return str(o)
+#ANNOTATION: convert o to an string, return it.
+        else:
+#ANNOTATION: if not,
+            return super(DjangoJSONEncoder, self).default(o)
+#ANNOTATION: call the method default with an argument o from the base class of the class DjangoJSONEncoder, return the result.
+
+# Older, deprecated class name (for backwards compatibility purposes).
+DateTimeAwareJSONEncoder = DjangoJSONEncoder
+#ANNOTATION: substitute DjangoJSONEncoder for DateTimeAwareJSONEncoder.

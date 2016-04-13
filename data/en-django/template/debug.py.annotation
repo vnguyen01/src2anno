@@ -1,0 +1,191 @@
+from django.template.base import Lexer, Parser, tag_re, NodeList, VariableNode, TemplateSyntaxError
+#ANNOTATION: from django.template.base import Lexer, Parser, tag_re, NodeList, VariableNode and TemplateSyntaxError into default name space.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+from django.utils.html import escape
+#ANNOTATION: from django.utils.html import escape into default name space.
+from django.utils.safestring import SafeData, EscapeData
+#ANNOTATION: from django.utils.safestring import SafeData and EscapeData into default name space.
+from django.utils.formats import localize
+#ANNOTATION: from django.utils.formats import localize into default name space.
+from django.utils.timezone import template_localtime
+#ANNOTATION: from django.utils.timezone import template_localtime into default name space.
+
+
+class DebugLexer(Lexer):
+#ANNOTATION: derive the class DebugLexer from the Lexer base class.
+    def __init__(self, template_string, origin):
+#ANNOTATION: define the method __init__ with 3 arguments: self, template_string and origin.
+        super(DebugLexer, self).__init__(template_string, origin)
+#ANNOTATION: call the method __init__ from the base class of the class DebugLexer, with 2 arguments: template_string and origin.
+
+    def tokenize(self):
+#ANNOTATION: define the method tokenize with an argument self.
+        "Return a list of tokens from a given template_string"
+#ANNOTATION: docstring
+        result, upto = [], 0
+#ANNOTATION: result is an empty list, upto is integer 0.
+        for match in tag_re.finditer(self.template_string):
+#ANNOTATION: call the method tag_re.finditer with an argument self.template_string, for every match in result,
+            start, end = match.span()
+#ANNOTATION: call the method match.span, substitute the result for start an end, respectively.
+            if start > upto:
+#ANNOTATION: if start is greater than upto,
+                result.append(self.create_token(self.template_string[upto:start], (upto, start), False))
+#ANNOTATION: call the method self.create_token with 3 arguments: self.template_string list elements from upto index to start index, 
+#ANNOTATION: tuple with 2 elements: upto and start and boolean False, append the result to result.
+                upto = start
+#ANNOTATION: substitute start for upto.
+            result.append(self.create_token(self.template_string[start:end], (start, end), True))
+#ANNOTATION: call the method self.create_token with 3 arguments: self.template_string list elements from start index to end index, 
+#ANNOTATION: tuple with 2 elements: start and end and boolean False, append the result to result.
+            upto = end
+#ANNOTATION: substitute end for upto.
+        last_bit = self.template_string[upto:]
+#ANNOTATION: substitute elements of self.template_string list from upto index to the end for last_lit.
+        if last_bit:
+#ANNOTATION: if last_bit is true,
+            result.append(self.create_token(last_bit, (upto, upto + len(last_bit)), False))
+#ANNOTATION: call the method self.create_token with 3 arguments: last_bit, tuple with 2 elements: upto and sum of upto and length of last_bit,
+#ANNOTATION: and boolean False, append the result to result.
+        return result
+#ANNOTATION: return result.
+
+    def create_token(self, token_string, source, in_tag):
+#ANNOTATION: define the method create_token with 4 arguments: self, token_string, source and in_tag.
+        token = super(DebugLexer, self).create_token(token_string, in_tag)
+#ANNOTATION: call the method create_token from the base class of the class DebugLexer, with 2 arguments: template_string and in_tag, 
+#ANNOTATION: substitute the result for token.
+        token.source = self.origin, source
+#ANNOTATION: assign self.origin, source to token.source.
+        return token
+#ANNOTATION: return token.
+
+
+class DebugParser(Parser):
+#ANNOTATION: derive the class DebugParser from the Parser base class.
+    def __init__(self, lexer):
+#ANNOTATION: define the method __init__ with 2 arguments: self and lexer.
+        super(DebugParser, self).__init__(lexer)
+#ANNOTATION: call the method __init__ with an argument lexer, from the base class of the class DebugParser.
+        self.command_stack = []
+#ANNOTATION: self.command_stack is an empty list.
+
+    def enter_command(self, command, token):
+#ANNOTATION: define the method enter_command with 3 arguments: self, command and token.
+        self.command_stack.append((command, token.source))
+#ANNOTATION: append tuple with 2 elements: command and token.source, append the result to self.command_stack.
+
+    def exit_command(self):
+#ANNOTATION: define the method exit_command with an argument self.
+        self.command_stack.pop()
+#ANNOTATION: remove first element from self.command_stack.
+
+    def error(self, token, msg):
+#ANNOTATION: define the method error with 3 arguments: self, token and msg.
+        return self.source_error(token.source, msg)
+#ANNOTATION: call the method self.source_error with 2 arguments: token.source and msg, return the result.
+
+    def source_error(self, source, msg):
+#ANNOTATION: define the method source_error with 3 arguments: self, source and msg.
+        e = TemplateSyntaxError(msg)
+#ANNOTATION: e is an instance of TemplateSyntaxError class, created with an argument msg.
+        e.django_template_source = source
+#ANNOTATION: substitute source for e.django_template_source.
+        return e
+#ANNOTATION: return e.
+
+    def create_nodelist(self):
+#ANNOTATION: define the method create_nodelist with an argument self.
+        return DebugNodeList()
+#ANNOTATION: return an instance of DebugNodeList class.
+
+    def create_variable_node(self, contents):
+#ANNOTATION: define the method create_variable_node with 2 arguments: self and contents.
+        return DebugVariableNode(contents)
+#ANNOTATION: return an instance of DebugVariableNode, created with an argument contents.
+
+    def extend_nodelist(self, nodelist, node, token):
+#ANNOTATION: define the method extend_nodelist with 4 arguments: self, nodelist, node and token.
+        node.source = token.source
+#ANNOTATION: substitute token.source for node.source.
+        super(DebugParser, self).extend_nodelist(nodelist, node, token)
+#ANNOTATION: call the method extend_nodelist with 3 arguments: nodelist, node and token, from the base class of the class DebugParser.
+
+    def unclosed_block_tag(self, parse_until):
+#ANNOTATION: define the method unclosed_block_tag with 2 arguments: self and parse_until.
+        command, source = self.command_stack.pop()
+#ANNOTATION: remove the first element from self.command_stack, assign the result to command and source, respectively.
+        msg = "Unclosed tag '%s'. Looking for one of: %s " % (command, ', '.join(parse_until))
+#ANNOTATION: msg is an string "Unclosed tag '%s'. Looking for one of: %s ", where '%s' is replaced with command,
+#ANNOTATION: and elements of parse_until joined into a string, separated by string ', '.
+        raise self.source_error(source, msg)
+#ANNOTATION: raise an self.source_error exception with 2 arguments: source and msg.
+
+    def compile_filter_error(self, token, e):
+#ANNOTATION: define the method compile_filter_error with 3 arguments: self, token and e.
+        if not hasattr(e, 'django_template_source'):
+#ANNOTATION: if e doesnt have an 'django_template_source' attribute,
+            e.django_template_source = token.source
+#ANNOTATION: substitute token.source for e.django_template_source.
+
+    def compile_function_error(self, token, e):
+#ANNOTATION: define the method compile_function_error with 3 arguments: self, token and e.
+        if not hasattr(e, 'django_template_source'):
+#ANNOTATION: if e doesnt have an 'django_template_source' attribute,
+            e.django_template_source = token.source
+#ANNOTATION: substitute token.source for e.django_template_source.
+
+
+class DebugNodeList(NodeList):
+#ANNOTATION: derive the class DebugNodeList from the NodeList base class.
+    def render_node(self, node, context):
+#ANNOTATION: define the method render_node with 3 arguments: self, node and context.
+        try:
+#ANNOTATION: try,
+            return node.render(context)
+#ANNOTATION: call the method node.render with an argument context, return the result.
+        except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+            if not hasattr(e, 'django_template_source'):
+#ANNOTATION: if e doesnt have an 'django_template_source' attribute,
+                e.django_template_source = node.source
+#ANNOTATION: substitute node.source for e.django_template_source.
+            raise
+#ANNOTATION: raise an exception.
+
+
+class DebugVariableNode(VariableNode):
+#ANNOTATION: derive the class DebugVariableNode from the VariableNode base class.
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        try:
+#ANNOTATION: try,
+            output = self.filter_expression.resolve(context)
+#ANNOTATION: call the method self.filter_expression.resolve with an argument context, substitute the result for output.
+            output = template_localtime(output, use_tz=context.use_tz)
+#ANNOTATION: call the function template_localtime with 2 arguments: output and use_tz set to context.use_tz, substitute the result for output.
+            output = localize(output, use_l10n=context.use_l10n)
+#ANNOTATION: call the function localize with 2 arguments: output and use_l10n set to context.use_l10n, substitute the result for output.
+            output = force_text(output)
+#ANNOTATION: call the function force_text with an argument output, substitute the result for output.
+        except UnicodeDecodeError:
+#ANNOTATION: if UnicodeDecodeError exception is caught,
+            return ''
+#ANNOTATION: return an empty string.
+        except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+            if not hasattr(e, 'django_template_source'):
+#ANNOTATION: if e doesnt have an 'django_template_source' attribute,
+                e.django_template_source = self.source
+#ANNOTATION: substitute self.source for e.django_template_source.
+            raise
+#ANNOTATION: raise an exception.
+        if (context.autoescape and not isinstance(output, SafeData)) or isinstance(output, EscapeData):
+#ANNOTATION: if context.autoescape is true and output is not an instance of SafeData class or output is an instance of EscapeData class,
+            return escape(output)
+#ANNOTATION: call the function escape with an argument output.
+        else:
+#ANNOTATION: if not,
+            return output
+#ANNOTATION: return output.

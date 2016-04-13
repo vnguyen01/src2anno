@@ -1,0 +1,381 @@
+"Base Cache class."
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import time
+#ANNOTATION: import module time.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.core.exceptions import ImproperlyConfigured, DjangoRuntimeWarning
+#ANNOTATION: from django.core.exceptions import ImproperlyConfigured and DjangoRuntimeWarning into default name space.
+from django.utils.module_loading import import_string
+#ANNOTATION: from django.utils.module_loading import import_string into default name space.
+
+
+class InvalidCacheBackendError(ImproperlyConfigured):
+#ANNOTATION: derive class InvalidCacheBackendError from the ImproperlyConfigured base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+class CacheKeyWarning(DjangoRuntimeWarning):
+#ANNOTATION: derive class CacheKeyWarning from the DjangoRuntimeWarning base class. 
+    pass
+#ANNOTATION: do nothing.
+
+
+# Stub class to ensure not passing in a `timeout` argument results in
+# the default timeout
+DEFAULT_TIMEOUT = object()
+#ANNOTATION: DEFAULT_TIMEOUT is a instance of the class object.
+
+# Memcached does not accept keys longer than this.
+MEMCACHE_MAX_KEY_LENGTH = 250
+#ANNOTATION: MEMCACHE_MAX_KEY_LENGTH is integer 250.
+
+
+def default_key_func(key, key_prefix, version):
+#ANNOTATION: define the function default_key_func with 3 arguments, key, key_prefix and version.
+    """
+    Default function to generate keys.
+
+    Constructs the key used by all other methods. By default it prepends
+    the `key_prefix'. KEY_FUNCTION can be used to specify an alternate
+    function with custom key making behavior.
+    """
+#ANNOTATION: docstring
+    return '%s:%s:%s' % (key_prefix, version, key)
+#ANNOTATION: convert key_prefix, version and key into strings, concatenate them respectively, with character ':' as delimiter, return the result. 
+
+
+def get_key_func(key_func):
+#ANNOTATION: define the function get_key_func with argument key_func.
+    """
+    Function to decide which key function to use.
+
+    Defaults to ``default_key_func``.
+    """
+#ANNOTATION: docstring
+    if key_func is not None:
+#ANNOTATION: if key_func is not of None type,
+        if callable(key_func):
+#ANNOTATION: if key_function is callable object,
+            return key_func
+#ANNOTATION: return key_func.
+        else:
+#ANNOTATION: if not,
+            return import_string(key_func)
+#ANNOTATION: evaluate the function import_string with key_func as argument, return the result.
+    return default_key_func
+#ANNOTATION: return default_key_func.
+
+
+class BaseCache(object):
+#ANNOTATION: derive the class BaseCache from the object base class.
+    def __init__(self, params):
+#ANNOTATION: define the initialization function __init__ with self class instance and params as arguments.
+        timeout = params.get('timeout', params.get('TIMEOUT', 300))
+#ANNOTATION: call the params.get method with string 'TIMEOUT' and integer 300 as arguments, use the string 'timeout' and previous result as the arguments for the call to the params.get method, substitute the result for timeout. 
+        if timeout is not None:
+#ANNOTATION: if timeout is not None,
+            try:
+#ANNOTATION: try,
+                timeout = int(timeout)
+#ANNOTATION: convert timeout into an integer.
+            except (ValueError, TypeError):
+#ANNOTATION: if ValueError or TypeError exceptions occurred,
+                timeout = 300
+#ANNOTATION: timeout is integer 300.
+        self.default_timeout = timeout
+#ANNOTATION: substitute timeout for self.default_timeout.
+
+        options = params.get('OPTIONS', {})
+#ANNOTATION: call the params.get with string 'OPTIONS' and empty dictionary as arguments, substitute the result for options.
+        max_entries = params.get('max_entries', options.get('MAX_ENTRIES', 300))
+#ANNOTATION: call the options.get method with string 'MAX_ENTRIES' and integer 300 as arguments, use the string 'max_entries' and previous result as the arguments for the call to the params.get method, substitute the result for max_entries. 
+        try:
+#ANNOTATION: try,
+            self._max_entries = int(max_entries)
+#ANNOTATION: convert max_entries into a string, substitute it for self._max_entries.
+        except (ValueError, TypeError):
+#ANNOTATION: if ValueError or TypeError exceptions occurred,
+            self._max_entries = 300
+#ANNOTATION: self._max_entries is integer 300.
+
+        cull_frequency = params.get('cull_frequency', options.get('CULL_FREQUENCY', 3))
+#ANNOTATION: call the options.get method with string 'CULL_FREQUENCY' and integer 3 as arguments, use the string 'cull_frequency' and previous result as the arguments for the call to the params.get method, substitute the result for cull_frequency. 
+        try:
+#ANNOTATION: try,
+            self._cull_frequency = int(cull_frequency)
+#ANNOTATION: convert cull_frequency into an integer and substitute it for self._cull_frequency.
+        except (ValueError, TypeError):
+#ANNOTATION: if ValueError or TypeError exceptions occurred,
+            self._cull_frequency = 3
+#ANNOTATION: self._cull_frequency is integer 3.
+
+        self.key_prefix = params.get('KEY_PREFIX', '')
+#ANNOTATION: call the params.get method with string 'KEY_PREFIX' and an empty string as arguments, substitute the result for self._key_prefix.
+        self.version = params.get('VERSION', 1)
+#ANNOTATION: call the params.get method wit string 'VERSION' and integer 1 as arguments, substitute the result for self.version.
+        self.key_func = get_key_func(params.get('KEY_FUNCTION', None))
+#ANNOTATION: call the method params.get with 2 arguments, string 'KEY_FUNCTION' and None, use the result as the argument for the call to the function get_key_func, substitute the result for the self.key_func.
+
+    def get_backend_timeout(self, timeout=DEFAULT_TIMEOUT):
+#ANNOTATION: define the method get_backend_timeout with self class instance and timeout set to DEFAULT_TIMEOUT as arguments,
+        """
+        Returns the timeout value usable by this backend based upon the provided
+        timeout.
+        """
+#ANNOTATION: docstring
+        if timeout == DEFAULT_TIMEOUT:
+#ANNOTATION: if timeout equals to DEFAULT_TIMEOUT,
+            timeout = self.default_timeout
+#ANNOTATION: substitute self.default_timeout for timeout.
+        elif timeout == 0:
+#ANNOTATION: else if timeout equals to integer 0,
+            # ticket 21147 - avoid time.time() related precision issues
+            timeout = -1
+#ANNOTATION: timeout is a integer -1.
+        return None if timeout is None else time.time() + timeout
+#ANNOTATION: if timeouts is None return None, otherwise return the sum of function time.time return value and timeout.
+
+    def make_key(self, key, version=None):
+#ANNOTATION: define the function make_key with self class instance, key and version set to None as arguments.
+        """Constructs the key used by all other methods. By default it
+        uses the key_func to generate a key (which, by default,
+        prepends the `key_prefix' and 'version'). An different key
+        function can be provided at the time of cache construction;
+        alternatively, you can subclass the cache backend to provide
+        custom key making behavior.
+        """
+#ANNOTATION: docstring
+        if version is None:
+#ANNOTATION: if version is None,
+            version = self.version
+#ANNOTATION: substitute self.version for version.
+
+        new_key = self.key_func(key, self.key_prefix, version)
+#ANNOTATION: call the method self.key_function with key, self.key_prefix and version as arguments, substitute the result for new_key.
+        return new_key
+#ANNOTATION: return new_key.
+
+    def add(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method add with 5 arguments, self, key, value, timeout defaulting to DEFAULT_TIMEOUT and version defaulting to None.
+        """
+        Set a value in the cache if the key does not already exist. If
+        timeout is given, that timeout will be used for the key; otherwise
+        the default cache timeout will be used.
+
+        Returns True if the value was stored, False otherwise.
+        """
+#ANNOTATION: docsring
+        raise NotImplementedError('subclasses of BaseCache must provide an add() method')
+#ANNOTATION: raise an exception of class NotImplementedError with string 'subclasses of BaseCache must provide an add() method' as argument.
+
+    def get(self, key, default=None, version=None):
+#ANNOTATION: define the method get with 4 arguments, self, key, default set to None and version set to None.
+        """
+        Fetch a given key from the cache. If the key does not exist, return
+        default, which itself defaults to None.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of BaseCache must provide a get() method')
+#ANNOTATION: raise an exception of class NotImplementedError, with string 'subclasses of BaseCache must provide a get() method' as argument.
+
+    def set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method set with 5 arguments, self, key, value, timeout set to DEFAULT_TIMEOUT and version set to None.
+        """
+        Set a value in the cache. If timeout is given, that timeout will be
+        used for the key; otherwise the default cache timeout will be used.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of BaseCache must provide a set() method')
+#ANNOTATION: raise an exception of class NotImplementedError, with string 'subclasses of BaseCache must provide a set() method' as argument.
+
+    def delete(self, key, version=None):
+#ANNOTATION: define delete method with self class instance, key and version set to None, as arguments.
+        """
+        Delete a key from the cache, failing silently.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of BaseCache must provide a delete() method')
+#ANNOTATION: raise an exception of class NotImplementedError, with string 'subclasses of BaseCache must provide a delete() method' as argument.
+
+    def get_many(self, keys, version=None):
+#ANNOTATION: define the get_many method with self class instance, keys and version set to None as arguments.
+        """
+        Fetch a bunch of keys from the cache. For certain backends (memcached,
+        pgsql) this can be *much* faster when fetching multiple values.
+
+        Returns a dict mapping each key in keys to its value. If the given
+        key is missing, it will be missing from the response dict.
+        """
+#ANNOTATION: docstring
+        d = {}
+#ANNOTATION: d is an empty dictionary.
+        for k in keys:
+#ANNOTATION: for every k in keys,
+            val = self.get(k, version=version)
+#ANNOTATION: call the self.get method with k and version set to version as arguments, substitute the result for val.
+            if val is not None:
+#ANNOTATION: if val is not None,
+                d[k] = val
+#ANNOTATION: substitute val for value under the k key of dictionary d.
+        return d
+#ANNOTATION: return d.
+
+    def has_key(self, key, version=None):
+#ANNOTATION: define method has_key with self class instance, key and version set to None as arguments.
+        """
+        Returns True if the key is in the cache and has not expired.
+        """
+#ANNOTATION: docstring
+        return self.get(key, version=version) is not None
+#ANNOTATION: call the self.get method with key and version set to version as arguments, return it if it is not None.
+
+    def incr(self, key, delta=1, version=None):
+#ANNOTATION: define the method incr with 4 arguments, self class instance, key, delta defaulting to integer 1 and version defaulting to None.
+        """
+        Add delta to value in the cache. If the key does not exist, raise a
+        ValueError exception.
+        """
+#ANNOTATION: docstring
+        value = self.get(key, version=version)
+#ANNOTATION: call the method self.get with key and version set to version as arguments, substitute the result for value.
+        if value is None:
+#ANNOTATION: if value is None,
+            raise ValueError("Key '%s' not found" % key)
+#ANNOTATION: raise an exception of class ValueError, with string "Key '%s' not found" as argument, where '%s' is substituted for key.
+        new_value = value + delta
+#ANNOTATION: add value and delta together, substitute the result for new_value.
+        self.set(key, new_value, version=version)
+#ANNOTATION: call the self.set method with key, new_value and version set to version as arguments.
+        return new_value
+#ANNOTATION: return new_value.
+
+    def decr(self, key, delta=1, version=None):
+#ANNOTATION: define the method decr with arguments self, key, delta defaulting to integer 1 and version defaulting to None.
+        """
+        Subtract delta from value in the cache. If the key does not exist, raise
+        a ValueError exception.
+        """
+#ANNOTATION: docstring
+        return self.incr(key, -delta, version=version)
+#ANNOTATION: call the self.incr method with key, negative delta and version set to version as arguments.
+
+    def __contains__(self, key):
+#ANNOTATION: define the private method __contains__ with self class instance and key as arguments.
+        """
+        Returns True if the key is in the cache and has not expired.
+        """
+#ANNOTATION: docstring
+        # This is a separate method, rather than just a copy of has_key(),
+        # so that it always has the same functionality as has_key(), even
+        # if a subclass overrides it.
+        return self.has_key(key)
+#ANNOTATION: evaluate the self.has_key method with key as argument, return the result.
+
+    def set_many(self, data, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method set_many with arguments, self, data, timeout defaulting to DEFAULT_TIMEOUT and version set to None.
+        """
+        Set a bunch of values in the cache at once from a dict of key/value
+        pairs.  For certain backends (memcached), this is much more efficient
+        than calling set() multiple times.
+
+        If timeout is given, that timeout will be used for the key; otherwise
+        the default cache timeout will be used.
+        """
+#ANNOTATION: docstring
+        for key, value in data.items():
+#ANNOTATION: for every key and value in data.items method return value,
+            self.set(key, value, timeout=timeout, version=version)
+#ANNOTATION: call the method self.set with arguments key, value, timeout set to timeout, version set to version.
+
+    def delete_many(self, keys, version=None):
+#ANNOTATION: define the method delete_many with arguments self, keys and version defaulting to None.
+        """
+        Set a bunch of values in the cache at once.  For certain backends
+        (memcached), this is much more efficient than calling delete() multiple
+        times.
+        """
+#ANNOTATION: docstring
+        for key in keys:
+#ANNOTATION: for every key in keys,
+            self.delete(key, version=version)
+#ANNOTATION: call the delete method with key and version set to version as arguments.
+
+    def clear(self):
+#ANNOTATION: define the method clear with self class instance as the argument,
+        """Remove *all* values from the cache at once."""
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of BaseCache must provide a clear() method')
+#ANNOTATION: raise an exception NotImplementedError with string 'subclasses of BaseCache must provide a clear() method' as argument.
+
+    def validate_key(self, key):
+#ANNOTATION: define the method validate_key with self class instance and key as arguments.
+        """
+        Warn about keys that would not be portable to the memcached
+        backend. This encourages (but does not force) writing backend-portable
+        cache code.
+
+        """
+#ANNOTATION: docstring
+        if len(key) > MEMCACHE_MAX_KEY_LENGTH:
+#ANNOTATION: if length of key is greater than MEMCACHE_MAX_KEY_LENGTH,
+            warnings.warn('Cache key will cause errors if used with memcached: '
+                    '%s (longer than %s)' % (key, MEMCACHE_MAX_KEY_LENGTH),
+                    CacheKeyWarning)
+#ANNOTATION: substitute '%s' in string 'Cache key will cause errors if used with memcached: %s (longer than %s)' with key,
+#ANNOTATION: and MEMCACHE_MAX_KEY_LENGTH, call the function warnings.warn with previous string and CacheKeyWarning as arguments.
+        for char in key:
+#ANNOTATION: for every char in key,
+            if ord(char) < 33 or ord(char) == 127:
+#ANNOTATION: if ascii value of char is smaller than integer 33 or is equal to integer 127,
+                warnings.warn('Cache key contains characters that will cause '
+                        'errors if used with memcached: %r' % key,
+                              CacheKeyWarning)
+#ANNOTATION: substitute '%r' in string 'Cache key contains characters that will cause errors if used with memcached: %r' with key,
+#ANNOTATION: call the function warnings.warn with previous string and CacheKeyWarning as arguments.
+
+    def incr_version(self, key, delta=1, version=None):
+#ANNOTATION: define the method incr_version with 4 arguments, self, key, delta defaulting to integer 1 and version defaulting to None. 
+        """Adds delta to the cache version for the supplied key. Returns the
+        new version.
+        """
+#ANNOTATION: docstring
+        if version is None:
+#ANNOTATION: if version is None,
+            version = self.version
+#ANNOTATION: substitute self.version for version.
+
+        value = self.get(key, version=version)
+#ANNOTATION: call the self.get method with arguments key and version set to version, substitute the result for value.
+        if value is None:
+#ANNOTATION: if value is None,
+            raise ValueError("Key '%s' not found" % key)
+#ANNOTATION: raise an exception of the class ValueError with string "Key '%s' not found" as argument, '%s' is substituted for key.  
+
+        self.set(key, value, version=version + delta)
+#ANNOTATION: call the method self.set with key, value, version incremented by delta, as arguments.
+        self.delete(key, version=version)
+#ANNOTATION: call the self.delete method with key and version set to version as arguments.
+        return version + delta
+#ANNOTATION: sum version and delta together, return the result.
+
+    def decr_version(self, key, delta=1, version=None):
+#ANNOTATION: define the method decr_version with 4 arguments, self, key, delta defaulting to integer 1 and version defaulting to None. 
+        """Substracts delta from the cache version for the supplied key. Returns
+        the new version.
+        """
+#ANNOTATION: docstring
+        return self.incr_version(key, -delta, version)
+#ANNOTATION: call the method self.incr_version with key, negative delta and version as arguments.
+
+    def close(self, **kwargs):
+#ANNOTATION: define the close method with 2 arguments, self and dictionary of argument pairs kwargs.
+        """Close the cache connection"""
+#ANNOTATION: docstirng
+        pass
+#ANNOTATION: do nothing.

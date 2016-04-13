@@ -1,0 +1,14 @@
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+
+warnings.warn(
+    "The django.forms.util module has been renamed. "
+    "Use django.forms.utils instead.", RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the function warnings.warn with 3 arguments: string "The django.forms.util module has been renamed. "
+#ANNOTATION: "Use django.forms.utils instead.", RemovedInDjango19Warning and stacklevel set to an integer 2.
+
+from django.forms.utils import *  # NOQA
+#ANNOTATION: from django.forms.utils import everything into default name space.

@@ -1,0 +1,2194 @@
+"""Default tags used by the template system, available to all templates."""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import os
+#ANNOTATION: import module os.
+import sys
+#ANNOTATION: import module sys.
+import re
+#ANNOTATION: import module re.
+from datetime import datetime
+#ANNOTATION: from datetime import datetime into default name space.
+from itertools import groupby, cycle as itertools_cycle
+#ANNOTATION: from itertools import groupby and cycle as itertools_cycle into default name space.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.template.base import (Node, NodeList, Template, Context, Library,
+    TemplateSyntaxError, VariableDoesNotExist, InvalidTemplateLibrary,
+    BLOCK_TAG_START, BLOCK_TAG_END, VARIABLE_TAG_START, VARIABLE_TAG_END,
+    SINGLE_BRACE_START, SINGLE_BRACE_END, COMMENT_TAG_START, COMMENT_TAG_END,
+    VARIABLE_ATTRIBUTE_SEPARATOR, get_library, token_kwargs, kwarg_re,
+    render_value_in_context)
+#ANNOTATION: from django.template.base import Node, NodeList, Template, Context, Library, TemplateSyntaxError, VariableDoesNotExist, 
+#ANNOTATION: validTemplateLibrary, BLOCK_TAG_START, BLOCK_TAG_END, VARIABLE_TAG_START, VARIABLE_TAG_END, SINGLE_BRACE_START, SINGLE_BRACE_END,
+#ANNOTATION: COMMENT_TAG_START, COMMENT_TAG_END, VARIABLE_ATTRIBUTE_SEPARATOR, get_library, token_kwargs, kwarg_re and render_value_in_context.
+from django.template.smartif import IfParser, Literal
+#ANNOTATION: from django.template.smartif import IfParser and Literal into default name space.
+from django.template.defaultfilters import date
+#ANNOTATION: from django.template.defaultfilters import date into default name space.
+from django.utils.deprecation import RemovedInDjango20Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango20Warning into default name space.
+from django.utils.encoding import force_text, smart_text
+#ANNOTATION: from django.utils.encoding import force_text and smart_text into default name space.
+from django.utils.safestring import mark_safe
+#ANNOTATION: from django.utils.safestring import mark_safe into default name space.
+from django.utils.html import format_html
+#ANNOTATION: from django.utils.html import format_html into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils import timezone
+#ANNOTATION: from django.utils import timezone into default name space.
+
+register = Library()
+#ANNOTATION: register is an instance of Library class.
+
+
+class AutoEscapeControlNode(Node):
+#ANNOTATION: derive the class AutoEscapeControlNode from Node base class.
+    """Implements the actions of the autoescape tag."""
+#ANNOTATION: docstring
+    def __init__(self, setting, nodelist):
+#ANNOTATION: define the method __init__ with 3 arguments: self, setting and nodelist.
+        self.setting, self.nodelist = setting, nodelist
+#ANNOTATION: substitute setting and nodelist for self.setting and self.nodelist, respectively.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        old_setting = context.autoescape
+#ANNOTATION: substitute context.autoescape for old_setting.
+        context.autoescape = self.setting
+#ANNOTATION: substitute self.setting for context.autoescape.
+        output = self.nodelist.render(context)
+#ANNOTATION: call the method self.nodelist.render with an argument context, substitute the result for output.
+        context.autoescape = old_setting
+#ANNOTATION: substitute old_setting for context.autoescape.
+        if self.setting:
+#ANNOTATION: if self.setting is true,
+            return mark_safe(output)
+#ANNOTATION: call the function mark_safe with an argument output.
+        else:
+#ANNOTATION: if not,
+            return output
+#ANNOTATION: return output.
+
+
+class CommentNode(Node):
+#ANNOTATION: derive the class CommentNode from Node base class.
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        return ''
+#ANNOTATION: return an empty string,
+
+
+class CsrfTokenNode(Node):
+#ANNOTATION: derive the class CsrfTokenNode from Node base class.
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        csrf_token = context.get('csrf_token', None)
+#ANNOTATION: get the value under the 'csrf_token' key of the context dictionary, if it exists substitute the result for csrf_token, 
+#ANNOTATION: if not csrf_token is None.
+        if csrf_token:
+#ANNOTATION: if csrf_token is true,
+            if csrf_token == 'NOTPROVIDED':
+#ANNOTATION: if csrf_token equals string 'NOTPROVIDED',
+                return format_html("")
+#ANNOTATION: call the function format_html with an argument empty string, return the result.
+            else:
+#ANNOTATION: if not,
+                return format_html("<input type='hidden' name='csrfmiddlewaretoken' value='{0}' />", csrf_token)
+#ANNOTATION: call the function format_html with 2 arguments: string "<input type='hidden' name='csrfmiddlewaretoken' value='{0}' />",
+#ANNOTATION: and csrf_token, return the result.
+        else:
+#ANNOTATION: if not,
+            # It's very probable that the token is missing because of
+            # misconfiguration, so we raise a warning
+            if settings.DEBUG:
+#ANNOTATION: if settings.DEBUG is true,
+                warnings.warn("A {% csrf_token %} was used in a template, but the context did not provide the value.  This is usually caused by not using RequestContext.")
+#ANNOTATION: call the function warnings.warn with an argument string "A {% csrf_token %} was used in a template, but the context did not provide the value.  This is usually caused by not using RequestContext.".
+            return ''
+#ANNOTATION: return an empty string,
+
+
+class CycleNode(Node):
+#ANNOTATION: derive the class CycleNode from Node base class.
+    def __init__(self, cyclevars, variable_name=None, silent=False):
+#ANNOTATION: define the method __init__ with 4 arguments: self, cyclevars, variable_name set to None and silent set to boolean False.
+        self.cyclevars = cyclevars
+#ANNOTATION: substitute cyclevars for self.cyclevars.
+        self.variable_name = variable_name
+#ANNOTATION: substitute variable_name for self.variable_name.
+        self.silent = silent
+#ANNOTATION: substitute silent for self.silent.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        if self not in context.render_context:
+#ANNOTATION: if self is not contained in context.render_context,
+            # First time the node is rendered in template
+            context.render_context[self] = itertools_cycle(self.cyclevars)
+#ANNOTATION: call the function itertools_cycle with an argument self.cyclevars, substitute the result for value under the self dictionary context.render_context.
+        cycle_iter = context.render_context[self]
+#ANNOTATION: get the value under the self key of the context.render_context dictionary, substitute it for cycle_iter.
+        value = next(cycle_iter).resolve(context)
+#ANNOTATION: call the function next with an argument cycle_iter, call the method resolve on the result with an argument context, substitute the result for value.
+        if self.variable_name:
+#ANNOTATION: if self.variable_name is true.
+            context[self.variable_name] = value
+#ANNOTATION: substitute value for value under the self.variable_name key of the context dictionary.
+        if self.silent:
+#ANNOTATION: if self.silent is true,
+            return ''
+#ANNOTATION: return an empty string,
+        return render_value_in_context(value, context)
+#ANNOTATION: call the function render_value_in_context with 2 arguments: value and context, return the result.
+
+
+class DebugNode(Node):
+#ANNOTATION: derive the class DebugNode from Node base class.
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        from pprint import pformat
+#ANNOTATION: from pprint import pformat.
+        output = [pformat(val) for val in context]
+#ANNOTATION: output is an list with initial elements generated with call to the function pformat with an argument val, for every val in context.
+        output.append('\n\n')
+#ANNOTATION: append 2 consecutive newlines to output.
+        output.append(pformat(sys.modules))
+#ANNOTATION: call the function pformat with an argument sys.modules, append the result for output.
+        return ''.join(output)
+#ANNOTATION: join elements of output into a string, return the result.
+
+
+class FilterNode(Node):
+#ANNOTATION: derive the class FilterNode from Node base class.
+    def __init__(self, filter_expr, nodelist):
+#ANNOTATION: define the method __init__ with 3 arguments: self, filter_expr and nodelist).
+        self.filter_expr, self.nodelist = filter_expr, nodelist
+#ANNOTATION: substitute filter_expr and nodelist for self.filter_expr and self.nodelist, respectively.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        output = self.nodelist.render(context)
+#ANNOTATION: call the method self.nodelist.render with an argument context, substitute the result output.
+        # Apply filters.
+        with context.push(var=output):
+#ANNOTATION: call the method context.push with an argument var set to output, with the result perform,
+            return self.filter_expr.resolve(context)
+#ANNOTATION: call the function self.filter_expr.resolve with an argument context, return the result.
+
+
+class FirstOfNode(Node):
+#ANNOTATION: derive the class FirstOfNode from Node base class.
+    def __init__(self, variables):
+#ANNOTATION: define the method __init__ with 2 arguments: self and variables.
+        self.vars = variables
+#ANNOTATION: substitute variables for self.vars.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        for var in self.vars:
+#ANNOTATION: for every var in self.vars,
+            value = var.resolve(context, True)
+#ANNOTATION: call the method var.resolve with 2 arguments: context and True, substitute the result for value.
+            if value:
+#ANNOTATION: if value is true,
+                return render_value_in_context(value, context)
+#ANNOTATION: call the function render_value_in_context with 2 arguments: value and context, return the result.
+        return ''
+#ANNOTATION: return an empty string,
+
+
+class ForNode(Node):
+#ANNOTATION: derive the class ForNode from Node base class.
+    child_nodelists = ('nodelist_loop', 'nodelist_empty')
+#ANNOTATION: child_nodelists is an tuple with 2 elements: strings 'nodelist_loop' and 'nodelist_empty'.
+
+    def __init__(self, loopvars, sequence, is_reversed, nodelist_loop, nodelist_empty=None):
+#ANNOTATION: define the method __init__ with 6 arguments: self, loopvars, sequence, is_reversed, nodelist_loop and nodelist_empty set to None.
+        self.loopvars, self.sequence = loopvars, sequence
+#ANNOTATION: substitute loopvars and sequence for self.loopvars and self.sequence, respectively.
+        self.is_reversed = is_reversed
+#ANNOTATION: substitute is_reversed for self.is_reversed.
+        self.nodelist_loop = nodelist_loop
+#ANNOTATION: substitute nodelist_loop for self.nodelist_loop.
+        if nodelist_empty is None:
+#ANNOTATION: if nodelist_empty is None,
+            self.nodelist_empty = NodeList()
+#ANNOTATION: self.nodelist_empty is an instance of NodeList class.
+        else:
+#ANNOTATION: if not,
+            self.nodelist_empty = nodelist_empty
+#ANNOTATION: substitute nodelist_empty for self.nodelist_empty.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        reversed_text = ' reversed' if self.is_reversed else ''
+#ANNOTATION: if self.is_reversed is true, substitute reversed_text is an string ' reversed', if not, reversed_text is an empty string.
+        return "<For Node: for %s in %s, tail_len: %d%s>" % \
+            (', '.join(self.loopvars), self.sequence, len(self.nodelist_loop),
+             reversed_text)
+#ANNOTATION: return an string "<For Node: for %s in %s, tail_len: %d%s>", substitute '%s' with elements of self.loopvars joined into a string,
+#ANNOTATION: separated with string ', ', substitute '%s' with self.sequence, substitute '%d' with length of self.nodelist_loop,
+#ANNOTATION: substitute '%s' with reversed_text.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        for node in self.nodelist_loop:
+#ANNOTATION: for every node in self.nodelist_loop,
+            yield node
+#ANNOTATION: yield node.
+        for node in self.nodelist_empty:
+#ANNOTATION: for every node in self.nodelist_empty,
+            yield node
+#ANNOTATION: yield node.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        if 'forloop' in context:
+#ANNOTATION: if string 'forloop' is contained in context,
+            parentloop = context['forloop']
+#ANNOTATION: substitute value under the the 'forloop' key of the context dictionary for parentloop.
+        else:
+#ANNOTATION: if not,
+            parentloop = {}
+#ANNOTATION: parentloop is an empty dictionary.
+        with context.push():
+#ANNOTATION: call the method context.push, with the result perform,
+            try:
+#ANNOTATION: try,
+                values = self.sequence.resolve(context, True)
+#ANNOTATION: call the method self.sequence.resolve with 2 arguments: context and boolean True, substitute the result for values.
+            except VariableDoesNotExist:
+#ANNOTATION: if VariableDoesNotExist exception is caught,
+                values = []
+#ANNOTATION: values is an empty list.
+            if values is None:
+#ANNOTATION: if values is None,
+                values = []
+#ANNOTATION: if values is None,
+            if not hasattr(values, '__len__'):
+#ANNOTATION: if values has an attribute '__len__',
+                values = list(values)
+#ANNOTATION: convert values into a list, substitute it for value.
+            len_values = len(values)
+#ANNOTATION: substitute length of values for len_values.
+            if len_values < 1:
+#ANNOTATION: if len_values is smaller than integer 1,
+                return self.nodelist_empty.render(context)
+#ANNOTATION: call the method self.nodelist_empty.render with an argument context, return the result.
+            nodelist = []
+#ANNOTATION: nodelist is an empty list.
+            if self.is_reversed:
+#ANNOTATION: if self.is_reversed is true,
+                values = reversed(values)
+#ANNOTATION: reverse elements order of values.
+            num_loopvars = len(self.loopvars)
+#ANNOTATION: substitute length of self.loopvars for num_loopvars.
+            unpack = num_loopvars > 1
+#ANNOTATION: if num_loopvars is greater than integer 1, unpack is an boolean True, otherwise is an boolean False.
+            # Create a forloop value in the context.  We'll update counters on each
+            # iteration just below.
+            loop_dict = context['forloop'] = {'parentloop': parentloop}
+#ANNOTATION: loop_dict and value under the 'forloop' key of the context dictionary are dictionaries with an entry: parentloop for 'parentloop'.
+            for i, item in enumerate(values):
+#ANNOTATION: for every i and item in enumerated iterable values,
+                # Shortcuts for current loop iteration number.
+                loop_dict['counter0'] = i
+#ANNOTATION: substitute i for value under the 'counter0' key of the loop_dict dictionary.
+                loop_dict['counter'] = i + 1
+#ANNOTATION: substitute i incremented by 1 for value under the 'counter' key of the loop_dict dictionary.
+                # Reverse counter iteration numbers.
+                loop_dict['revcounter'] = len_values - i
+#ANNOTATION: subtract i from len_values, substitute the result for value under the 'revcounter' key of the loop_dict dictionary.
+                loop_dict['revcounter0'] = len_values - i - 1
+#ANNOTATION: subtract i from len_values, decrement the result by integer 1, substitute it for value under the 'revcounter' key of the loop_dict dictionary.
+                # Boolean values designating first and last times through loop.
+                loop_dict['first'] = (i == 0)
+#ANNOTATION: if i is equal to integer 0, value under the 'first' key of the loop_dict dictionary is boolean True, otherwise it is False.
+                loop_dict['last'] = (i == len_values - 1)
+#ANNOTATION: if i is equal to len_values decremented by 1, value under the 'last' key of the loop_dict dictionary is boolean True, otherwise it is False.
+
+                pop_context = False
+#ANNOTATION: pop_context is boolean False.
+                if unpack:
+#ANNOTATION: if unpack is true,
+                    # If there are multiple loop variables, unpack the item into
+                    # them.
+
+                    # To complete this deprecation, remove from here to the
+                    # try/except block as well as the try/except itself,
+                    # leaving `unpacked_vars = ...` and the "else" statements.
+                    if not isinstance(item, (list, tuple)):
+#ANNOTATION: if item is not an instance of list or tuple class,
+                        len_item = 1
+#ANNOTATION: len_item is integer 1.
+                    else:
+#ANNOTATION: if not,
+                        len_item = len(item)
+#ANNOTATION: substitute length of item for len_item.
+                    # Check loop variable count before unpacking
+                    if num_loopvars != len_item:
+#ANNOTATION: if num_loopvars is not equal to len_item,
+                        warnings.warn(
+                            "Need {0} values to unpack in for loop; got {1}. "
+                            "This will raise an exception in Django 2.0."
+                            .format(num_loopvars, len_item),
+                            RemovedInDjango20Warning)
+#ANNOTATION: call the function warnings.warn with 2 arguments: string "Need {0} values to unpack in for loop; got {1}. This will raise an
+#ANNOTATION: exception in Django 2.0." formated with num_loopvars and len_item, respectively, and RemovedInDjango20Warning.
+
+                    try:
+#ANNOTATION: try,
+                        unpacked_vars = dict(zip(self.loopvars, item))
+#ANNOTATION: zip self.loopvars and item is a list to tuples, convert the result to an dictionary, substitute it for unpacked_vars.
+                    except TypeError:
+#ANNOTATION: if TypeError exception is caught,
+                        pass
+#ANNOTATION: do nothing.
+                    else:
+#ANNOTATION: if not,
+                        pop_context = True
+#ANNOTATION: pop_context is boolean True.
+                        context.update(unpacked_vars)
+#ANNOTATION: call the method context.update with an argument unpacked_vars.
+                else:
+#ANNOTATION: if not,
+                    context[self.loopvars[0]] = item
+#ANNOTATION: substitute item for value under the first element of self.loopvars key of the context dictionary.
+                # In TEMPLATE_DEBUG mode provide source of the node which
+                # actually raised the exception
+                if settings.TEMPLATE_DEBUG:
+#ANNOTATION: if settings.TEMPLATE_DEBUG is true,
+                    for node in self.nodelist_loop:
+#ANNOTATION: for every node in self.nodelist_loop,
+                        try:
+#ANNOTATION: try,
+                            nodelist.append(node.render(context))
+#ANNOTATION: call the method node.render with an argument context, append the result to the nodelist.
+                        except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+                            if not hasattr(e, 'django_template_source'):
+#ANNOTATION: if e doesnt have an 'django_template_source' attribute,
+                                e.django_template_source = node.source
+#ANNOTATION: substitute node.source for e.django_template_source.
+                            raise
+#ANNOTATION: raise an exception.
+                else:
+#ANNOTATION: if not,
+                    for node in self.nodelist_loop:
+#ANNOTATION: for every node in self.nodelist_loop,
+                        nodelist.append(node.render(context))
+#ANNOTATION: call the method node.render with an argument context, append the result to the nodelist.
+                if pop_context:
+#ANNOTATION: if pop_context is true,
+                    # The loop variables were pushed on to the context so pop them
+                    # off again. This is necessary because the tag lets the length
+                    # of loopvars differ to the length of each set of items and we
+                    # don't want to leave any vars from the previous loop on the
+                    # context.
+                    context.pop()
+#ANNOTATION: remove the first element of context.
+        return mark_safe(''.join(force_text(n) for n in nodelist))
+#ANNOTATION: call the function mark_safe with an arguments: for every n in nodelist results of the function force_text called with an argument n, #ANNOTATION: joined in a string, return the result.
+
+
+class IfChangedNode(Node):
+#ANNOTATION: derive the class IfChangedNode from Node base class.
+    child_nodelists = ('nodelist_true', 'nodelist_false')
+#ANNOTATION: child_nodelists is a tuple with 2 initial elements: strings 'nodelist_true' and 'nodelist_false'.
+
+    def __init__(self, nodelist_true, nodelist_false, *varlist):
+#ANNOTATION: define the method __init__ with 4 arguments: self, nodelist_true, nodelist_false and unpacked list varlist.
+        self.nodelist_true, self.nodelist_false = nodelist_true, nodelist_false
+#ANNOTATION: substitute nodelist_true and nodelist_false for self.nodelist_true and self.nodelist_false, respectively.
+        self._varlist = varlist
+#ANNOTATION: substitute varlist for self.varlist.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        # Init state storage
+        state_frame = self._get_context_stack_frame(context)
+#ANNOTATION: call the method self._get_context_stack_frame with an argument context, substitute the result for state_frame.
+        if self not in state_frame:
+#ANNOTATION: if self is not contained in state_frame,
+            state_frame[self] = None
+#ANNOTATION: value under the self key of state_frame dictionary is None.
+
+        nodelist_true_output = None
+#ANNOTATION: nodelist_true_output is None.
+        try:
+#ANNOTATION: try,
+            if self._varlist:
+#ANNOTATION: if self._varlist is true,
+                # Consider multiple parameters.  This automatically behaves
+                # like an OR evaluation of the multiple variables.
+                compare_to = [var.resolve(context, True) for var in self._varlist]
+#ANNOTATION: compare_to is an list with elements generated by calling the var.resolve method with 2 arguments: context and boolean True,
+#ANNOTATION: for every var in self._varlist.
+            else:
+#ANNOTATION: if not,
+                # The "{% ifchanged %}" syntax (without any variables) compares the rendered output.
+                compare_to = nodelist_true_output = self.nodelist_true.render(context)
+#ANNOTATION: call the method self.nodelist_true.render with an argument context, assign the result to compare_to and nodelist_true_output.
+        except VariableDoesNotExist:
+#ANNOTATION: if VariableDoesNotExist exception is caught,
+            compare_to = None
+#ANNOTATION: compare_to is None.
+
+        if compare_to != state_frame[self]:
+#ANNOTATION: if compare_to is not equal to value under the self key of state_frame.
+            state_frame[self] = compare_to
+#ANNOTATION: substitute compare_to for value under the state_frame dictionary under the self key.
+            return nodelist_true_output or self.nodelist_true.render(context)  # render true block if not already rendered
+#ANNOTATION: return nodelist_true_output, if true, if not call the method self.nodelist_true.render with an argument context and return the result. 
+        elif self.nodelist_false:
+#ANNOTATION: otherwise if self.nodelist_false is true,
+            return self.nodelist_false.render(context)
+#ANNOTATION: call the method self.nodelist_false.render with an argument context, return the result.
+        return ''
+#ANNOTATION: return an empty string,
+
+    def _get_context_stack_frame(self, context):
+#ANNOTATION: define the method _get_context_stack_frame with 2 arguments: self and context.
+        # The Context object behaves like a stack where each template tag can create a new scope.
+        # Find the place where to store the state to detect changes.
+        if 'forloop' in context:
+#ANNOTATION: if string 'forloop' is contained in context,
+            # Ifchanged is bound to the local for loop.
+            # When there is a loop-in-loop, the state is bound to the inner loop,
+            # so it resets when the outer loop continues.
+            return context['forloop']
+#ANNOTATION: return value under the 'forloop' key of the context dictionary.
+        else:
+#ANNOTATION: if not,
+            # Using ifchanged outside loops. Effectively this is a no-op because the state is associated with 'self'.
+            return context.render_context
+#ANNOTATION: return context.render_context.
+
+
+class IfEqualNode(Node):
+#ANNOTATION: derive the class IfEqualNode from Node base class.
+    child_nodelists = ('nodelist_true', 'nodelist_false')
+#ANNOTATION: child_nodelists is a tuple with 2 elements strings 'nodelist_true' and 'nodelist_false'.
+
+    def __init__(self, var1, var2, nodelist_true, nodelist_false, negate):
+#ANNOTATION: define the method __init__ with 6 arguments: (self, var1, var2, nodelist_true, nodelist_false and negate.
+        self.var1, self.var2 = var1, var2
+#ANNOTATION: substitute var1 and var2 for self.var1 and self.var2, respectively.
+        self.nodelist_true, self.nodelist_false = nodelist_true, nodelist_false
+#ANNOTATION: substitute nodelist_true and nodelist_false for self.nodelist_true and self.nodelist_false, respectively.
+        self.negate = negate
+#ANNOTATION: substitute negate for self.negate.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return "<IfEqualNode>"
+#ANNOTATION: return an string "<IfEqualNode>".
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        val1 = self.var1.resolve(context, True)
+#ANNOTATION: call the method self.var1.resolve with 2 arguments: context and boolean True, substitute the result for val2.
+        val2 = self.var2.resolve(context, True)
+#ANNOTATION: call the method self.var2.resolve with 2 arguments: context and boolean True, substitute the result for val2.
+        if (self.negate and val1 != val2) or (not self.negate and val1 == val2):
+#ANNOTATION: if self.negate is true and val1 is not equal to val2, or if, self.negate is false and val1 equals val2,
+            return self.nodelist_true.render(context)
+#ANNOTATION: call the method self.nodelist_true.render with an argument context, return the result.
+        return self.nodelist_false.render(context)
+#ANNOTATION: call the method self.nodelist_false.render with an arguments context, return the result.
+
+
+class IfNode(Node):
+#ANNOTATION: derive the class IfNode from Node base class.
+
+    def __init__(self, conditions_nodelists):
+#ANNOTATION: define the method __init__ with 2 arguments: self and conditions_nodelists.
+        self.conditions_nodelists = conditions_nodelists
+#ANNOTATION: substitute conditions_nodelists for self.conditions_nodelists.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return "<IfNode>"
+#ANNOTATION: return an string "<IfNode>".
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        for _, nodelist in self.conditions_nodelists:
+#ANNOTATION: for every _ and nodelist in self.conditions_nodelists,
+            for node in nodelist:
+#ANNOTATION: for every node in nodelist,
+                yield node
+#ANNOTATION: yield node as an return value of a generator.
+
+    @property
+#ANNOTATION: property decorator,
+    def nodelist(self):
+#ANNOTATION: define the method nodelist with an argument self.
+        return NodeList(node for _, nodelist in self.conditions_nodelists for node in nodelist)
+#ANNOTATION: return an instance of a NodeList class, created with arguments node, for every node in nodelist,
+#ANNOTATION: and for every _, nodelist in self.conditions_nodelists.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        for condition, nodelist in self.conditions_nodelists:
+#ANNOTATION: for every condition and nodelist in self.conditions_nodelists,
+
+            if condition is not None:           # if / elif clause
+#ANNOTATION: if condition is not None,
+                try:
+#ANNOTATION: try,
+                    match = condition.eval(context)
+#ANNOTATION: call the method condition.eval with an argument context, substitute the result for match.
+                except VariableDoesNotExist:
+#ANNOTATION: if VariableDoesNotExist exception is caught,
+                    match = None
+#ANNOTATION: match is None.
+            else:                               # else clause
+#ANNOTATION: if not,
+                match = True
+#ANNOTATION: match is boolean True.
+
+            if match:
+#ANNOTATION: if match is true,
+                return nodelist.render(context)
+#ANNOTATION: call the method nodelist.render with an argument context, return the result.
+
+        return ''
+#ANNOTATION: return an empty string,
+
+
+class RegroupNode(Node):
+#ANNOTATION: derive the class RegroupNode from Node base class.
+    def __init__(self, target, expression, var_name):
+#ANNOTATION: define the method __init__ with 4 arguments: self, target, expression and var_name.
+        self.target, self.expression = target, expression
+#ANNOTATION: substitute target and expression for self.target and self.expression, respectively.
+        self.var_name = var_name
+#ANNOTATION: substitute var_name for self.var_name.
+
+    def resolve_expression(self, obj, context):
+#ANNOTATION: define the method resolve_expression with 3 arguments: self, obj and context.
+        # This method is called for each object in self.target. See regroup()
+        # for the reason why we temporarily put the object in the context.
+        context[self.var_name] = obj
+#ANNOTATION: substitute obj for value under the self.var_name key of the context dictionary.
+        return self.expression.resolve(context, True)
+#ANNOTATION: call the method self.expression.resolve with 2 arguments: context and boolean True, return the result.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        obj_list = self.target.resolve(context, True)
+#ANNOTATION: call the method self.target.resolve with 2 arguments: context and boolean True, substitute it for obj_list.
+        if obj_list is None:
+#ANNOTATION: if obj_list is None,
+            # target variable wasn't found in context; fail silently.
+            context[self.var_name] = []
+#ANNOTATION: value under the self.var_name key of the context dictionary is an empty list.
+            return ''
+#ANNOTATION: return an empty string,
+        # List of dictionaries in the format:
+        # {'grouper': 'key', 'list': [list of contents]}.
+        context[self.var_name] = [
+            {'grouper': key, 'list': list(val)}
+            for key, val in
+            groupby(obj_list, lambda obj: self.resolve_expression(obj, context))
+        ]
+#ANNOTATION: value under the self.var_name key of the context dictionary is an list with dictionary elements with 2 entries: 
+#ANNOTATION: key for 'grouper' and val converted into a list for 'list', for every key and val in result of the function groupby,
+#ANNOTATION: called with 2 arguments: obj_list and lambda function with an argument obj and return value as a result of the function,
+#ANNOTATION: self.resolve_expression called with 2 arguments obj and context.
+        return ''
+#ANNOTATION: return an empty string,
+
+
+def include_is_allowed(filepath):
+#ANNOTATION: define the function include_is_allowed with an argument filepath.
+    filepath = os.path.abspath(filepath)
+#ANNOTATION: return the absolute path of file path filepath, substitute it for filepath.
+    for root in settings.ALLOWED_INCLUDE_ROOTS:
+#ANNOTATION: for every root in settings.ALLOWED_INCLUDE_ROOTS,
+        if filepath.startswith(root):
+#ANNOTATION: if filepath starts with root,
+            return True
+#ANNOTATION: return boolean True.
+    return False
+#ANNOTATION: return boolean False.
+
+
+class SsiNode(Node):
+#ANNOTATION: derive the class SsiNode from Node base class.
+    def __init__(self, filepath, parsed):
+#ANNOTATION: define the method __init__ with 3 arguments: self, filepath and parsed.
+        self.filepath = filepath
+#ANNOTATION: substitute filepath for self.filepath.
+        self.parsed = parsed
+#ANNOTATION: substitute parsed for self.parsed.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        filepath = self.filepath.resolve(context)
+#ANNOTATION: call the function self.filepath.resolve with an argument context, substitute the result for filepath.
+
+        if not include_is_allowed(filepath):
+#ANNOTATION: call the function include_is_allowed with an argument filepath, if it evaluates to false,
+            if settings.DEBUG:
+#ANNOTATION: if settings.DEBUG is true,
+                return "[Didn't have permission to include file]"
+#ANNOTATION: return string "[Didn't have permission to include file]".
+            else:
+#ANNOTATION: if not,
+                return ''  # Fail silently for invalid includes.
+#ANNOTATION: return an empty string,
+        try:
+#ANNOTATION: try,
+            with open(filepath, 'r') as fp:
+#ANNOTATION: open filepath file in read mode, with file descriptor as fp, perform,
+                output = fp.read()
+#ANNOTATION: read file fp, substitute the read data for output.
+        except IOError:
+#ANNOTATION: if IOError exception is caught,
+            output = ''
+#ANNOTATION: output is an empty string.
+        if self.parsed:
+#ANNOTATION: if self.parsed is true,
+            try:
+#ANNOTATION: try,
+                t = Template(output, name=filepath)
+#ANNOTATION: t is an instance of Template class, created with 2 arguments output and name set to filepath.
+                return t.render(context)
+#ANNOTATION: call the function t.render with an argument context, return the result.
+            except TemplateSyntaxError as e:
+#ANNOTATION: if TemplateSyntaxError, renamed to e, exception is caught,
+                if settings.DEBUG:
+#ANNOTATION: if settings.DEBUG is true,
+                    return "[Included template had syntax error: %s]" % e
+#ANNOTATION: return an string "[Included template had syntax error: %s]", where '%s' is replaced with e.
+                else:
+#ANNOTATION: if not,
+                    return ''  # Fail silently for invalid included templates.
+#ANNOTATION: return an empty string,
+        return output
+#ANNOTATION: return output.
+
+
+class LoadNode(Node):
+#ANNOTATION: derive the class LoadNode from Node base class.
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        return ''
+#ANNOTATION: return an empty string,
+
+
+class NowNode(Node):
+#ANNOTATION: derive the class NowNode from Node base class.
+    def __init__(self, format_string):
+#ANNOTATION: define the method __init__ with 2 arguments: self and format_string.
+        self.format_string = format_string
+#ANNOTATION: substitute format_string for self.format_string.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        tzinfo = timezone.get_current_timezone() if settings.USE_TZ else None
+#ANNOTATION: if settings.USE_TZ is true substitute result of the function timezone.get_current_timezone for tzinfo, if not tzinfo is None.
+        return date(datetime.now(tz=tzinfo), self.format_string)
+#ANNOTATION: call the function date with 2 arguments: result of the call to the function datetime.now with an argument tz set to tzinfo,
+#ANNOTATION: and self.format_string, return the result.
+
+
+class SpacelessNode(Node):
+#ANNOTATION: derive the class SpacelessNode from Node base class.
+    def __init__(self, nodelist):
+#ANNOTATION: define the method __init__ with 2 arguments: self and nodelist.
+        self.nodelist = nodelist
+#ANNOTATION: substitute nodelist for self.nodelist.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        from django.utils.html import strip_spaces_between_tags
+#ANNOTATION: from django.utils.html import strip_spaces_between_tags.
+        return strip_spaces_between_tags(self.nodelist.render(context).strip())
+#ANNOTATION: call the method self.nodelist.render with an argument context, strip the result of the surrounding whitespaces, 
+#ANNOTATION: use the result as an argument for the call to the function strip_spaces_between_tags, return the result.
+
+
+class TemplateTagNode(Node):
+#ANNOTATION: derive the class TemplateTagNode from Node base class.
+    mapping = {'openblock': BLOCK_TAG_START,
+               'closeblock': BLOCK_TAG_END,
+               'openvariable': VARIABLE_TAG_START,
+               'closevariable': VARIABLE_TAG_END,
+               'openbrace': SINGLE_BRACE_START,
+               'closebrace': SINGLE_BRACE_END,
+               'opencomment': COMMENT_TAG_START,
+               'closecomment': COMMENT_TAG_END,
+               }
+#ANNOTATION: mapping is an dictionary with 8 initial entries: BLOCK_TAG_START for 'openblock', BLOCK_TAG_END for 'closeblock', 
+#ANNOTATION: VARIABLE_TAG_START for 'openvariable', VARIABLE_TAG_END for 'closevariable', SINGLE_BRACE_START for 'openbrace',
+#ANNOTATION: SINGLE_BRACE_END 'closebrace', COMMENT_TAG_START 'opencomment' and COMMENT_TAG_END for 'closecomment'.
+
+    def __init__(self, tagtype):
+#ANNOTATION: define the method __init__ with 2 arguments: self and tagtype.
+        self.tagtype = tagtype
+#ANNOTATION: substitute tagtype for self.tagtype.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        return self.mapping.get(self.tagtype, '')
+#ANNOTATION: call the method self.mapping.get with 2 arguments: self.tagtype and an empty list, return the result.
+
+
+class URLNode(Node):
+#ANNOTATION: derive the class URLNode from Node base class.
+    def __init__(self, view_name, args, kwargs, asvar):
+#ANNOTATION: define the method __init__ with 5 arguments: self, view_name, args, kwargs and asvar.
+        self.view_name = view_name
+#ANNOTATION: substitute view_name for self.view_name.
+        self.args = args
+#ANNOTATION: substitute args for self.args.
+        self.kwargs = kwargs
+#ANNOTATION: substitute kwargs for self.kwargs.
+        self.asvar = asvar
+#ANNOTATION: substitute asvar for self.asvar.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        from django.core.urlresolvers import reverse, NoReverseMatch
+#ANNOTATION: from django.core.urlresolvers import reverse, NoReverseMatch.
+        args = [arg.resolve(context) for arg in self.args]
+#ANNOTATION: for every arg in self.args call the method arg.resolve with an argument context, substitute the results in a list for args.
+        kwargs = dict((smart_text(k, 'ascii'), v.resolve(context))
+                      for k, v in self.kwargs.items())
+#ANNOTATION: kwargs is an dictionary, populated for every k and v in result of the method self.kwargs.items with: 
+#ANNOTATION: result of the call to the method v.resolve with an argument context,
+#ANNOTATION: for result of the function smart_text called with 2 arguments k and string 'ascii'. 
+
+        view_name = self.view_name.resolve(context)
+#ANNOTATION: call the method self.view_name.resolve with an argument context, substitute the result for view_name.
+
+        # Try to look up the URL twice: once given the view name, and again
+        # relative to what we guess is the "main" app. If they both fail,
+        # re-raise the NoReverseMatch unless we're using the
+        # {% url ... as var %} construct in which case return nothing.
+        url = ''
+#ANNOTATION: url is an empty string.
+        try:
+#ANNOTATION: try,
+            url = reverse(view_name, args=args, kwargs=kwargs, current_app=context.current_app)
+#ANNOTATION: call the function reverse with 4 arguments: view_name, args as args, kwargs as kwargs and current_app as context.current_app,
+#ANNOTATION: substitute the result for url.
+        except NoReverseMatch:
+#ANNOTATION: if NoReverseMatch exception is caught,
+            exc_info = sys.exc_info()
+#ANNOTATION: call the function sys.exc_info with an argument exc_info.
+            if settings.SETTINGS_MODULE:
+#ANNOTATION: if settings.SETTINGS_MODULE is true,
+                project_name = settings.SETTINGS_MODULE.split('.')[0]
+#ANNOTATION: split settings.SETTINGS_MODULE by '.' character, substitute the first element of the result for project_name.
+                try:
+#ANNOTATION: try,
+                    url = reverse(project_name + '.' + view_name,
+                              args=args, kwargs=kwargs,
+                              current_app=context.current_app)
+#ANNOTATION: call the function reverse with 4 arguments: concatenated project_name, character '.' and view_name, args as args, kwargs as kwargs,
+#ANNOTATION: current_app as context.current_app, substitute the result for url.
+                except NoReverseMatch:
+#ANNOTATION: if NoReverseMatch exception is caught,
+                    if self.asvar is None:
+#ANNOTATION: if self.asvar is None,
+                        # Re-raise the original exception, not the one with
+                        # the path relative to the project. This makes a
+                        # better error message.
+                        six.reraise(*exc_info)
+#ANNOTATION: call the function six.reraise with unpacked list exc_info as an argument.
+            else:
+#ANNOTATION: if not,
+                if self.asvar is None:
+#ANNOTATION: if self.asvar is None,
+                    raise
+#ANNOTATION: raise an exception.
+
+        if self.asvar:
+#ANNOTATION: if self.asvar is true,
+            context[self.asvar] = url
+#ANNOTATION: substitute url for value under the self.asvar key of context dictionary.
+            return ''
+#ANNOTATION: return an empty string.
+        else:
+#ANNOTATION: if not,
+            return url
+#ANNOTATION: return url.
+
+
+class VerbatimNode(Node):
+#ANNOTATION: derive the class VerbatimNode from Node base class.
+    def __init__(self, content):
+#ANNOTATION: define the method __init__ with 2 arguments: self and content.
+        self.content = content
+#ANNOTATION: substitute content for self.content.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        return self.content
+#ANNOTATION: return self.content
+
+
+class WidthRatioNode(Node):
+#ANNOTATION: derive the class WidthRatioNode from Node base class.
+    def __init__(self, val_expr, max_expr, max_width, asvar=None):
+#ANNOTATION: define the method __init__ with 5 arguments: self, val_expr, max_expr, max_width and asvar set to None.
+        self.val_expr = val_expr
+#ANNOTATION: substitute val_expr for self.val_expr.
+        self.max_expr = max_expr
+#ANNOTATION: substitute max_expr for self.max_expr.
+        self.max_width = max_width
+#ANNOTATION: substitute max_width for self.max_width.
+        self.asvar = asvar
+#ANNOTATION: substitute asvar for self.asvar.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        try:
+#ANNOTATION: try,
+            value = self.val_expr.resolve(context)
+#ANNOTATION: call the method self.val_expr.resolve with an argument context, substitute the result for value.
+            max_value = self.max_expr.resolve(context)
+#ANNOTATION: call the method self.max_expr.resolve with an argument context, substitute the result for max_value.
+            max_width = int(self.max_width.resolve(context))
+#ANNOTATION: call the method self.max_width.resolve with an argument context, convert the result to an integer and substitute it for max_width.
+        except VariableDoesNotExist:
+#ANNOTATION: if VariableDoesNotExist exception is caught,
+            return ''
+#ANNOTATION: return an empty string.
+        except (ValueError, TypeError):
+#ANNOTATION: if ValueError or TypeError exceptions are caught,
+            raise TemplateSyntaxError("widthratio final argument must be a number")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "widthratio final argument must be a number".
+        try:
+#ANNOTATION: try,
+            value = float(value)
+#ANNOTATION: convert value into an floating point number, substitute it for value.
+            max_value = float(max_value)
+#ANNOTATION: convert max_value into an floating point number, substitute it for max_value.
+            ratio = (value / max_value) * max_width
+#ANNOTATION: divide value by max_value, multiply the result with max_width, substitute it for ratio.
+            result = str(int(round(ratio)))
+#ANNOTATION: round up radio, convert it to an integer and the convert it to a string and substitute the result for result.
+        except ZeroDivisionError:
+#ANNOTATION: if ZeroDivisionError exception is caught,
+            return '0'
+#ANNOTATION: return an string '0'.
+        except (ValueError, TypeError, OverflowError):
+#ANNOTATION: if ValueError, TypeError or OverflowError exceptions are caught,
+            return ''
+#ANNOTATION: return an empty string,
+
+        if self.asvar:
+#ANNOTATION: if self.asvar is true,
+            context[self.asvar] = result
+#ANNOTATION: substitute result for value under the self.asvar key of context dictionary.
+            return ''
+#ANNOTATION: return an empty string,
+        else:
+#ANNOTATION: if not,
+            return result
+#ANNOTATION: return result.
+
+
+class WithNode(Node):
+#ANNOTATION: derive the class WithNode from Node base class.
+    def __init__(self, var, name, nodelist, extra_context=None):
+#ANNOTATION: define the method __init__ with 5 arguments: self, var, name, nodelist and extra_context set to None.
+        self.nodelist = nodelist
+#ANNOTATION: substitute nodelist for self.nodelist.
+        # var and name are legacy attributes, being left in case they are used
+        # by third-party subclasses of this Node.
+        self.extra_context = extra_context or {}
+#ANNOTATION: if extra_context is true, substitute it for self.extra_context, if not self.extra_context is an empty dictionary.
+        if name:
+#ANNOTATION: if name is true,
+            self.extra_context[name] = var
+#ANNOTATION: substitute var for value under the name key of the self.extra_context dictionary.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return "<WithNode>"
+#ANNOTATION: return a string "<WithNode>" 
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments: self and context.
+        values = dict((key, val.resolve(context)) for key, val in
+                      six.iteritems(self.extra_context))
+#ANNOTATION: values is an dictionary created with result of the method val.resolve called with an argument context, for key,
+#ANNOTATION: for every key and val in return value of the function six.iteritems called with an arguments self.extra_context.
+        with context.push(**values):
+#ANNOTATION: call the method context.push with an argument unpacked dictionary values, with the result as an argument,
+            return self.nodelist.render(context)
+#ANNOTATION: call the method self.nodelist.render with an argument context, return the result.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def autoescape(parser, token):
+#ANNOTATION: define the function autoescape with 2 arguments: parser and token.
+    """
+    Force autoescape behavior for this block.
+    """
+#ANNOTATION: docstring
+    # token.split_contents() isn't useful here because this tag doesn't accept variable as arguments
+    args = token.contents.split()
+#ANNOTATION: call the method token.contents.split, substitute the result for args.
+    if len(args) != 2:
+#ANNOTATION: if length of args is not equal to integer 2,
+        raise TemplateSyntaxError("'autoescape' tag requires exactly one argument.")
+#ANNOTATION: raise an TemplateSyntaxError with an argument string "'autoescape' tag requires exactly one argument.".
+    arg = args[1]
+#ANNOTATION: substitute first element of args for arg.
+    if arg not in ('on', 'off'):
+#ANNOTATION: if arg is not string 'on' or 'off',
+        raise TemplateSyntaxError("'autoescape' argument should be 'on' or 'off'")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'autoescape' argument should be 'on' or 'off'".
+    nodelist = parser.parse(('endautoescape',))
+#ANNOTATION: call the method parser.parse with an argument tuple with an element string 'endautoescape', substitute the result for nodelist.
+    parser.delete_first_token()
+#ANNOTATION: call the method parser.delete_first_token.
+    return AutoEscapeControlNode((arg == 'on'), nodelist)
+#ANNOTATION: return an instance of AutoEscapeControlNode with 2 arguments: boolean exception arg equals to string 'on', and nodelist.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def comment(parser, token):
+#ANNOTATION: define the function comment with 2 arguments: parser and token.
+    """
+    Ignores everything between ``{% comment %}`` and ``{% endcomment %}``.
+    """
+#ANNOTATION: docstring
+    parser.skip_past('endcomment')
+#ANNOTATION: call the method parser.skip_past with an argument string 'endcomment'.
+    return CommentNode()
+#ANNOTATION: return an instance of CommentNode class.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def cycle(parser, token):
+#ANNOTATION: define the function cycle with 2 arguments: parser and token.
+    """
+    Cycles among the given strings each time this tag is encountered.
+
+    Within a loop, cycles among the given strings each time through
+    the loop::
+
+        {% for o in some_list %}
+            <tr class="{% cycle 'row1' 'row2' %}">
+                ...
+            </tr>
+        {% endfor %}
+
+    Outside of a loop, give the values a unique name the first time you call
+    it, then use that name each successive time through::
+
+            <tr class="{% cycle 'row1' 'row2' 'row3' as rowcolors %}">...</tr>
+            <tr class="{% cycle rowcolors %}">...</tr>
+            <tr class="{% cycle rowcolors %}">...</tr>
+
+    You can use any number of values, separated by spaces. Commas can also
+    be used to separate values; if a comma is used, the cycle values are
+    interpreted as literal strings.
+
+    The optional flag "silent" can be used to prevent the cycle declaration
+    from returning any value::
+
+        {% for o in some_list %}
+            {% cycle 'row1' 'row2' as rowcolors silent %}
+            <tr class="{{ rowcolors }}">{% include "subtemplate.html " %}</tr>
+        {% endfor %}
+
+    """
+#ANNOTATION: docstring
+    # Note: This returns the exact same node on each {% cycle name %} call;
+    # that is, the node object returned from {% cycle a b c as name %} and the
+    # one returned from {% cycle name %} are the exact same object. This
+    # shouldn't cause problems (heh), but if it does, now you know.
+    #
+    # Ugly hack warning: This stuffs the named template dict into parser so
+    # that names are only unique within each template (as opposed to using
+    # a global variable, which would make cycle names have to be unique across
+    # *all* templates.
+
+    args = token.split_contents()
+#ANNOTATION: call the method token.split_contents, substitute the result for args.
+
+    if len(args) < 2:
+#ANNOTATION: if length of args is smaller than integer 2,
+        raise TemplateSyntaxError("'cycle' tag requires at least two arguments")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'cycle' tag requires at least two arguments".
+
+    if ',' in args[1]:
+#ANNOTATION: if ',' is contained in second element of args,
+        # Backwards compatibility: {% cycle a,b %} or {% cycle a,b as foo %}
+        # case.
+        args[1:2] = ['"%s"' % arg for arg in args[1].split(",")]
+#ANNOTATION: split first element of args by ',', convert separated elements to strings, substitute the first 2 elements of the result,
+#ANNOTATION: for second and third element of args, respectively.
+
+    if len(args) == 2:
+#ANNOTATION: if length of args equals integer 2,
+        # {% cycle foo %} case.
+        name = args[1]
+#ANNOTATION: substitute second element of args for name.
+        if not hasattr(parser, '_namedCycleNodes'):
+#ANNOTATION: if parser doesnt have an '_namedCycleNodes' attribute,
+            raise TemplateSyntaxError("No named cycles in template. '%s' is not defined" % name)
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "No named cycles in template. '%s' is not defined",
+#ANNOTATION: where '%s' is replaced with name.
+        if name not in parser._namedCycleNodes:
+#ANNOTATION: if name is not contained in parser._namedCycleNodes,
+            raise TemplateSyntaxError("Named cycle '%s' does not exist" % name)
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "Named cycle '%s' does not exist", where '%s' is replaced with name.
+        return parser._namedCycleNodes[name]
+#ANNOTATION: get the index name, of the parser._namedCycleNodes, return the result.
+
+    as_form = False
+#ANNOTATION: as_form is boolean False.
+
+    if len(args) > 4:
+#ANNOTATION: if length of args is greater than 4.
+        # {% cycle ... as foo [silent] %} case.
+        if args[-3] == "as":
+#ANNOTATION: if third element from the end of the args equals string 'as', 
+            if args[-1] != "silent":
+#ANNOTATION: if last element of args is not equal to a string "silent",
+                raise TemplateSyntaxError("Only 'silent' flag is allowed after cycle's name, not '%s'." % args[-1])
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "Only 'silent' flag is allowed after cycle's name, not '%s'.",
+#ANNOTATION: where '%s' is replaced with last element of args.
+            as_form = True.
+#ANNOTATION: as_form is boolean True
+            silent = True
+#ANNOTATION: silent is boolean True.
+            args = args[:-1]
+#ANNOTATION: substitute args, without the last element for args.
+        elif args[-2] == "as":
+#ANNOTATION: if second from the end element of args equals a string 'as',
+            as_form = True
+#ANNOTATION: as_form is boolean True.
+            silent = False
+#ANNOTATION: silent is boolean False.
+
+    if as_form:
+#ANNOTATION: if as_form is true,
+        name = args[-1]
+#ANNOTATION: substitute the last element of args for name.
+        values = [parser.compile_filter(arg) for arg in args[1:-2]]
+#ANNOTATION: call the function parser.compile_filter with an argument arg for every arg in args from the index 1 to the index -2, 
+#ANNOTATION: append the results into a list, substitute it for value.
+        node = CycleNode(values, name, silent=silent)
+#ANNOTATION: node is an instance CycleNode class, created with  values,name and silent set to silent.
+        if not hasattr(parser, '_namedCycleNodes'):
+#ANNOTATION: if parser doesnt have an '_namedCycleNodes' attribute,
+            parser._namedCycleNodes = {}
+#ANNOTATION: parser._namedCycleNodes is an empty dictionary.
+        parser._namedCycleNodes[name] = node
+#ANNOTATION: substituet node for value under the name key of the parser._namedCycleNodes dictionary.
+    else:
+#ANNOTATION: if not,
+        values = [parser.compile_filter(arg) for arg in args[1:]]
+#ANNOTATION: call the function parser.compile_filter with an argument arg for every arg in args from first element to the end, 
+#ANNOTATION: append the results into a list, substitute it for value.
+        node = CycleNode(values)
+#ANNOTATION: node is an instance of CycleNode class, created wiht an argument values.
+    return node
+#ANNOTATION: return node.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def csrf_token(parser, token):
+#ANNOTATION: define the function csrf_token with 2 arguments: parser and token.
+    return CsrfTokenNode()
+#ANNOTATION: return an instance of CsrfTokenNode class.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def debug(parser, token):
+#ANNOTATION: define the function debug with 2 arguments: parser and token.
+    """
+    Outputs a whole load of debugging information, including the current
+    context and imported modules.
+
+    Sample usage::
+
+        <pre>
+            {% debug %}
+        </pre>
+    """
+#ANNOTATION: docstring
+    return DebugNode()
+#ANNOTATION: return an instance of DebugNode class.
+
+
+@register.tag('filter')
+#ANNOTATION: register.tag decorator function with an argument 'filter',
+def do_filter(parser, token):
+#ANNOTATION: define the function do_filter with 2 arguments: parser and token.
+    """
+    Filters the contents of the block through variable filters.
+
+    Filters can also be piped through each other, and they can have
+    arguments -- just like in variable syntax.
+
+    Sample usage::
+
+        {% filter force_escape|lower %}
+            This text will be HTML-escaped, and will appear in lowercase.
+        {% endfilter %}
+
+    Note that the ``escape`` and ``safe`` filters are not acceptable arguments.
+    Instead, use the ``autoescape`` tag to manage autoescaping for blocks of
+    template code.
+    """
+#ANNOTATION: docstring
+    # token.split_contents() isn't useful here because this tag doesn't accept variable as arguments
+    _, rest = token.contents.split(None, 1)
+#ANNOTATION: split into two parts token.contents by None, substitute the parts for _ and rest, respectively.
+    filter_expr = parser.compile_filter("var|%s" % (rest))
+#ANNOTATION: call the method parser.compile_filter with an argument string "var|%s", where '%s' is replaced with rest, substitute the result for filter_expr.
+    for func, unused in filter_expr.filters:
+#ANNOTATION: for every func and unused in filter_expr.filters,
+        filter_name = getattr(func, '_filter_name', None)
+#ANNOTATION: get '_filter_name' attribute of the func object, if it exists, substitute it for filter_name, if not, filter_name is None.
+        if filter_name in ('escape', 'safe'):
+#ANNOTATION: if every filter_name in strings 'escape' or 'safe',
+            raise TemplateSyntaxError('"filter %s" is not permitted.  Use the "autoescape" tag instead.' % filter_name)
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string '"filter %s" is not permitted.  Use the "autoescape" tag instead.',
+#ANNOTATION: where '%s' is replaced with filter_name.
+    nodelist = parser.parse(('endfilter',))
+#ANNOTATION: call the method parser.parse with an argument tuple with an element string 'endfilter', substitute the result for nodelist.
+    parser.delete_first_token()
+#ANNOTATION: call the method parser.delete_first_token.
+    return FilterNode(filter_expr, nodelist)
+#ANNOTATION: return a class instance FilterNode, called with an arguments filter_expr and nodelist. 
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def firstof(parser, token):
+#ANNOTATION: define the function firstof with 2 arguments: parser and token.
+    """
+    Outputs the first variable passed that is not False, without escaping.
+
+    Outputs nothing if all the passed variables are False.
+
+    Sample usage::
+
+        {% firstof var1 var2 var3 %}
+
+    This is equivalent to::
+
+        {% if var1 %}
+            {{ var1|safe }}
+        {% elif var2 %}
+            {{ var2|safe }}
+        {% elif var3 %}
+            {{ var3|safe }}
+        {% endif %}
+
+    but obviously much cleaner!
+
+    You can also use a literal string as a fallback value in case all
+    passed variables are False::
+
+        {% firstof var1 var2 var3 "fallback value" %}
+
+    If you want to escape the output, use a filter tag::
+
+        {% filter force_escape %}
+            {% firstof var1 var2 var3 "fallback value" %}
+        {% endfilter %}
+
+    """
+#ANNOTATION: docstring
+    bits = token.split_contents()[1:]
+#ANNOTATION: call the method token.split_contents, substitute the result without the first element for bits.
+    if len(bits) < 1:
+#ANNOTATION: if length of bits is smaller than integer 1,
+        raise TemplateSyntaxError("'firstof' statement requires at least one argument")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'firstof' statement requires at least one argument".
+    return FirstOfNode([parser.compile_filter(bit) for bit in bits])
+#ANNOTATION: return an instance of FirstOfNode class, created with an argument, result of the method parser.compile_filter called with bit,
+#ANNOTATION: for every bit in bits.
+
+
+@register.tag('for')
+#ANNOTATION: register.tag decorator function with an argument 'for',
+def do_for(parser, token):
+#ANNOTATION: define the function do_for with 2 arguments: parser and token.
+    """
+    Loops over each item in an array.
+
+    For example, to display a list of athletes given ``athlete_list``::
+
+        <ul>
+        {% for athlete in athlete_list %}
+            <li>{{ athlete.name }}</li>
+        {% endfor %}
+        </ul>
+
+    You can loop over a list in reverse by using
+    ``{% for obj in list reversed %}``.
+
+    You can also unpack multiple values from a two-dimensional array::
+
+        {% for key,value in dict.items %}
+            {{ key }}: {{ value }}
+        {% endfor %}
+
+    The ``for`` tag can take an optional ``{% empty %}`` clause that will
+    be displayed if the given array is empty or could not be found::
+
+        <ul>
+          {% for athlete in athlete_list %}
+            <li>{{ athlete.name }}</li>
+          {% empty %}
+            <li>Sorry, no athletes in this list.</li>
+          {% endfor %}
+        <ul>
+
+    The above is equivalent to -- but shorter, cleaner, and possibly faster
+    than -- the following::
+
+        <ul>
+          {% if althete_list %}
+            {% for athlete in athlete_list %}
+              <li>{{ athlete.name }}</li>
+            {% endfor %}
+          {% else %}
+            <li>Sorry, no athletes in this list.</li>
+          {% endif %}
+        </ul>
+
+    The for loop sets a number of variables available within the loop:
+
+        ==========================  ================================================
+        Variable                    Description
+        ==========================  ================================================
+        ``forloop.counter``         The current iteration of the loop (1-indexed)
+        ``forloop.counter0``        The current iteration of the loop (0-indexed)
+        ``forloop.revcounter``      The number of iterations from the end of the
+                                    loop (1-indexed)
+        ``forloop.revcounter0``     The number of iterations from the end of the
+                                    loop (0-indexed)
+        ``forloop.first``           True if this is the first time through the loop
+        ``forloop.last``            True if this is the last time through the loop
+        ``forloop.parentloop``      For nested loops, this is the loop "above" the
+                                    current one
+        ==========================  ================================================
+
+    """
+#ANNOTATION: docstring
+    bits = token.split_contents()
+#ANNOTATION: call the method token.split_contents, substitute the result.
+    if len(bits) < 4:
+#ANNOTATION: if length bits is smaller than intger 4,
+        raise TemplateSyntaxError("'for' statements should have at least four"
+                                  " words: %s" % token.contents)
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'for' statements should have at least four words: %s",
+#ANNOTATION: where '%s' is replaced with token.contents.
+
+    is_reversed = bits[-1] == 'reversed'
+#ANNOTATION: assign the string 'reversed' to is_reversed and bits last elements.
+    in_index = -3 if is_reversed else -2
+#ANNOTATION: if index is negative inter 3, if is_reversed, substitute it for in_index, if not, in_index is negative integer 2.
+    if bits[in_index] != 'in':
+#ANNOTATION: if in_index-th element of bits equals to string 'in',
+        raise TemplateSyntaxError("'for' statements should use the format"
+                                  " 'for x in y': %s" % token.contents)
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'for' statements should use the format 'for x in y': %s",
+#ANNOTATION: where '%s' is replaced with token.contents.
+
+    loopvars = re.split(r' *, *', ' '.join(bits[1:in_index]))
+#ANNOTATION: call the method re.split with 2 arguments: raw string ' *, *' and elements of bits from 1 index to in_index index, 
+#ANNOTATION: joined into a string, separated by whitespaces, substitute the result for loopvars.
+    for var in loopvars:
+#ANNOTATION: for every var in loopvars,
+        if not var or ' ' in var:
+#ANNOTATION: if var is false or whitespaces are contained in var,
+            raise TemplateSyntaxError("'for' tag received an invalid argument:"
+                                      " %s" % token.contents)
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'for' tag received an invalid argument: %s",
+#ANNOTATION: where '%s' is replaced with token.contents.
+
+    sequence = parser.compile_filter(bits[in_index + 1])
+#ANNOTATION: call the method parser.compile_filter with an argument, in_index incremented by one, and used to index parser.compile_filter,
+#ANNOTATION: substitute the result for sequence.
+    nodelist_loop = parser.parse(('empty', 'endfor',))
+#ANNOTATION: call the method parser.parse with an argument tuple with 2 elements strings 'empty' and 'endfor', substitute the result for nodelist_loop.
+    token = parser.next_token()
+#ANNOTATION: call the method parser.next_token, substitute the result for token.
+    if token.contents == 'empty':
+#ANNOTATION: if token.contents equals string 'empty',
+        nodelist_empty = parser.parse(('endfor',))
+#ANNOTATION: call the method parser.parse with an argument tuple with an element string 'endfor', substitute the result for nodelist_empty.
+        parser.delete_first_token()
+#ANNOTATION: call the method parser.delete_first_token.
+    else:
+#ANNOTATION: if not,
+        nodelist_empty = None
+#ANNOTATION: nodelist_empty is None.
+    return ForNode(loopvars, sequence, is_reversed, nodelist_loop, nodelist_empty)
+#ANNOTATION: return an instance of ForNode class, created with 5 arguments: loopvars, sequence, is_reversed, nodelist_loop and nodelist_empty.
+
+
+def do_ifequal(parser, token, negate):
+#ANNOTATION: define the function do_ifequal with 2 arguments: parser, token and negate.
+    bits = list(token.split_contents())
+#ANNOTATION: call the method token.split_contents, convert the result into a list and substitute it for bits.
+    if len(bits) != 3:
+#ANNOTATION: if length of bits is not equal to integer 3,
+        raise TemplateSyntaxError("%r takes two arguments" % bits[0])
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "%r takes two arguments",
+#ANNOTATION: where '%r' is replaced with first element of bits.
+    end_tag = 'end' + bits[0]
+#ANNOTATION: append first element of bits to 'end'. substitute the result for end_tag.
+    nodelist_loop = parser.parse(('else', end_tag))
+#ANNOTATION: call the method parser.parse with an argument tuple with an element string 'else' and end_tag, substitute the result for nodelist_true.
+    token = parser.next_token()
+#ANNOTATION: call the method parser.next_token, substitute the result for token.
+    if token.contents == 'else':
+#ANNOTATION: if token.contents equals a string 'else',
+        nodelist_false = parser.parse((end_tag,))
+#ANNOTATION: call the method parser.parse with an argument tuple with an element end_tag, substitute the result for nodelist_false.
+        parser.delete_first_token()
+#ANNOTATION: call the method parser.delete_first_token.
+    else:
+#ANNOTATION: if not,
+        nodelist_false = NodeList()
+#ANNOTATION: nodelist_false is an instance of NodeList class.
+    val1 = parser.compile_filter(bits[1])
+#ANNOTATION: call the method parser.compile_filter with an argument, second element of bits, substitute the result for val1.
+    val2 = parser.compile_filter(bits[2])
+#ANNOTATION: call the method parser.compile_filter with an argument, third element of bits, substitute the result for val2.
+    return IfEqualNode(val1, val2, nodelist_true, nodelist_false, negate)
+#ANNOTATION: return an instance of IfEqualNode class, created with 5 arguments: val1, val2, nodelist_true, nodelist_false and negate.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def ifequal(parser, token):
+#ANNOTATION: define the function ifequal with 2 arguments: parser and token.
+    """
+    Outputs the contents of the block if the two arguments equal each other.
+
+    Examples::
+
+        {% ifequal user.id comment.user_id %}
+            ...
+        {% endifequal %}
+
+        {% ifnotequal user.id comment.user_id %}
+            ...
+        {% else %}
+            ...
+        {% endifnotequal %}
+    """
+#ANNOTATION: docstring
+    return do_ifequal(parser, token, False)
+#ANNOTATION: call the function do_ifequal with 3 arguments: parser, token and boolean False, return the result.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def ifnotequal(parser, token):
+#ANNOTATION: define the function ifnotequal with 2 arguments: parser and token.
+    """
+    Outputs the contents of the block if the two arguments are not equal.
+    See ifequal.
+    """
+#ANNOTATION: docstring
+    return do_ifequal(parser, token, True)
+#ANNOTATION: call the function do_ifequal with 3 arguments: parser, token and boolean False, return the result.
+
+
+class TemplateLiteral(Literal):
+#ANNOTATION: derive the class TemplateLiteral from Literal base class.
+    def __init__(self, value, text):
+#ANNOTATION: define the method __init__ with 3 arguments: self, value and text.
+        self.value = value
+#ANNOTATION: substitute value for self.value.
+        self.text = text  # for better error messages
+#ANNOTATION: substitute text for self.text.
+
+    def display(self):
+#ANNOTATION: define the method display with an argument self.
+        return self.text
+#ANNOTATION: return self.text.
+
+    def eval(self, context):
+#ANNOTATION: define the method eval with 2 arguments: self and context.
+        return self.value.resolve(context, ignore_failures=True)
+#ANNOTATION: call the method self.value.resolve with 2 arguments context and ignore_failures set to boolean True, return the result.
+
+
+class TemplateIfParser(IfParser):
+#ANNOTATION: derive the class TemplateIfParser from IfParser base class.
+    error_class = TemplateSyntaxError
+#ANNOTATION: substitute TemplateSyntaxError for error_class.
+
+    def __init__(self, parser, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 4 arguments: self, parser, unpacked list args and unpacked dictionary kwargs.
+        self.template_parser = parser
+#ANNOTATION: substitute parser for self.template_parser. 
+        super(TemplateIfParser, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class TemplateIfParser, with 2 arguments: unpacked list args and unpacked dictionary.
+
+    def create_var(self, value):
+#ANNOTATION: define the method create_var with 2 arguments: self and value.
+        return TemplateLiteral(self.template_parser.compile_filter(value), value)
+#ANNOTATION: return an instance of TemplateLiteral with 2 arguments: result of the function self.template_parser.compile_filter,
+#ANNOTATION: called with an argument value and value.
+
+
+@register.tag('if')
+#ANNOTATION: register.tag decorator function with an argument 'if',
+def do_if(parser, token):
+#ANNOTATION: define the function do_if with 2 arguments: parser and token.
+    """
+    The ``{% if %}`` tag evaluates a variable, and if that variable is "true"
+    (i.e., exists, is not empty, and is not a false boolean value), the
+    contents of the block are output:
+
+    ::
+
+        {% if athlete_list %}
+            Number of athletes: {{ athlete_list|count }}
+        {% elif athlete_in_locker_room_list %}
+            Athletes should be out of the locker room soon!
+        {% else %}
+            No athletes.
+        {% endif %}
+
+    In the above, if ``athlete_list`` is not empty, the number of athletes will
+    be displayed by the ``{{ athlete_list|count }}`` variable.
+
+    As you can see, the ``if`` tag may take one or several `` {% elif %}``
+    clauses, as well as an ``{% else %}`` clause that will be displayed if all
+    previous conditions fail. These clauses are optional.
+
+    ``if`` tags may use ``or``, ``and`` or ``not`` to test a number of
+    variables or to negate a given variable::
+
+        {% if not athlete_list %}
+            There are no athletes.
+        {% endif %}
+
+        {% if athlete_list or coach_list %}
+            There are some athletes or some coaches.
+        {% endif %}
+
+        {% if athlete_list and coach_list %}
+            Both athletes and coaches are available.
+        {% endif %}
+
+        {% if not athlete_list or coach_list %}
+            There are no athletes, or there are some coaches.
+        {% endif %}
+
+        {% if athlete_list and not coach_list %}
+            There are some athletes and absolutely no coaches.
+        {% endif %}
+
+    Comparison operators are also available, and the use of filters is also
+    allowed, for example::
+
+        {% if articles|length >= 5 %}...{% endif %}
+
+    Arguments and operators _must_ have a space between them, so
+    ``{% if 1>2 %}`` is not a valid if tag.
+
+    All supported operators are: ``or``, ``and``, ``in``, ``not in``
+    ``==`` (or ``=``), ``!=``, ``>``, ``>=``, ``<`` and ``<=``.
+
+    Operator precedence follows Python.
+    """
+#ANNOTATION: docstring
+    # {% if ... %}
+    bits = token.split_contents()[1:]
+#ANNOTATION: call the method token.split_contents, substitute results without the first element for bits.
+    condition = TemplateIfParser(parser, bits).parse()
+#ANNOTATION: call the method parse from the instance of TemplateIfParser class, created with 2 arguments parser and bits, substitute the result for condition.
+    nodelist = parser.parse(('elif', 'else', 'endif'))
+#ANNOTATION: call the method parser.parse with an argument tuple with 3 elements: strings 'elif', 'else' and 'endif', substitute the result for nodelist.
+    conditions_nodelists = [(condition, nodelist)]
+#ANNOTATION: conditions_nodelists is a list containing tuple with 2 elements condition and nodelist.
+    token = parser.next_token()
+#ANNOTATION: call the method parser.next_token, substitute the result for token.
+
+    # {% elif ... %} (repeatable)
+    while token.contents.startswith('elif'):
+#ANNOTATION: while token.contents starts with a string 'elif',
+        bits = token.split_contents()[1:]
+#ANNOTATION: call the method token.split_contents, substitute results without the first element for bits.
+        condition = TemplateIfParser(parser, bits).parse()
+#ANNOTATION: call the method parse from the instance of TemplateIfParser class, created with 2 arguments parser and bits, substitute the result for condition.
+        nodelist = parser.parse(('elif', 'else', 'endif'))
+#ANNOTATION: call the method parser.parse with an argument tuple with 3 elements strings 'elif', 'else' and 'endif', substitute the result for nodelist.
+        conditions_nodelists.append((condition, nodelist))
+#ANNOTATION: append a tuple with 2 elements: condition and nodelist to conditions_nodelists.
+        token = parser.next_token()
+#ANNOTATION: call the method parser.next_token, substitute the result for token.
+
+    # {% else %} (optional)
+    if token.contents == 'else':
+#ANNOTATION: if token.contents equals string 'else',
+        nodelist = parser.parse(('endif',))
+#ANNOTATION: call the method parser.parse with an argument tuple with an element string 'endif', substitute the result for nodelist.
+        conditions_nodelists.append((None, nodelist))
+#ANNOTATION: append a tuple with 2 elements: None and nodelist to conditions_nodelists.
+        token = parser.next_token()
+#ANNOTATION: call the method parser.next_token, substitute the result for token.
+
+    # {% endif %}
+    assert token.contents == 'endif'
+#ANNOTATION: if token.contents doesn not equals a string 'endif', raise an AssertionError exception,
+
+    return IfNode(conditions_nodelists)
+#ANNOTATION: return an instance of IfNode class, created with an argument conditions_nodelists.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def ifchanged(parser, token):
+#ANNOTATION: define the function ifchanged with 2 arguments: parser and token.
+    """
+    Checks if a value has changed from the last iteration of a loop.
+
+    The ``{% ifchanged %}`` block tag is used within a loop. It has two
+    possible uses.
+
+    1. Checks its own rendered contents against its previous state and only
+       displays the content if it has changed. For example, this displays a
+       list of days, only displaying the month if it changes::
+
+            <h1>Archive for {{ year }}</h1>
+
+            {% for date in days %}
+                {% ifchanged %}<h3>{{ date|date:"F" }}</h3>{% endifchanged %}
+                <a href="{{ date|date:"M/d"|lower }}/">{{ date|date:"j" }}</a>
+            {% endfor %}
+
+    2. If given one or more variables, check whether any variable has changed.
+       For example, the following shows the date every time it changes, while
+       showing the hour if either the hour or the date has changed::
+
+            {% for date in days %}
+                {% ifchanged date.date %} {{ date.date }} {% endifchanged %}
+                {% ifchanged date.hour date.date %}
+                    {{ date.hour }}
+                {% endifchanged %}
+            {% endfor %}
+    """
+#ANNOTATION: docstring
+    bits = token.split_contents()
+#ANNOTATION: call the method token.split_contents, substitute the result for bits.
+    nodelist_true = parser.parse(('else', 'endifchanged'))
+#ANNOTATION: call the method parser.parse with an argument tuple with 2 elements strings: 'else' and 'endfilter', substitute the result for nodelistelse.
+    token = parser.next_token()
+#ANNOTATION: call the method parser.next_token, substitute the result for token.
+    if token.contents == 'else':
+#ANNOTATION: if token.contents equals string 'else',
+        nodelist_false = parser.parse(('endifchanged',))
+#ANNOTATION: call the method parser.parse with an argument tuple with an element string 'endifchanged', substitute the result for nodelist_false.
+        parser.delete_first_token()
+#ANNOTATION: call the method parser.delete_first_token.
+    else:
+#ANNOTATION: if not,
+        nodelist_false = NodeList()
+#ANNOTATION: nodelist_false is an instance of NodeList.
+    values = [parser.compile_filter(bit) for bit in bits[1:]]
+#ANNOTATION: for every bit in elements of bits without the first element, call the method parser.compile_filter, with an argument bit,
+#ANNOTATION: substitute the list of results for values.
+    return IfChangedNode(nodelist_true, nodelist_false, *values)
+#ANNOTATION: return an instance of a class IfChangedNode, created with 3 arguments: nodelist_true, nodelist_false and unpacked list values.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def ssi(parser, token):
+#ANNOTATION: define the function ssi with 2 arguments: parser and token.
+    """
+    Outputs the contents of a given file into the page.
+
+    Like a simple "include" tag, the ``ssi`` tag includes the contents
+    of another file -- which must be specified using an absolute path --
+    in the current page::
+
+        {% ssi "/home/html/ljworld.com/includes/right_generic.html" %}
+
+    If the optional "parsed" parameter is given, the contents of the included
+    file are evaluated as template code, with the current context::
+
+        {% ssi "/home/html/ljworld.com/includes/right_generic.html" parsed %}
+    """
+#ANNOTATION: docstring
+    bits = token.split_contents()
+#ANNOTATION: call the method token.split_contents, substitute the result for bits.
+    parsed = False
+#ANNOTATION: parsed is boolean False.
+    if len(bits) not in (2, 3):
+#ANNOTATION: if length of bits is not integer 2 or 3,
+        raise TemplateSyntaxError("'ssi' tag takes one argument: the path to"
+                                  " the file to be included")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'ssi' tag takes one argument: the path to the file to be included".
+    if len(bits) == 3:
+#ANNOTATION: if length of bits equals integer 3,
+        if bits[2] == 'parsed':
+#ANNOTATION: if third element of bits equals a string 'parsed',
+            parsed = True
+#ANNOTATION: parsed is boolean True.
+        else:
+#ANNOTATION: if not,
+            raise TemplateSyntaxError("Second (optional) argument to %s tag"
+                                      " must be 'parsed'" % bits[0])
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "Second (optional) argument to %s tag must be 'parsed'",
+#ANNOTATION: where '%s' is replaced with first element of bits.
+    filepath = parser.compile_filter(bits[1])
+#ANNOTATION: call the method parser.compile_filter with second element of bits as an argument, substitute the result for filepath.
+    return SsiNode(filepath, parsed)
+#ANNOTATION: return an instance of a SsiNode class, created with 2 arguments: filepath and parsed.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def load(parser, token):
+#ANNOTATION: define the function load with 2 arguments: parser and token.
+    """
+    Loads a custom template tag set.
+
+    For example, to load the template tags in
+    ``django/templatetags/news/photos.py``::
+
+        {% load news.photos %}
+
+    Can also be used to load an individual tag/filter from
+    a library::
+
+        {% load byline from news %}
+
+    """
+#ANNOTATION: docstring
+    # token.split_contents() isn't useful here because this tag doesn't accept variable as arguments
+    bits = token.contents.split()
+#ANNOTATION: call the method token.split_contents, substitute the result for bits.
+    if len(bits) >= 4 and bits[-2] == "from":
+#ANNOTATION: if length of bits is greater or equal to integer 4 and second last element of bits equals sting 'from',
+        try:
+#ANNOTATION: try,
+            taglib = bits[-1]
+#ANNOTATION: substitute last element of bits for taglib.
+            lib = get_library(taglib)
+#ANNOTATION: call the function get_library with an argument taglib, substitute the result for lib.
+        except InvalidTemplateLibrary as e:
+#ANNOTATION: if InvalidTemplateLibrary, renamed to e, exception is caught,
+            raise TemplateSyntaxError("'%s' is not a valid tag library: %s" %
+                                      (taglib, e))
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'%s' is not a valid tag library: %s",
+#ANNOTATION: where '%s' is replaced with taglib and e.
+        else:
+#ANNOTATION: if not,
+            temp_lib = Library()
+#ANNOTATION: temp_lib is an instance of Library class.
+            for name in bits[1:-2]:
+#ANNOTATION: for every name in bits from the start index 1 to the end index negative 2,
+                if name in lib.tags:
+#ANNOTATION: if name is contained in lib.tags,
+                    temp_lib.tags[name] = lib.tags[name]
+#ANNOTATION: substitute value under the name key of the lib.tags dictionary for value under the name key of the temp_lib.tags dictionary.
+                    # a name could be a tag *and* a filter, so check for both
+                    if name in lib.filters:
+#ANNOTATION: if name is contained in lib.filters.
+                        temp_lib.filters[name] = lib.filters[name]
+#ANNOTATION: substitute value under the name key of the lib.filters dictionary for value under the name key of the temp_lib.filters dictionary.
+                elif name in lib.filters:
+#ANNOTATION: otherwise if name is contained in lib.filters,
+                    temp_lib.filters[name] = lib.filters[name]
+#ANNOTATION: substitute value under the name key of the lib.filters dictionary for value under the name key of the temp_lib.filters dictionary.
+                else:
+#ANNOTATION: if not,
+                    raise TemplateSyntaxError("'%s' is not a valid tag or filter in tag library '%s'" %
+                                              (name, taglib))
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'%s' is not a valid tag or filter in tag library '%s'",
+#ANNOTATION: where '%s' is replaced with name and taglib.
+            parser.add_library(temp_lib)
+#ANNOTATION: call the method parser.add_library with an argument temp_lib.
+    else:
+#ANNOTATION: if not,
+        for taglib in bits[1:]:
+#ANNOTATION: for every taglib in bits without the first element,
+            # add the library to the parser
+            try:
+#ANNOTATION: try,
+                lib = get_library(taglib)
+#ANNOTATION: call the function get_library with an argument taglib, substitute the result for lib.
+                parser.add_library(lib)
+#ANNOTATION: call the method parser.add_library with an argument lib.
+            except InvalidTemplateLibrary as e:
+#ANNOTATION: if InvalidTemplateLibrary, renamed to e, exception is caught,
+                raise TemplateSyntaxError("'%s' is not a valid tag library: %s" %
+                                          (taglib, e))
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'%s' is not a valid tag library: %s",
+#ANNOTATION: where '%s' is replaced with taglib and e.
+    return LoadNode()
+#ANNOTATION: return an instance of a LoadNode class.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def now(parser, token):
+#ANNOTATION: define the function now with 2 arguments: parser and token.
+    """
+    Displays the date, formatted according to the given string.
+
+    Uses the same format as PHP's ``date()`` function; see http://php.net/date
+    for all the possible values.
+
+    Sample usage::
+
+        It is {% now "jS F Y H:i" %}
+    """
+#ANNOTATION: docstring
+    bits = token.split_contents()
+#ANNOTATION: call the method token.split_contents, substitute the result for bits.
+    if len(bits) != 2:
+#ANNOTATION: if length of bits is not equal to integer 2,
+        raise TemplateSyntaxError("'now' statement takes one argument")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'now' statement takes one argument".
+    format_string = bits[1][1:-1]
+#ANNOTATION: substitute second element of bits without the first and last element for format_string.
+    return NowNode(format_string)
+#ANNOTATION: return an instance of a NowNode class, created with an argument format_string.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def regroup(parser, token):
+#ANNOTATION: define the function regroup with 2 arguments: parser and token.
+    """
+    Regroups a list of alike objects by a common attribute.
+
+    This complex tag is best illustrated by use of an example:  say that
+    ``people`` is a list of ``Person`` objects that have ``first_name``,
+    ``last_name``, and ``gender`` attributes, and you'd like to display a list
+    that looks like:
+
+        * Male:
+            * George Bush
+            * Bill Clinton
+        * Female:
+            * Margaret Thatcher
+            * Colendeeza Rice
+        * Unknown:
+            * Pat Smith
+
+    The following snippet of template code would accomplish this dubious task::
+
+        {% regroup people by gender as grouped %}
+        <ul>
+        {% for group in grouped %}
+            <li>{{ group.grouper }}
+            <ul>
+                {% for item in group.list %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        {% endfor %}
+        </ul>
+
+    As you can see, ``{% regroup %}`` populates a variable with a list of
+    objects with ``grouper`` and ``list`` attributes.  ``grouper`` contains the
+    item that was grouped by; ``list`` contains the list of objects that share
+    that ``grouper``.  In this case, ``grouper`` would be ``Male``, ``Female``
+    and ``Unknown``, and ``list`` is the list of people with those genders.
+
+    Note that ``{% regroup %}`` does not work when the list to be grouped is not
+    sorted by the key you are grouping by!  This means that if your list of
+    people was not sorted by gender, you'd need to make sure it is sorted
+    before using it, i.e.::
+
+        {% regroup people|dictsort:"gender" by gender as grouped %}
+
+    """
+#ANNOTATION: docstring
+    bits = token.split_contents()
+#ANNOTATION: call the method token.split_contents, substitute the result for bits.
+    if len(bits) != 6:
+#ANNOTATION: if length of bits is not equal to integer 6,
+        raise TemplateSyntaxError("'regroup' tag takes five arguments")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'regroup' tag takes five arguments".
+    target = parser.compile_filter(bits[1])
+#ANNOTATION: call the method parser.compile_filter with an argument first element of bits, substitute the result for target.
+    if bits[2] != 'by':
+#ANNOTATION: if third element of bits is not equal to a string 'by',
+        raise TemplateSyntaxError("second argument to 'regroup' tag must be 'by'")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "second argument to 'regroup' tag must be 'by'".
+    if bits[4] != 'as':
+#ANNOTATION: if fift element of bits is not equal to a string 'as',
+        raise TemplateSyntaxError("next-to-last argument to 'regroup' tag must"
+                                  " be 'as'")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "next-to-last argument to 'regroup' tag must be 'as'".
+    var_name = bits[5]
+#ANNOTATION: substitute sixth element of bits for var_name.
+    # RegroupNode will take each item in 'target', put it in the context under
+    # 'var_name', evaluate 'var_name'.'expression' in the current context, and
+    # group by the resulting value. After all items are processed, it will
+    # save the final result in the context under 'var_name', thus clearing the
+    # temporary values. This hack is necessary because the template engine
+    # doesn't provide a context-aware equivalent of Python's getattr.
+    expression = parser.compile_filter(var_name +
+                                       VARIABLE_ATTRIBUTE_SEPARATOR +
+                                       bits[3])
+#ANNOTATION: concatenate var_name, VARIABLE_ATTRIBUTE_SEPARATOR and fourth element of bits, use the result as an argument for the call the method,
+#ANNOTATION: parser.compile_filter, substitute the result for expression.
+    return RegroupNode(target, expression, var_name)
+#ANNOTATION: return an instance of a RegroupNode class, created with 3 arguments target, expression and var_name.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def spaceless(parser, token):
+#ANNOTATION: define the function spaceless with 2 arguments: parser and token.
+    """
+    Removes whitespace between HTML tags, including tab and newline characters.
+
+    Example usage::
+
+        {% spaceless %}
+            <p>
+                <a href="foo/">Foo</a>
+            </p>
+        {% endspaceless %}
+
+    This example would return this HTML::
+
+        <p><a href="foo/">Foo</a></p>
+
+    Only space between *tags* is normalized -- not space between tags and text.
+    In this example, the space around ``Hello`` won't be stripped::
+
+        {% spaceless %}
+            <strong>
+                Hello
+            </strong>
+        {% endspaceless %}
+    """
+#ANNOTATION: docstring
+    nodelist = parser.parse(('endspaceless',))
+#ANNOTATION: call the method parser.parse with an argument tuple with an element string 'endspaceless', substitute the result for nodelist.
+    parser.delete_first_token()
+#ANNOTATION: call the method parser.delete_first_token.
+    return SpacelessNode(nodelist)
+#ANNOTATION: return an instance of a SpacelessNode class, created with an argument nodelist.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def templatetag(parser, token):
+#ANNOTATION: define the function templatetag with 2 arguments: parser and token.
+    """
+    Outputs one of the bits used to compose template tags.
+
+    Since the template system has no concept of "escaping", to display one of
+    the bits used in template tags, you must use the ``{% templatetag %}`` tag.
+
+    The argument tells which template bit to output:
+
+        ==================  =======
+        Argument            Outputs
+        ==================  =======
+        ``openblock``       ``{%``
+        ``closeblock``      ``%}``
+        ``openvariable``    ``{{``
+        ``closevariable``   ``}}``
+        ``openbrace``       ``{``
+        ``closebrace``      ``}``
+        ``opencomment``     ``{#``
+        ``closecomment``    ``#}``
+        ==================  =======
+    """
+#ANNOTATION: docstring
+    # token.split_contents() isn't useful here because this tag doesn't accept variable as arguments
+    bits = token.contents.split()
+#ANNOTATION: call the method token.split_contents, substitute the result for bits.
+    if len(bits) != 2:
+#ANNOTATION: if length of bits is not equal to integer 2,
+        raise TemplateSyntaxError("'templatetag' statement takes one argument")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'templatetag' statement takes one argument".
+    tag = bits[1]
+#ANNOTATION: substitute second element of bits for tag.
+    if tag not in TemplateTagNode.mapping:
+#ANNOTATION: if tag is not contained in TemplateTagNode.mapping,
+        raise TemplateSyntaxError("Invalid templatetag argument: '%s'."
+                                  " Must be one of: %s" %
+                                  (tag, list(TemplateTagNode.mapping)))
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "Invalid templatetag argument: '%s'. Must be one of: %s",
+#ANNOTATION: where '%s' is replaced with tag and TemplateTagNode.mapping converted into a list.
+    return TemplateTagNode(tag)
+#ANNOTATION: return an instance of a TemplateTagNode class, created with an argument tag.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def url(parser, token):
+#ANNOTATION: define the function url with 2 arguments: parser and token.
+    """
+    Returns an absolute URL matching given view with its parameters.
+
+    This is a way to define links that aren't tied to a particular URL
+    configuration::
+
+        {% url "path.to.some_view" arg1 arg2 %}
+
+        or
+
+        {% url "path.to.some_view" name1=value1 name2=value2 %}
+
+    The first argument is a path to a view. It can be an absolute Python path
+    or just ``app_name.view_name`` without the project name if the view is
+    located inside the project.
+
+    Other arguments are space-separated values that will be filled in place of
+    positional and keyword arguments in the URL. Don't mix positional and
+    keyword arguments.
+
+    All arguments for the URL should be present.
+
+    For example if you have a view ``app_name.client`` taking client's id and
+    the corresponding line in a URLconf looks like this::
+
+        ('^client/(\d+)/$', 'app_name.client')
+
+    and this app's URLconf is included into the project's URLconf under some
+    path::
+
+        ('^clients/', include('project_name.app_name.urls'))
+
+    then in a template you can create a link for a certain client like this::
+
+        {% url "app_name.client" client.id %}
+
+    The URL will look like ``/clients/client/123/``.
+
+    The first argument can also be a named URL instead of the Python path to
+    the view callable. For example if the URLconf entry looks like this::
+
+        url('^client/(\d+)/$', name='client-detail-view')
+
+    then in the template you can use::
+
+        {% url "client-detail-view" client.id %}
+
+    There is even another possible value type for the first argument. It can be
+    the name of a template variable that will be evaluated to obtain the view
+    name or the URL name, e.g.::
+
+        {% with view_path="app_name.client" %}
+        {% url view_path client.id %}
+        {% endwith %}
+
+        or,
+
+        {% with url_name="client-detail-view" %}
+        {% url url_name client.id %}
+        {% endwith %}
+
+    """
+#ANNOTATION: docstring
+    bits = token.split_contents()
+#ANNOTATION: call the method token.split_contents, substitute the result for bits.
+    if len(bits) < 2:
+#ANNOTATION: if length of bits is lesser than integer 2,
+        raise TemplateSyntaxError("'%s' takes at least one argument"
+                                  " (path to a view)" % bits[0])
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'%s' takes at least one argument (path to a view)",
+#ANNOTATION: where '%s' is replaced with first element of bits.
+    viewname = parser.compile_filter(bits[1])
+#ANNOTATION: call the method parser.compile_filter with second element of bits as an argument, substitute the result for viewname.
+    args = []
+#ANNOTATION: args is an empty list.
+    kwargs = {}
+#ANNOTATION: kwargs is an empty dictionary.
+    asvar = None
+#ANNOTATION: asvar is None.
+    bits = bits[2:]
+#ANNOTATION: remove first two elements from bits.
+    if len(bits) >= 2 and bits[-2] == 'as':
+#ANNOTATION: if length of bits is greater or equal to intger 2 and second last element of bits is equal to string 'as',
+        asvar = bits[-1]
+#ANNOTATION: substitute last element of bits for asvar.
+        bits = bits[:-2]
+#ANNOTATION: remove last 2 elements from bits.
+
+    if len(bits):
+#ANNOTATION: if length of bits is not zero,
+        for bit in bits:
+#ANNOTATION: for every bit in bits,
+            match = kwarg_re.match(bit)
+#ANNOTATION: call the method kwarg_re.match with an argument bit, substitute it for match.
+            if not match:
+#ANNOTATION: if match is true,
+                raise TemplateSyntaxError("Malformed arguments to url tag")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "Malformed arguments to url tag".
+            name, value = match.groups()
+#ANNOTATION: call the method match.groups, assign the result to name and value, respectively.
+            if name:
+#ANNOTATION: if name is true,
+                kwargs[name] = parser.compile_filter(value)
+#ANNOTATION: call the method parser.compile_filter with an argument value, substitute the result for value under the name key of kwargs dictionary.
+            else:
+#ANNOTATION: if not,
+                args.append(parser.compile_filter(value))
+#ANNOTATION: call the method parser.compile_filter with an argument value, append the result to args.
+
+    return URLNode(viewname, args, kwargs, asvar)
+#ANNOTATION: return an instance of a URLNode class, created with 4 arguments viewname, args, kwargs and asvar.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def verbatim(parser, token):
+#ANNOTATION: define the function verbatim with 2 arguments: parser and token.
+    """
+    Stops the template engine from rendering the contents of this block tag.
+
+    Usage::
+
+        {% verbatim %}
+            {% don't process this %}
+        {% endverbatim %}
+
+    You can also designate a specific closing tag block (allowing the
+    unrendered use of ``{% endverbatim %}``)::
+
+        {% verbatim myblock %}
+            ...
+        {% endverbatim myblock %}
+    """
+#ANNOTATION: docstring
+    nodelist = parser.parse(('endverbatim',))
+#ANNOTATION: call the method parser.parse with an argument tuple with an element string 'endverbatim', substitute the result for nodelist.
+    parser.delete_first_token()
+#ANNOTATION: call the method parser.delete_first_token.
+    return VerbatimNode(nodelist.render(Context()))
+#ANNOTATION: call the method nodelist.render with an argument, an instance of Context class, use the result as an argument for the creation of,
+#ANNOTATION: an instance of VerbatimNode class, return it.
+
+
+@register.tag
+#ANNOTATION: register.tag decorator,
+def widthratio(parser, token):
+#ANNOTATION: define the function widthratio with 2 arguments: parser and token.
+    """
+    For creating bar charts and such, this tag calculates the ratio of a given
+    value to a maximum value, and then applies that ratio to a constant.
+
+    For example::
+
+        <img src="bar.png" alt="Bar"
+             height="10" width="{% widthratio this_value max_value max_width %}" />
+
+    If ``this_value`` is 175, ``max_value`` is 200, and ``max_width`` is 100,
+    the image in the above example will be 88 pixels wide
+    (because 175/200 = .875; .875 * 100 = 87.5 which is rounded up to 88).
+
+    In some cases you might want to capture the result of widthratio in a
+    variable. It can be useful for instance in a blocktrans like this::
+
+        {% widthratio this_value max_value max_width as width %}
+        {% blocktrans %}The width is: {{ width }}{% endblocktrans %}
+    """
+#ANNOTATION: docstring
+    bits = token.split_contents()
+#ANNOTATION: call the method token.split_contents, substitute the result for bits.
+    if len(bits) == 4:
+#ANNOTATION: if length of bits equals integer 4,
+        tag, this_value_expr, max_value_expr, max_width = bits
+#ANNOTATION: assign the bits elements to tag, this_value_expr, max_value_expr and max_width, respectively.
+        asvar = None
+#ANNOTATION: asvar is None.
+    elif len(bits) == 6:
+#ANNOTATION: otherwise if length of bits equals integer 6,
+        tag, this_value_expr, max_value_expr, max_width, as_, asvar = bits
+#ANNOTATION: assign the bits elements to tag, this_value_expr, max_value_expr, max_width, as_ and asvar.
+        if as_ != 'as':
+#ANNOTATION: if as_ is not equal to string 'as',
+            raise TemplateSyntaxError("Invalid syntax in widthratio tag. Expecting 'as' keyword")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "Invalid syntax in widthratio tag. Expecting 'as' keyword".
+    else:
+#ANNOTATION: if not,
+        raise TemplateSyntaxError("widthratio takes at least three arguments")
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "widthratio takes at least three arguments".
+
+    return WidthRatioNode(parser.compile_filter(this_value_expr),
+                          parser.compile_filter(max_value_expr),
+                          parser.compile_filter(max_width),
+                          asvar=asvar)
+#ANNOTATION: return an instance of a class WidthRatioNode, created with 4 arguments: result of the method parser.compile_filter,
+#ANNOTATION: called with an argument this_value_expr, result of the method parser.compile_filter called with an argument max_value_expr,
+#ANNOTATION: return value of the method parser.compile_filter called with an argument max_width and asvar as asvar.
+
+
+@register.tag('with')
+#ANNOTATION: register.tag decorator function with an argument 'with',
+def do_with(parser, token):
+#ANNOTATION: define the function do_with with 2 arguments: parser and token.
+    """
+    Adds one or more values to the context (inside of this block) for caching
+    and easy access.
+
+    For example::
+
+        {% with total=person.some_sql_method %}
+            {{ total }} object{{ total|pluralize }}
+        {% endwith %}
+
+    Multiple values can be added to the context::
+
+        {% with foo=1 bar=2 %}
+            ...
+        {% endwith %}
+
+    The legacy format of ``{% with person.some_sql_method as total %}`` is
+    still accepted.
+    """
+#ANNOTATION: docstring
+    bits = token.split_contents()
+#ANNOTATION: call the method token.split_contents, substitute the result for bits.
+    remaining_bits = bits[1:]
+#ANNOTATION: substitute bits without the first element for remaining_bits.
+    extra_context = token_kwargs(remaining_bits, parser, support_legacy=True)
+#ANNOTATION: call the function token_kwargs with 3 arguments: remaining_bits, parser and support_legacy set to boolean True, substitute the result for extra_context.
+    if not extra_context:
+#ANNOTATION: if extra_context is false,
+        raise TemplateSyntaxError("%r expected at least one variable "
+                                  "assignment" % bits[0])
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "%r expected at least one variable assignment",
+#ANNOTATION: where '%r' is replaced with first element of bits.
+    if remaining_bits:
+#ANNOTATION: if remaining_bits is true,
+        raise TemplateSyntaxError("%r received an invalid token: %r" %
+                                  (bits[0], remaining_bits[0]))
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "%r received an invalid token: %r", where '%r' is replaced with, 
+#ANNOTATION: first element of bits and first element of remaining_bits.
+    nodelist = parser.parse(('endwith',))
+#ANNOTATION: call the method parser.parse with an argument tuple, with an element string 'endwith', substitute the result for nodelist.
+    parser.delete_first_token()
+#ANNOTATION: call the method parser.delete_first_token.
+    return WithNode(None, None, nodelist, extra_context=extra_context)
+#ANNOTATION: return an instance of a class WithNode, created with 4 arguments: None, None, nodelist and extra_context as extra_context.

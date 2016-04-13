@@ -1,0 +1,160 @@
+"""
+Synchronization primitives:
+
+    - reader-writer lock (preference to writers)
+
+(Contributed to Django by eugene@lazutkin.com)
+"""
+#ANNOTATION: docstring
+
+import contextlib
+#ANNOTATION: import module contextlib.
+try:
+#ANNOTATION: try,
+    import threading
+#ANNOTATION: import threading.
+except ImportError:
+#ANNOTATION: except ImportError.
+    import dummy_threading as threading
+#ANNOTATION: import dummy_threading as threading.
+
+
+class RWLock(object):
+#ANNOTATION: derive the class RWLock from the object base class.
+    """
+    Classic implementation of reader-writer lock with preference to writers.
+
+    Readers can access a resource simultaneously.
+    Writers get an exclusive access.
+
+    API is self-descriptive:
+        reader_enters()
+        reader_leaves()
+        writer_enters()
+        writer_leaves()
+    """
+#ANNOTATION: docstring
+    def __init__(self):
+#ANNOTATION: define the method __init__ with an argument self.
+        self.mutex = threading.RLock()
+#ANNOTATION: call the method threading.RLock, substitute the result for self.mutex.
+        self.can_read = threading.Semaphore(0)
+#ANNOTATION: call the method threading.Semaphore with an argument integer 0, substitute the result for self.can_read.
+        self.can_write = threading.Semaphore(0)
+#ANNOTATION: call the method threading.Semaphore with an argument integer 0, substitute the result for self.can_write.
+        self.active_readers = 0
+#ANNOTATION: self.active_readers is an integer 0.
+        self.active_writers = 0
+#ANNOTATION: self.active_writers is an integer 0.
+        self.waiting_readers = 0
+#ANNOTATION: self.waiting_readers is an integer 0.
+        self.waiting_writers = 0
+#ANNOTATION: self.waiting_writers is an integer 0.
+
+    def reader_enters(self):
+#ANNOTATION: define the method reader_enters with an argument self.
+        with self.mutex:
+#ANNOTATION: with self.mutex perform,
+            if self.active_writers == 0 and self.waiting_writers == 0:
+#ANNOTATION: if self.active_writers and self.waiting_writers both equal to integer 0,
+                self.active_readers += 1
+#ANNOTATION: increment self.active_readers by 1.
+                self.can_read.release()
+#ANNOTATION: call the method self.can_read.release.
+            else:
+#ANNOTATION: if not,
+                self.waiting_readers += 1
+#ANNOTATION: increment self.waiting_readers by 1.
+        self.can_read.acquire()
+#ANNOTATION: call the method self.can_read.acquire.
+
+    def reader_leaves(self):
+#ANNOTATION: define the method reader_leaves with an argument self.
+        with self.mutex:
+#ANNOTATION: with self.mutex perform,
+            self.active_readers -= 1
+#ANNOTATION: decrement self.active_readers by integer 1,
+            if self.active_readers == 0 and self.waiting_writers != 0:
+#ANNOTATION: if self.active_readers equals integer 0 and self.waiting_writers is not equal to integer 0,
+                self.active_writers += 1
+#ANNOTATION: increment self.active_writers by 1.
+                self.waiting_writers -= 1
+#ANNOTATION: decrement self.waiting_writers by integer 1,
+                self.can_write.release()
+#ANNOTATION: call the method self.can_write.release.
+
+    @contextlib.contextmanager
+#ANNOTATION: contextlib.contextmanager decorator,
+    def reader(self):
+#ANNOTATION: define the method reader with an argument self.
+        self.reader_enters()
+#ANNOTATION: call the method self.reader_enters.
+        try:
+#ANNOTATION: try,
+            yield
+#ANNOTATION: yield nothing.
+        finally:
+#ANNOTATION: finally perform,
+            self.reader_leaves()
+#ANNOTATION: call the method self.reader_leaves.
+
+    def writer_enters(self):
+#ANNOTATION: define the method writer_enters with an argument self.
+        with self.mutex:
+#ANNOTATION: with self.mutex perform,
+            if self.active_writers == 0 and self.waiting_writers == 0 and self.active_readers == 0:
+#ANNOTATION: if self.active_writers equals integer 0 and self.waiting_writers equals integer 0 and self.active_readers equals integer 0,
+                self.active_writers += 1
+#ANNOTATION: increment self.active_writers by integer 1,
+                self.can_write.release()
+#ANNOTATION: call the method self.can_write.release.
+            else:
+#ANNOTATION: if not,
+                self.waiting_writers += 1
+#ANNOTATION: increment self.waiting_writers by integer 1,
+        self.can_write.acquire()
+#ANNOTATION: call the method self.can_write.acquire.
+
+    def writer_leaves(self):
+#ANNOTATION: define the method writer_leaves with an argument self.
+        with self.mutex:
+#ANNOTATION:  with self.mutex perform,
+            self.active_writers -= 1
+#ANNOTATION: decrement self.active_writers by integer 1,
+            if self.waiting_writers != 0:
+#ANNOTATION: if self.waiting_writers is not equal to integer 0,
+                self.active_writers += 1
+#ANNOTATION: increment self.active_writers by integer 1,
+                self.waiting_writers -= 1
+#ANNOTATION: decrement self.waiting_writers by integer 1,
+                self.can_write.release()
+#ANNOTATION: call the method self.can_write.release.
+            elif self.waiting_readers != 0:
+#ANNOTATION: otherwise if self.waiting_readers is not equal to integer 0,
+                t = self.waiting_readers
+#ANNOTATION: substitute self.waiting_readers for t.
+                self.waiting_readers = 0
+#ANNOTATION: self.waiting_readers is integer 0.
+                self.active_readers += t
+#ANNOTATION: increment self.active_readers by t.
+                while t > 0:
+#ANNOTATION: while t is greater than integer 0,
+                    self.can_read.release()
+#ANNOTATION: call the method self.can_read.release.
+                    t -= 1
+#ANNOTATION: decrement t by integer 1,
+
+    @contextlib.contextmanager
+#ANNOTATION: contextlib.contextmanager decorator,
+    def writer(self):
+#ANNOTATION: define the method writer with an argument self.
+        self.writer_enters()
+#ANNOTATION: call the method self.writer_enters.
+        try:
+#ANNOTATION: try,
+            yield
+#ANNOTATION: yield nothing.
+        finally:
+#ANNOTATION: finally perform,
+            self.writer_leaves()
+#ANNOTATION: call the method self.writer_leaves.

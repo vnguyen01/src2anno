@@ -1,0 +1,651 @@
+"""
+XML serializer.
+"""
+#ANNOTATION: docstring
+
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core.serializers import base
+#ANNOTATION: from django.core.serializers import base into default name space.
+from django.db import models, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import models and DEFAULT_DB_ALIAS into default name space.
+from django.utils.xmlutils import SimplerXMLGenerator
+#ANNOTATION: from django.utils.xmlutils import SimplerXMLGenerator into default name space.
+from django.utils.encoding import smart_text
+#ANNOTATION: from django.utils.encoding import smart_text into default name space.
+from xml.dom import pulldom
+#ANNOTATION: from xml.dom import pulldom into default name space.
+from xml.sax import handler
+#ANNOTATION: from xml.sax import handler into default name space.
+from xml.sax.expatreader import ExpatParser as _ExpatParser
+#ANNOTATION: from xml.sax.expatreader import ExpatParser as _ExpatParser into default name space.
+
+
+class Serializer(base.Serializer):
+#ANNOTATION: derive the class Serializer from the base.Serializer base class.
+    """
+    Serializes a QuerySet to XML.
+    """
+#ANNOTATION: docstring
+
+    def indent(self, level):
+#ANNOTATION: define the method indent with argument self and level.
+        if self.options.get('indent', None) is not None:
+#ANNOTATION: if value under the 'indend' key of the options dictionary exists and is not None,
+            self.xml.ignorableWhitespace('\n' + ' ' * self.options.get('indent', None) * level)
+#ANNOTATION: get the value under the 'indent' key of the options dictionary, multiply it with level, create a string containing number of #ANNOTATION: whitespaces equal to the previous result, append it to the string containing newline character, use the result as the argument for #ANNOTATION: the call to the self.xml.ignorableWhitespace method.
+
+    def start_serialization(self):
+#ANNOTATION: define the method start_serialization with an argument self.
+        """
+        Start serialization -- open the XML document and the root element.
+        """
+#ANNOTATION: docstring
+        self.xml = SimplerXMLGenerator(self.stream, self.options.get("encoding", settings.DEFAULT_CHARSET))
+#ANNOTATION: self.xml is a instance of SimplerXMLGenerator class created with 2 arguments: self.stream and value under the 'encoding' key of the 
+#ANNOTATION: options dictionary, if the key doesnt exists use settings.DEFAULT_CHARSET instead.
+        self.xml.startDocument()
+#ANNOTATION: call the self.xml.startDocument method.
+        self.xml.startElement("django-objects", {"version": "1.0"})
+#ANNOTATION: call the method self.xml.startElement with 2 arguments, string "django-objects" and a dictionary containing 1 element: "1.0" for "version".
+
+    def end_serialization(self):
+#ANNOTATION: define the method end_serialization with an argument self.
+        """
+        End serialization -- end the document.
+        """
+#ANNOTATION: docstring
+        self.indent(0)
+#ANNOTATION: call the self.indent method with integer 0 as an argument.
+        self.xml.endElement("django-objects")
+#ANNOTATION: call the method self.xml.endElement with an argument string "django-objects".
+        self.xml.endDocument()
+#ANNOTATION: call the self.xml.endDocument method.
+
+    def start_object(self, obj):
+#ANNOTATION: define the method start_object with arguments self and obj.
+        """
+        Called as each object is handled.
+        """
+#ANNOTATION: docstring
+        if not hasattr(obj, "_meta"):
+#ANNOTATION: if '_meta' is not an attribute of obj,
+            raise base.SerializationError("Non-model object (%s) encountered during serialization" % type(obj))
+#ANNOTATION: raise an base.SerializationError exception with argument string "Non-model object (%s) encountered during serialization", 
+#ANNOTATION: replace '%s' with type of the obj object.
+
+        self.indent(1)
+#ANNOTATION: call the method self.indent with argument integer 1. 
+        attrs = {"model": smart_text(obj._meta)}
+#ANNOTATION: attrs is a dictionary containing 1 entry: return value of the smart_text function with argument obj._meta for 'model'.
+        if not self.use_natural_primary_keys or not hasattr(obj, 'natural_key'):
+#ANNOTATION: if self.use_natural_primary_keys is false and obj doesnt have 'natural_key' argument.
+            obj_pk = obj._get_pk_val()
+#ANNOTATION: substitute return value of the method obj._get_pk_val for obj_pk.
+            if obj_pk is not None:
+#ANNOTATION: if obj_pk is not None,
+                attrs['pk'] = smart_text(obj_pk)
+#ANNOTATION: substitute the return value of the smart_text function with an argument obj_pk for the value under the 'pk' key of the attrs dictionary. 
+
+        self.xml.startElement("object", attrs)
+#ANNOTATION: call the method self.xml.startElement with arguments string 'object' and attrs.
+
+    def end_object(self, obj):
+#ANNOTATION: define the method end_object with arguments self and obj.
+        """
+        Called after handling all fields for an object.
+        """
+#ANNOTATION: docstring
+        self.indent(1)
+#ANNOTATION: call the method self.indent with argument integer 1. 
+        self.xml.endElement("object")
+#ANNOTATION: call the method self.xml.endElement with an argument string 'object'.
+
+    def handle_field(self, obj, field):
+#ANNOTATION: define the method handle_field with arguments self, obj and field.
+        """
+        Called to handle each field on an object (except for ForeignKeys and
+        ManyToManyFields)
+        """
+#ANNOTATION: docstring
+        self.indent(2)
+#ANNOTATION: call the method self.indent with argument integer 2.
+        self.xml.startElement("field", {
+            "name": field.name,
+            "type": field.get_internal_type()
+        })
+#ANNOTATION: call the method self.xml.startElement with 2 arguments: string 'field' and a dictionary containing 2 entries: field.name for 'name',
+#ANNOTATION: and return value of the field.get_internal_type method for 'type'.
+
+        # Get a "string version" of the object's data.
+        if getattr(obj, field.name) is not None:
+#ANNOTATION: if field.name attribute of obj is not None,
+            self.xml.characters(field.value_to_string(obj))
+#ANNOTATION: call the method field.value_to_string with an argument obj, use the result as an argument for the call the method self.xml.characters.
+        else:
+#ANNOTATION: if not,
+            self.xml.addQuickElement("None")
+#ANNOTATION: call the method self.xml.addQuickElement with an argument string 'None'.
+
+        self.xml.endElement("field")
+#ANNOTATION: call the method self.xml.endElement with an argument string 'field' 
+
+    def handle_fk_field(self, obj, field):
+#ANNOTATION: define the method handle_fk_field with arguments self, obj and field.
+        """
+        Called to handle a ForeignKey (we need to treat them slightly
+        differently from regular fields).
+        """
+#ANNOTATION: docstring
+        self._start_relational_field(field)
+#ANNOTATION: call the method self._start_relational_field with an argument field.
+        related_att = getattr(obj, field.get_attname())
+#ANNOTATION: evaluate the field.get_attname, use the result as the name of the obj attribute to get, substitute it for related_att.
+        if related_att is not None:
+#ANNOTATION: if related_att is not None,
+            if self.use_natural_foreign_keys and hasattr(field.rel.to, 'natural_key'):
+#ANNOTATION: if self.use_natural_foreign_keys is true and field.rel.to has an attribute 'natural_key', 
+                related = getattr(obj, field.name)
+#ANNOTATION: get field.name attribute of the obj, substitute it for related.
+                # If related object has a natural key, use it
+                related = related.natural_key()
+#ANNOTATION: call the method related.natural_key, substitute the result for related.
+                # Iterable natural keys are rolled out as subelements
+                for key_value in related:
+#ANNOTATION: for every key_value in related,
+                    self.xml.startElement("natural", {})
+#ANNOTATION: call the method self.xml.startElement with arguments string 'natural' and an empty dictionary.
+                    self.xml.characters(smart_text(key_value))
+#ANNOTATION: call the function smart_text with argument key_value, use the result as an argument for the call to the self.xml.characters method.
+                    self.xml.endElement("natural")
+#ANNOTATION: call the method self.xml.endElement with an argument string 'natural'
+            else:
+#ANNOTATION: if not,
+                self.xml.characters(smart_text(related_att))
+#ANNOTATION: call the function smart_text with argument related_att, use the result as an argument for the call to the self.xml.characters method.
+        else:
+#ANNOTATION: if not,
+            self.xml.addQuickElement("None")
+#ANNOTATION: call the method self.xml.addQuickElement with an argument string 'None'.
+        self.xml.endElement("field")
+#ANNOTATION: call the method self.xml.endElement with an argument string 'field'.
+
+    def handle_m2m_field(self, obj, field):
+#ANNOTATION: define the method handle_m2m_field with arguments self, obj and field.
+        """
+        Called to handle a ManyToManyField. Related objects are only
+        serialized as references to the object's PK (i.e. the related *data*
+        is not dumped, just the relation).
+        """
+#ANNOTATION: docstring
+        if field.rel.through._meta.auto_created:
+#ANNOTATION: if field.rel.through._meta.auto_created is true,
+            self._start_relational_field(field)
+#ANNOTATION: call the method self._start_relational_field with the argument field.
+            if self.use_natural_foreign_keys and hasattr(field.rel.to, 'natural_key'):
+#ANNOTATION: if self.use_natural_foreign_keys is true and field.rel.to has an attribute 'natural_key',
+                # If the objects in the m2m have a natural key, use it
+                def handle_m2m(value):
+#ANNOTATION: define the function handle_m2m with an argument value,
+                    natural = value.natural_key()
+#ANNOTATION: call the value.natural_key method, substitute the result for natural.
+                    # Iterable natural keys are rolled out as subelements
+                    self.xml.startElement("object", {})
+#ANNOTATION: call the method self.xml.startElement with argument string 'object' and an empty dictionary.
+                    for key_value in natural:
+#ANNOTATION: for every key_value in natural,
+                        self.xml.startElement("natural", {})
+#ANNOTATION: call the method self.xml.startElement with argument string 'natural' and an empty dictionary.
+                        self.xml.characters(smart_text(key_value))
+#ANNOTATION: call the function smart_text with argument key_value, use the result as an argument for the call to the self.xml.characters method.
+                        self.xml.endElement("natural")
+#ANNOTATION: call the method self.xml.startElement with an argument string 'natural'.
+                    self.xml.endElement("object")
+#ANNOTATION: call the method self.xml.startElement with an argument string 'object'.
+            else:
+#ANNOTATION: if not,
+                def handle_m2m(value):
+#ANNOTATION: define the function handle_m2m with an argument value,
+                    self.xml.addQuickElement("object", attrs={
+                        'pk': smart_text(value._get_pk_val())
+                    })
+#ANNOTATION: call the self.xml.addQuickElement method with 2 arguments: string 'object' and attr dictionary containing 1 entry: 
+#ANNOTATION: return value of the function smart_text with return value of the method value._get_pk_val as an argument for 'pk'.
+            for relobj in getattr(obj, field.name).iterator():
+#ANNOTATION: for every relobj in iterator generated from the field.name attribute of the obj object.
+                handle_m2m(relobj)
+#ANNOTATION: call the function handle_m2m with an argument relobj. 
+
+            self.xml.endElement("field")
+#ANNOTATION: call the method self.xml.endElement with an argument string 'field'.
+
+    def _start_relational_field(self, field):
+#ANNOTATION: define the method _start_relational_field with arguments self and field.
+        """
+        Helper to output the <field> element for relational fields
+        """
+#ANNOTATION: docstring
+        self.indent(2)
+#ANNOTATION: call the method self.indent with argument integer 2.
+        self.xml.startElement("field", {
+            "name": field.name,
+            "rel": field.rel.__class__.__name__,
+            "to": smart_text(field.rel.to._meta),
+        })
+#ANNOTATION: call the method self.xml.startElement with 2 arguments: string 'field' and dictionary containing 3 entries: field.name for 'name',
+#ANNOTATION: field.rel.__class__.__name__ for 'rel' and return value of the function smart_text with an argument field.rel.to._meta for 'to'.
+
+
+class Deserializer(base.Deserializer):
+#ANNOTATION: derive the class Deserializer from the base.Deserializer base class.
+    """
+    Deserialize XML.
+    """
+#ANNOTATION: docstring
+
+    def __init__(self, stream_or_string, **options):
+#ANNOTATION: define the method __init__ with 3 arguments: self, stream_or_string and unpacked dictionary options.
+        super(Deserializer, self).__init__(stream_or_string, **options)
+#ANNOTATION: call the method __init__ from the base class of the Deserializer class with arguments stream_or_string and unpacked dictionary options.
+        self.event_stream = pulldom.parse(self.stream, self._make_parser())
+#ANNOTATION: call the method pulldom.parse with arguments: self.stream and return value of the method self._make_parser, 
+#ANNOTATION: substitute the result for self.event_stream.
+        self.db = options.pop('using', DEFAULT_DB_ALIAS)
+#ANNOTATION: remove the 'using' key from the options dictionary, substitute the return value for self.db, if the key doesnt exists substitute 
+#ANNOTATION: DEFAULT_DB_ALIAS for self.db.
+        self.ignore = options.pop('ignorenonexistent', False)
+#ANNOTATION: remove the 'ignorenonexistent' key from the options dictionary, substitute the return value for self.db, 
+#ANNOTATION: if the key doesnt exists substitute boolean False for self.ignore.
+
+    def _make_parser(self):
+#ANNOTATION: define the method _make_parser with an argument self.
+        """Create a hardened XML parser (no custom/external entities)."""
+#ANNOTATION: docstring
+        return DefusedExpatParser()
+#ANNOTATION: return the instance of DefusedExpatParser class.
+
+    def __next__(self):
+#ANNOTATION: define the method __next__ with an argument self.
+        for event, node in self.event_stream:
+#ANNOTATION: for every event and node in self.event_stream,
+            if event == "START_ELEMENT" and node.nodeName == "object":
+#ANNOTATION: if event equals a string "START_ELEMENT" and node.nodeName equals a string 'object',
+                self.event_stream.expandNode(node)
+#ANNOTATION: call the method self.event_stream.expandNode with an argument node.
+                return self._handle_object(node)
+#ANNOTATION: call the method self._handle_object with an argument node, return the result.
+        raise StopIteration
+#ANNOTATION: raise an StopIteration exception.
+
+    def _handle_object(self, node):
+#ANNOTATION: define the method _handle_object with arguments self and node.
+        """
+        Convert an <object> node to a DeserializedObject.
+        """
+#ANNOTATION: docstring
+        # Look up the model using the model loading mechanism. If this fails,
+        # bail.
+        Model = self._get_model_from_node(node, "model")
+#ANNOTATION: call the method self._get_model_from_node with arguments node and string 'model'.
+
+        # Start building a data dictionary from the object.
+        data = {}
+#ANNOTATION: data is an empty dictionary.
+        if node.hasAttribute('pk'):
+#ANNOTATION: call the method node.hasAttribute with string 'pk' as an argument, if it evaluates to true, 
+            data[Model._meta.pk.attname] = Model._meta.pk.to_python(
+                node.getAttribute('pk'))
+#ANNOTATION: call the method node.getAttribute with an argument string 'pk', use the result as the argument for the call to the method, #ANNOTATION: Model._meta.pk.to_python with, substitute the result for value under the Model._meta.pk.attname key of the data dictionary.
+
+        # Also start building a dict of m2m data (this is saved as
+        # {m2m_accessor_attribute : [list_of_related_objects]})
+        m2m_data = {}
+#ANNOTATION: m2m_data is an empty dictionary.
+
+        model_fields = Model._meta.get_all_field_names()
+#ANNOTATION: call the method Model._meta.get_all_field_names, substitute the result for model_fields.
+        # Deseralize each field.
+        for field_node in node.getElementsByTagName("field"):
+#ANNOTATION: for every field_node in return value of the method node.getElementsByTagName with an argument string 'field'.
+            # If the field is missing the name attribute, bail (are you
+            # sensing a pattern here?)
+            field_name = field_node.getAttribute("name")
+#ANNOTATION: call the method field_node.getAttribute with an argument string 'name', substitute the result for field_name.
+            if not field_name:
+#ANNOTATION: if field_name is false,
+                raise base.DeserializationError("<field> node is missing the 'name' attribute")
+#ANNOTATION: raise an base.DeserializationError exception with string "<field> node is missing the 'name' attribute" as argument.
+
+            # Get the field from the Model. This will raise a
+            # FieldDoesNotExist if, well, the field doesn't exist, which will
+            # be propagated correctly unless ignorenonexistent=True is used.
+            if self.ignore and field_name not in model_fields:
+#ANNOTATION: if self.ignore is true and field_name is not contained in model_fields,
+                continue
+#ANNOTATION: skip this loop iteration.
+            field = Model._meta.get_field(field_name)
+#ANNOTATION: call the method Model._meta.get_field with an argument field_name, substitute it for field.
+
+            # As is usually the case, relation fields get the special treatment.
+            if field.rel and isinstance(field.rel, models.ManyToManyRel):
+#ANNOTATION: if field.rel is true and field.rel is an instance of models.ManyToManyRel,
+                m2m_data[field.name] = self._handle_m2m_field_node(field_node, field)
+#ANNOTATION: call the method self._handle_m2m_field_node with an argument field_node and field, substitute the result for value under the field.name key of m2m_data dictionary.
+            elif field.rel and isinstance(field.rel, models.ManyToOneRel):
+#ANNOTATION: otherwise, if field.rel is true and field.rel is an instance of models.ManyToOneRel,
+                data[field.attname] = self._handle_fk_field_node(field_node, field)
+#ANNOTATION: call the method self._handle_fk_field_node with field_node and field as arguments, substitute the result for the value under the
+#ANNOTATION: field.attname of the data dictionary.
+            else:
+#ANNOTATION: if not,
+                if field_node.getElementsByTagName('None'):
+#ANNOTATION: call the method field_node.getElementsByTagName with an argument string 'None', if it evaluates to true,
+                    value = None
+#ANNOTATION: value is None.
+                else:
+#ANNOTATION: if not,
+                    value = field.to_python(getInnerText(field_node).strip())
+#ANNOTATION: call the function getInnerText with argument field_node, on the result call the method strip, use the result as an argument for the
+#ANNOTATION: call to the field.to_python method, substitute the result for value.
+                data[field.name] = value
+#ANNOTATION: substitute value for value under the field.name key of the data dictionary.
+
+        obj = base.build_instance(Model, data, self.db)
+#ANNOTATION: call the method base.build_instance with arguments Model, data and self.db, substitute the result for obj.
+
+        # Return a DeserializedObject so that the m2m data has a place to live.
+        return base.DeserializedObject(obj, m2m_data)
+#ANNOTATION: call the method base.DeserializedObject with arguments obj and m2m_data, return the result.
+
+    def _handle_fk_field_node(self, node, field):
+#ANNOTATION: define the method _handle_fk_field_node with arguments self, node and field. 
+        """
+        Handle a <field> node for a ForeignKey
+        """
+#ANNOTATION: docstring
+        # Check if there is a child node named 'None', returning None if so.
+        if node.getElementsByTagName('None'):
+#ANNOTATION: call the method node.getElementsByTagName with an argument string 'None', if it evaluates to true,
+            return None
+#ANNOTATION: return None.
+        else:
+#ANNOTATION: if not,
+            if hasattr(field.rel.to._default_manager, 'get_by_natural_key'):
+#ANNOTATION: if field.rel.to._default_manager has an atttribute 'get_by_natural_key',
+                keys = node.getElementsByTagName('natural')
+#ANNOTATION: call the method node.getElementsByTagName with the argument string 'natural', substitute the result for keys.
+                if keys:
+#ANNOTATION: if keys is true,
+                    # If there are 'natural' subelements, it must be a natural key
+                    field_value = [getInnerText(k).strip() for k in keys]
+#ANNOTATION: call the function getInnerText with argument k, on the result call the method strip, for every k in keys, append the results to field_value list.
+                    obj = field.rel.to._default_manager.db_manager(self.db).get_by_natural_key(*field_value)
+#ANNOTATION: call the method field.rel.to._default_manager.db_manager with an argument self.db, on the result call the method get_by_natural_key,
+#ANNOTATION: with unpacked list field_value as an argument, substitute the result for obj.
+                    obj_pk = getattr(obj, field.rel.field_name)
+#ANNOTATION: get the field.rel.field_name from the obj, substitute it for obj_pk.
+                    # If this is a natural foreign key to an object that
+                    # has a FK/O2O as the foreign key, use the FK value
+                    if field.rel.to._meta.pk.rel:
+#ANNOTATION: if field.rel.to._meta.pk.rel is true,
+                        obj_pk = obj_pk.pk
+#ANNOTATION: substitute obj_pk.pk for obj_pk.
+                else:
+#ANNOTATION: if not,
+                    # Otherwise, treat like a normal PK
+                    field_value = getInnerText(node).strip()
+#ANNOTATION: call the function getInnerText with an argument node, call the strip method on the result, substitute the result for field_value.
+                    obj_pk = field.rel.to._meta.get_field(field.rel.field_name).to_python(field_value)
+#ANNOTATION: call the field.rel.to._meta.get_field method with an field.rel.field_name argument, on the result call the method to_python,
+#ANNOTATION: with field_value as an argument, substitute the result for obj_pk.
+                return obj_pk
+#ANNOTATION: return obj_pk.
+            else:
+#ANNOTATION: if not,
+                field_value = getInnerText(node).strip()
+#ANNOTATION: call the function getInnerText with an argument node, call the strip method on the result, substitute the result for field_value.
+                return field.rel.to._meta.get_field(field.rel.field_name).to_python(field_value)
+#ANNOTATION: call the field.rel.to._meta.get_field method with an field.rel.field_name argument, on the result call the method to_python,
+#ANNOTATION: with field_value as an argument, return the result.
+
+    def _handle_m2m_field_node(self, node, field):
+#ANNOTATION: define the method _handle_m2m_field_node with arguments self, node and field.
+        """
+        Handle a <field> node for a ManyToManyField.
+        """
+#ANNOTATION: docstring
+        if hasattr(field.rel.to._default_manager, 'get_by_natural_key'):
+#ANNOTATION: if field.rel.to._default_manager has an attribute 'get_by_natural_key',
+            def m2m_convert(n):
+#ANNOTATION: define the function m2m_convert with an argument n, 
+                keys = n.getElementsByTagName('natural')
+#ANNOTATION: call the method n.getElementsByTagName with string 'natural' as argument, substitute result for keys.
+                if keys:
+#ANNOTATION: if keys is true,
+                    # If there are 'natural' subelements, it must be a natural key
+                    field_value = [getInnerText(k).strip() for k in keys]
+#ANNOTATION: call the function getInnerText with argument k, on the result call the method strip, for every k in keys, append the results to field_value list.
+                    obj_pk = field.rel.to._default_manager.db_manager(self.db).get_by_natural_key(*field_value).pk
+#ANNOTATION: call the method field.rel.to._default_manager.db_manager with an argument self.db, on the result call the method get_by_natural_key,
+#ANNOTATION: with unpacked list field_value as an argument, substitute the field pk of the result for obj_pk.
+                else:
+#ANNOTATION: if not,
+                    # Otherwise, treat like a normal PK value.
+                    obj_pk = field.rel.to._meta.pk.to_python(n.getAttribute('pk'))
+#ANNOTATION: call the method n.getAttribute with string 'pk' as argument, use the result as an argument for the call to the field.rel.to._meta.pk.to_python method, substitute the result for obj_pk.
+                return obj_pk
+#ANNOTATION: return obj_pk.
+        else:
+#ANNOTATION: if not,
+            m2m_convert = lambda n: field.rel.to._meta.pk.to_python(n.getAttribute('pk'))
+#ANNOTATION: m2m_convert is an lambda function with an argument n, return value is the return value of the method field.rel.to._meta.pk.to_python,
+#ANNOTATION: called with n.getAttribute('pk') method.
+        return [m2m_convert(c) for c in node.getElementsByTagName("object")]
+#ANNOTATION: call the m2m_convert function with an argument c, for every c in return value of the method node.getElementsByTagName, 
+#ANNOTATION: with an argument string 'object', return the result.
+
+    def _get_model_from_node(self, node, attr):
+#ANNOTATION: define the method _get_model_from_node with arguments self, node and attr.
+        """
+        Helper to look up a model from a <object model=...> or a <field
+        rel=... to=...> node.
+        """
+#ANNOTATION: docstring
+        model_identifier = node.getAttribute(attr)
+#ANNOTATION: call the method node.getAttribute with an argument attr, substitute the result for model_identifier.
+        if not model_identifier:
+#ANNOTATION: if model_identifier is false,
+            raise base.DeserializationError(
+                "<%s> node is missing the required '%s' attribute"
+                % (node.nodeName, attr))
+#ANNOTATION: raise an base.DeserializationError exception with an argument string "<%s> node is missing the required '%s' attribute",
+#ANNOTATION: where '%s' is replaced with node.nodeName and attr.
+        try:
+#ANNOTATION: try,
+            return apps.get_model(model_identifier)
+#ANNOTATION: call the method apps.get_model with an argument model_identifier, return the result.
+        except (LookupError, TypeError):
+#ANNOTATION: if LookupError or TypeError exceptions are caught,
+            raise base.DeserializationError(
+                "<%s> node has invalid model identifier: '%s'"
+                % (node.nodeName, model_identifier))
+#ANNOTATION: raise an base.DeserializationError exception with an argument string "<%s> node has invalid model identifier: '%s'",
+#ANNOTATION: where '%s' is replaced with node.nodeName and attr.
+
+
+def getInnerText(node):
+#ANNOTATION: define the function getInnerText with an argument node.
+    """
+    Get all the inner text of a DOM node (recursively).
+    """
+#ANNOTATION: docstring
+    # inspired by http://mail.python.org/pipermail/xml-sig/2005-March/011022.html
+    inner_text = []
+#ANNOTATION: inner_text is an empty list.
+    for child in node.childNodes:
+#ANNOTATION: for every child in node.childNodes,
+        if child.nodeType == child.TEXT_NODE or child.nodeType == child.CDATA_SECTION_NODE:
+#ANNOTATION: if child.nodeType equals to child.TEXT_NODE or child.nodeType equals to child.CDATA_SECTION_NODE,
+            inner_text.append(child.data)
+#ANNOTATION: append child.data to the inner_text list.
+        elif child.nodeType == child.ELEMENT_NODE:
+#ANNOTATION: otherwise if child.nodeType equals to child.ELEMENT_NODE,
+            inner_text.extend(getInnerText(child))
+#ANNOTATION: call the function getInnerText with an argument child, use the result as an argument for the call to the method inner_text.extend.
+        else:
+#ANNOTATION: if not,
+            pass
+#ANNOTATION: do nothing.
+    return "".join(inner_text)
+#ANNOTATION: join inner_text elements into a string.
+
+
+# Below code based on Christian Heimes' defusedxml
+
+
+class DefusedExpatParser(_ExpatParser):
+#ANNOTATION: derive the class DefusedExpatParser from the _ExpatParser base class.
+    """
+    An expat parser hardened against XML bomb attacks.
+
+    Forbids DTDs, external entity references
+
+    """
+#ANNOTATION: docstring
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with arguments self, unpacked list args and unpacked dictionary kwargs.
+        _ExpatParser.__init__(self, *args, **kwargs)
+#ANNOTATION: call the method _ExpatParser.__init__ with arguments self, unpacked list args and unpacked dictionary kwargs.
+        self.setFeature(handler.feature_external_ges, False)
+#ANNOTATION: call the method self.setFeature with 2 arguments: handler.feature_external_ges and boolean False. 
+        self.setFeature(handler.feature_external_pes, False)
+#ANNOTATION: call the method self.setFeature with 2 arguments: handler.feature_external_pes and boolean False.
+
+    def start_doctype_decl(self, name, sysid, pubid, has_internal_subset):
+#ANNOTATION: define the method start_doctype_decl with an arguments self, name, sysid, pubid and has_internal_subset.
+        raise DTDForbidden(name, sysid, pubid)
+#ANNOTATION: raise an DTDForbidden exception with arguments name, sysid and pubid.
+
+    def entity_decl(self, name, is_parameter_entity, value, base,
+                    sysid, pubid, notation_name):
+#ANNOTATION: define the method entity_decl with arguments self, name, is_parameter_entity, value, base, sysid, pubid and notation_name.
+        raise EntitiesForbidden(name, value, base, sysid, pubid, notation_name)
+#ANNOTATION: raise an EntitiesForbidden exception with arguments name, value, base, sysid, pubid and notation_name.
+
+    def unparsed_entity_decl(self, name, base, sysid, pubid, notation_name):
+#ANNOTATION: define the method unparsed_entity_decl with arguments self, name, base, sysid, pubid and notation_name.
+        # expat 1.2
+        raise EntitiesForbidden(name, None, base, sysid, pubid, notation_name)
+#ANNOTATION: raise an EntitiesForbidden exception with arguments name, None, base, sysid, pubid and notation_name.
+
+    def external_entity_ref_handler(self, context, base, sysid, pubid):
+#ANNOTATION: define the method external_entity_ref_handler with arguments self, context, base, sysid and pubid.
+        raise ExternalReferenceForbidden(context, base, sysid, pubid)
+#ANNOTATION: raise an ExternalReferenceForbidden exception with arguments context, base, sysid and pubid.
+
+    def reset(self):
+#ANNOTATION: define the method reset with an argument self.
+        _ExpatParser.reset(self)
+#ANNOTATION: call the method _ExpatParser.reset with an argumen sefl.
+        parser = self._parser
+#ANNOTATION: substitute self._parser for parser.
+        parser.StartDoctypeDeclHandler = self.start_doctype_decl
+#ANNOTATION: substitute self.start_doctype_decl for parser.StartDoctypeDeclHandler.
+        parser.EntityDeclHandler = self.entity_decl
+#ANNOTATION: substitute self.entity_decl for parser.EntityDeclHandler.
+        parser.UnparsedEntityDeclHandler = self.unparsed_entity_decl
+#ANNOTATION: substitute self.unparsed_entity_decl for parser.UnparsedEntityDeclHandler.
+        parser.ExternalEntityRefHandler = self.external_entity_ref_handler
+#ANNOTATION: substitute self.external_entity_ref_handler for parser.ExternalEntityRefHandler.
+
+
+class DefusedXmlException(ValueError):
+#ANNOTATION: derive the class DefusedXmlException from the ValueError base class.
+    """Base exception."""
+#ANNOTATION: docstring
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return str(self)
+#ANNOTATION: convert self into a string and return it.
+
+
+class DTDForbidden(DefusedXmlException):
+#ANNOTATION: derive the class DTDForbidden from the DefusedXmlException base class.
+    """Document type definition is forbidden."""
+#ANNOTATION: docstring
+    def __init__(self, name, sysid, pubid):
+#ANNOTATION: define the method __init__ with arguments self, name, sysid and pubid.
+        super(DTDForbidden, self).__init__()
+#ANNOTATION: call the method __init__ from the base class of the DTDForbidden class.
+        self.name = name
+#ANNOTATION: substitute name for self.name.
+        self.sysid = sysid
+#ANNOTATION: substitute sysid for self.sysid.
+        self.pubid = pubid
+#ANNOTATION: substitute pubid for self.pubid.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        tpl = "DTDForbidden(name='{}', system_id={!r}, public_id={!r})"
+#ANNOTATION: tpl is an string "DTDForbidden(name='{}', system_id={!r}, public_id={!r})".
+        return tpl.format(self.name, self.sysid, self.pubid)
+#ANNOTATION: call the method tpl.format with an arguments self.name, self.sysid and self.pubid. 
+
+
+class EntitiesForbidden(DefusedXmlException):
+#ANNOTATION: derive the class EntitiesForbidden from the DefusedXmlException base class.
+    """Entity definition is forbidden."""
+#ANNOTATION: docstring
+    def __init__(self, name, value, base, sysid, pubid, notation_name):
+#ANNOTATION: define the method __init__ with arguments self, name, value, base, sysid, pubid and notation_name.
+        super(EntitiesForbidden, self).__init__()
+#ANNOTATION: call the method __init__ from the base class of the EntitiesForbidden class.
+        self.name = name
+#ANNOTATION: substitute name for self.name.
+        self.value = value
+#ANNOTATION: substitute value for self.value.
+        self.base = base
+#ANNOTATION: substitute base for self.base.
+        self.sysid = sysid
+#ANNOTATION: substitute sysid for self.sysid.
+        self.pubid = pubid
+#ANNOTATION: substitute pubid for self.pubid.
+        self.notation_name = notation_name
+#ANNOTATION: substitute notation_name for self.notation_name.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        tpl = "EntitiesForbidden(name='{}', system_id={!r}, public_id={!r})"
+#ANNOTATION: tpl is an string "EntitiesForbidden(name='{}', system_id={!r}, public_id={!r})".
+        return tpl.format(self.name, self.sysid, self.pubid)
+#ANNOTATION: call the method tpl.format with an arguments self.name, self.sysid and self.pubid. 
+
+
+class ExternalReferenceForbidden(DefusedXmlException):
+#ANNOTATION: derive the class ExternalReferenceForbidden from the DefusedXmlException base class.
+    """Resolving an external reference is forbidden."""
+#ANNOTATION: docstring
+    def __init__(self, context, base, sysid, pubid):
+#ANNOTATION: define the method __init__ with arguments self, context, base, sysid and pubid.
+        super(ExternalReferenceForbidden, self).__init__()
+#ANNOTATION: call the method __init__ from the base class of the ExternalReferenceForbidden class.
+        self.context = context
+#ANNOTATION: substitute context for self.context.
+        self.base = base
+#ANNOTATION: substitute base for self.base.
+        self.sysid = sysid
+#ANNOTATION: substitute sysid for self.sysid.
+        self.pubid = pubid
+#ANNOTATION: substitute pubid for self.pubid.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        tpl = "ExternalReferenceForbidden(system_id='{}', public_id={})"
+#ANNOTATION: tpl is an string "ExternalReferenceForbidden(system_id='{}', public_id={})".
+        return tpl.format(self.sysid, self.pubid)
+#ANNOTATION: call the method tpl.format with an arguments self.sysid and self.pubid. 

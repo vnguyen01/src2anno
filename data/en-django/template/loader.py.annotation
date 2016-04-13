@@ -1,0 +1,307 @@
+# Wrapper for loading templates from storage of some sort (e.g. filesystem, database).
+#
+# This uses the TEMPLATE_LOADERS setting, which is a list of loaders to use.
+# Each loader is expected to have this interface:
+#
+#    callable(name, dirs=[])
+#
+# name is the template name.
+# dirs is an optional list of directories to search instead of TEMPLATE_DIRS.
+#
+# The loader should return a tuple of (template_source, path). The path returned
+# might be shown to the user for debugging purposes, so it should identify where
+# the template was loaded from.
+#
+# A loader may return an already-compiled template instead of the actual
+# template source. In that case the path returned should be None, since the
+# path information is associated with the template during the compilation,
+# which has already been done.
+#
+# Each loader should have an "is_usable" attribute set. This is a boolean that
+# specifies whether the loader can be used in this Python installation. Each
+# loader is responsible for setting this when it's initialized.
+#
+# For example, the eggs loader (which is capable of loading templates from
+# Python eggs) sets is_usable to False if the "pkg_resources" module isn't
+# installed, because pkg_resources is necessary to read eggs.
+
+from django.core.exceptions import ImproperlyConfigured
+#ANNOTATION: from django.core.exceptions import ImproperlyConfigured into default name space.
+from django.template.base import Origin, Template, Context, TemplateDoesNotExist
+#ANNOTATION: from django.template.base import Origin,  Template,  Context and TemplateDoesNotExist into default name space.
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.utils.module_loading import import_string
+#ANNOTATION: from django.utils.module_loading import import_string into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+template_source_loaders = None
+#ANNOTATION: template_source_loaders is None.
+
+
+class BaseLoader(object):
+#ANNOTATION: derive the class BaseLoader from the object base class.
+    is_usable = False
+#ANNOTATION: is_usable is boolean False.
+
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+        pass
+#ANNOTATION: do nothing.
+
+    def __call__(self, template_name, template_dirs=None):
+#ANNOTATION: define the method __call__ with 3 arguments: self, template_name and template_dirs set to None.
+        return self.load_template(template_name, template_dirs)
+#ANNOTATION: call the method self.load_template with 2 arguments: template_name and template_dirs, return the result.
+
+    def load_template(self, template_name, template_dirs=None):
+#ANNOTATION: define the method load_template with 3 arguments: self, template_name and template_dirs set to None.
+        source, display_name = self.load_template_source(template_name, template_dirs)
+#ANNOTATION: call the method self.load_template_source with arguments template_name and template_dirs, assign the result to source and display_name.
+        origin = make_origin(display_name, self.load_template_source, template_name, template_dirs)
+#ANNOTATION: call the function make_origin with 4 arguments: display_name, self.load_template_source, template_name and template_dirs, 
+#ANNOTATION: substitute the result for origin.
+        try:
+#ANNOTATION: try,
+            template = get_template_from_string(source, origin, template_name)
+#ANNOTATION: call the function get_template_from_string with 3 arguments: source, origin and template_name, substitute the result for template. 
+            return template, None
+#ANNOTATION: return template and None.
+        except TemplateDoesNotExist:
+#ANNOTATION: if TemplateDoesNotExist exception is caught,
+            # If compiling the template we found raises TemplateDoesNotExist, back off to
+            # returning the source and display name for the template we were asked to load.
+            # This allows for correct identification (later) of the actual template that does
+            # not exist.
+            return source, display_name
+#ANNOTATION: return source and display_name.
+
+    def load_template_source(self, template_name, template_dirs=None):
+#ANNOTATION: define the method load_template_source with 3 arguments: self, template_name and template_dirs set to None.
+        """
+        Returns a tuple containing the source and origin for the given template
+        name.
+
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of BaseLoader must provide a load_template_source() method')
+#ANNOTATION: raise an NotImplementedError with an argument string 'subclasses of BaseLoader must provide a load_template_source() method'.
+
+    def reset(self):
+#ANNOTATION: define the method reset with an argument self.
+        """
+        Resets any state maintained by the loader instance (e.g., cached
+        templates or cached loader modules).
+
+        """
+#ANNOTATION: docstring
+        pass
+#ANNOTATION: do nothing.
+
+
+class LoaderOrigin(Origin):
+#ANNOTATION: derive the class LoaderOrigin from the Origin base class.
+    def __init__(self, display_name, loader, name, dirs):
+#ANNOTATION: define the method __init__ with 5 arguments: self, display_name, loader, name and dirs.
+        super(LoaderOrigin, self).__init__(display_name)
+#ANNOTATION: call the method __init__ with an argument display_name, from the base class of the LoaderOrigin class.
+        self.loader, self.loadname, self.dirs = loader, name, dirs
+#ANNOTATION: substitute loader, name and dirs for self.loader, self.loadname and self.dirs, respectively.
+
+    def reload(self):
+#ANNOTATION: define the method reload with an argument self.
+        return self.loader(self.loadname, self.dirs)[0]
+#ANNOTATION: call the method self.loader with 2 arguments: self.loadname and self.dirs, return the first element of the result.
+
+
+def make_origin(display_name, loader, name, dirs):
+#ANNOTATION: define the function make_origin with 4 arguments: display_name, loader, name and dirs.
+    if settings.TEMPLATE_DEBUG and display_name:
+#ANNOTATION: if settings.TEMPLATE_DEBUG and display_name are both true,
+        return LoaderOrigin(display_name, loader, name, dirs)
+#ANNOTATION: return an instance of LoaderOrigin class, created with 4 arguments: display_name, loader, name and dirs.
+    else:
+#ANNOTATION: if not,
+        return None
+#ANNOTATION: return None.
+
+
+def find_template_loader(loader):
+#ANNOTATION: define the function find_template_loader with an argument loader.
+    if isinstance(loader, (tuple, list)):
+#ANNOTATION: if loader is an instance of tuple or list,
+        loader, args = loader[0], loader[1:]
+#ANNOTATION: substitute first element of loader for loader and loader without the first element for args.
+    else:
+#ANNOTATION: if not,
+        args = []
+#ANNOTATION: args is an empty list.
+    if isinstance(loader, six.string_types):
+#ANNOTATION: if loader is an instance of six.string_types,
+        TemplateLoader = import_string(loader)
+#ANNOTATION: call the function import_string with an argument loader, substitute the result for TemplateLoader.
+
+        if hasattr(TemplateLoader, 'load_template_source'):
+#ANNOTATION: if TemplateLoader has an attribute 'load_template_source',
+            func = TemplateLoader(*args)
+#ANNOTATION: func is an instance of TemplateLoader class, created with unpacked list args.
+        else:
+#ANNOTATION: if not,
+            # Try loading module the old way - string is full path to callable
+            if args:
+#ANNOTATION: if args is true,
+                raise ImproperlyConfigured("Error importing template source loader %s - can't pass arguments to function-based loader." % loader)
+#ANNOTATION: raise an ImproperlyConfigured exception with an argument string "Error importing template source loader %s - can't pass arguments to
+#ANNOTATION: function-based loader.", where '%s' is replaced with loader.
+            func = TemplateLoader
+#ANNOTATION: substitute TemplateLoader for func.
+
+        if not func.is_usable:
+#ANNOTATION: func.is_usable in false,
+            import warnings
+#ANNOTATION: import module warnings.
+            warnings.warn("Your TEMPLATE_LOADERS setting includes %r, but your Python installation doesn't support that type of template loading. Consider removing that line from TEMPLATE_LOADERS." % loader)
+#ANNOTATION: call the function warnings.warn with an argument string "Your TEMPLATE_LOADERS setting includes %r, but your Python installation
+#ANNOTATION: doesn't support that type of template loading. Consider removing that line from TEMPLATE_LOADERS.", 
+#ANNOTATION: where '%r' is replaced with loader.
+            return None
+#ANNOTATION: return None.
+        else:
+#ANNOTATION: if not,
+            return func
+#ANNOTATION: return func.
+    else:
+#ANNOTATION: if not,
+        raise ImproperlyConfigured('Loader does not define a "load_template" callable template source loader')
+#ANNOTATION: raise an ImproperlyConfigured with an argument string 'Loader does not define a "load_template" callable template source loader'.
+
+
+def find_template(name, dirs=None):
+#ANNOTATION: define the function find_template with 2: template_name and dirs set to None.
+    # Calculate template_source_loaders the first time the function is executed
+    # because putting this logic in the module-level namespace may cause
+    # circular import errors. See Django ticket #1292.
+    global template_source_loaders
+#ANNOTATION: use global variable template_source_loaders.
+    if template_source_loaders is None:
+#ANNOTATION: if template_source_loaders is None,
+        loaders = []
+#ANNOTATION: loaders is an empty list.
+        for loader_name in settings.TEMPLATE_LOADERS:
+#ANNOTATION: for every loader_name in settings.TEMPLATE_LOADERS,
+            loader = find_template_loader(loader_name)
+#ANNOTATION: call the function find_template_loader with an argument loader_name, substitute the result for loader.
+            if loader is not None:
+#ANNOTATION: if loader is not None,
+                loaders.append(loader)
+#ANNOTATION: append loader to loaders.
+        template_source_loaders = tuple(loaders)
+#ANNOTATION: put loaders elements in a tuple, substitute it for template_source_loaders.
+    for loader in template_source_loaders:
+#ANNOTATION: for every loader in template_source_loaders,
+        try:
+#ANNOTATION: try,
+            source, display_name = loader(name, dirs)
+#ANNOTATION: call the function loader with 2 arguments name and dirs, substitute the result for source and display_name, respectively.
+            return (source, make_origin(display_name, loader, name, dirs))
+#ANNOTATION: call the function make_origin with 4 arguments: display_name, loader, name and dirs, return a tuple containing 2 elements:
+#ANNOTATION: source and previous result.
+        except TemplateDoesNotExist:
+#ANNOTATION: if TemplateDoesNotExist exception is caught,
+            pass
+#ANNOTATION: do nothing,
+    raise TemplateDoesNotExist(name)
+#ANNOTATION: raise an TemplateDoesNotExist exception with an argument name.
+
+
+def get_template(template_name, dirs=None):
+#ANNOTATION: define the function get_template with 2: template_name and dirs set to None.
+    """
+    Returns a compiled Template object for the given template name,
+    handling template inheritance recursively.
+    """
+#ANNOTATION: docstring
+    template, origin = find_template(template_name, dirs)
+#ANNOTATION: call the function find_template with 2 arguments: template_name and dirs, substitute the result for template and origin.
+    if not hasattr(template, 'render'):
+#ANNOTATION: if template has an attribute 'render',
+        # template needs to be compiled
+        template = get_template_from_string(template, origin, template_name)
+#ANNOTATION: call the function get_template_from_string with 3 arguments: template, origin and template_name, substitute the result for template.
+    return template
+#ANNOTATION: return template.
+
+
+def get_template_from_string(source, origin=None, name=None):
+#ANNOTATION: define the function get_template_from_string with 3: source, origin set to None and name set to None.
+    """
+    Returns a compiled Template object for the given template code,
+    handling template inheritance recursively.
+    """
+#ANNOTATION: docstring
+    return Template(source, origin, name)
+#ANNOTATION: return an instance of Template class, created with 2 arguments: source, origin and name, return the result.
+
+
+def render_to_string(template_name, dictionary=None, context_instance=None,
+                     dirs=None):
+#ANNOTATION: define the function render_to_string with 4 arguments: template_name, dictionary set to None, context_instance set to None and dirs set to None.
+    """
+    Loads the given template_name and renders it with the given dictionary as
+    context. The template_name may be a string to load a single template using
+    get_template, or it may be a tuple to use select_template to find one of
+    the templates in the list. Returns a string.
+    """
+#ANNOTATION: docstring
+    if isinstance(template_name, (list, tuple)):
+#ANNOTATION: if template_name is an instance of list or tuple types, 
+        t = select_template(template_name, dirs)
+#ANNOTATION: call the function select_template with 2 arguments: template_name, dirs, substitute the result for t.
+    else:
+#ANNOTATION: if not,
+        t = get_template(template_name, dirs)
+#ANNOTATION: call the function get_template with 2 arguments: template_name and dirs, substitute the result for t.
+    if not context_instance:
+#ANNOTATION: if context_instance is false,
+        return t.render(Context(dictionary))
+#ANNOTATION: call the method t.render with an argument, instance of Context class, created with an argument dictionary, return the result.
+    if not dictionary:
+#ANNOTATION: if dictionary is false,
+        return t.render(context_instance)
+#ANNOTATION: call the function t.render with an argument context_instance, return the result.
+    # Add the dictionary to the context stack, ensuring it gets removed again
+    # to keep the context_instance in the same state it started in.
+    with context_instance.push(dictionary):
+#ANNOTATION: call the method context_instance.push with an argument dictionary, with the result perform,
+        return t.render(context_instance)
+#ANNOTATION: call the function t.render with an argument context_instance, return the result.
+
+
+def select_template(template_name_list, dirs=None):
+#ANNOTATION: define the function select_template with 2 arguments: template_name_list and dirs set to None.
+    "Given a list of template names, returns the first that can be loaded."
+#ANNOTATION: docstring
+    if not template_name_list:
+#ANNOTATION: if template_name_list is false,
+        raise TemplateDoesNotExist("No template names provided")
+#ANNOTATION: raise an TemplateDoesNotExist exception with an argument string "No template names provided".
+    not_found = []
+#ANNOTATION: not_found is an empty list.
+    for template_name in template_name_list:
+#ANNOTATION: for every template_name in template_name_list,
+        try:
+#ANNOTATION: try,
+            return get_template(template_name, dirs)
+#ANNOTATION: call the function get_template with 2 arguments template_name and dirs, return the result.
+        except TemplateDoesNotExist as e:
+#ANNOTATION: if TemplateDoesNotExist, renamed to e, exception is caught,
+            if e.args[0] not in not_found:
+#ANNOTATION: if first element of e.args is not contained in not_found,
+                not_found.append(e.args[0])
+#ANNOTATION: append first element of e.args to not_found list.
+            continue
+#ANNOTATION: skip this loop iteration.
+    # If we get here, none of the templates could be loaded
+    raise TemplateDoesNotExist(', '.join(not_found))
+#ANNOTATION: raise an TemplateDoesNotExist exception with an argument, elements of not_found joined into a string, separated with ', '

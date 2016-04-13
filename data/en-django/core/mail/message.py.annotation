@@ -1,0 +1,694 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import mimetypes
+#ANNOTATION: import module mimetypes.
+import os
+#ANNOTATION: import module os.
+import random
+#ANNOTATION: import module random.
+import sys
+#ANNOTATION: import module sys.
+import time
+#ANNOTATION: import module time.
+from email import (charset as Charset, encoders as Encoders,
+    message_from_string, generator)
+#ANNOTATION: from email import charset as Charset, encoders as Encoders, message_from_string and generator.
+from email.message import Message
+#ANNOTATION: from email.message import Message into default name space.
+from email.mime.text import MIMEText
+#ANNOTATION: from email.mime.text import MIMEText into default name space.
+from email.mime.multipart import MIMEMultipart
+#ANNOTATION: from email.mime.multipart import MIMEMultipart into default name space.
+from email.mime.base import MIMEBase
+#ANNOTATION: from email.mime.base import MIMEBase into default name space.
+from email.mime.message import MIMEMessage
+#ANNOTATION: from email.mime.message import MIMEMessage into default name space.
+from email.header import Header
+#ANNOTATION: from email.header import Header into default name space.
+from email.utils import formatdate, getaddresses, formataddr, parseaddr
+#ANNOTATION: from email.utils import formatdate,  getaddresses,  formataddr and parseaddr into default name space.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core.mail.utils import DNS_NAME
+#ANNOTATION: from django.core.mail.utils import DNS_NAME into default name space.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+# Don't BASE64-encode UTF-8 messages so that we avoid unwanted attention from
+# some spam filters.
+utf8_charset = Charset.Charset('utf-8')
+#ANNOTATION: call the function Charset.Charset with argument string 'utf-8', substitute the result for utf8_charset. 
+utf8_charset.body_encoding = None  # Python defaults to BASE64
+#ANNOTATION: utf8_charset.body_encoding is None.
+
+# Default MIME type to use on attachments (if it is not explicitly given
+# and cannot be guessed).
+DEFAULT_ATTACHMENT_MIME_TYPE = 'application/octet-stream'
+#ANNOTATION: DEFAULT_ATTACHMENT_MIME_TYPE is a string 'application/octet-stream'.
+
+
+class BadHeaderError(ValueError):
+#ANNOTATION: derive the class BadHeaderError from the ValueError base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+# Copied from Python standard library, with the following modifications:
+# * Used cached hostname for performance.
+# * Added try/except to support lack of getpid() in Jython (#5496).
+def make_msgid(idstring=None):
+#ANNOTATION: define the function make_msgid with argument idstring set to None.
+    """Returns a string suitable for RFC 2822 compliant Message-ID, e.g:
+
+    <20020201195627.33539.96671@nightshade.la.mastaler.com>
+
+    Optional idstring if given is a string used to strengthen the
+    uniqueness of the message id.
+    """
+#ANNOTATION: docstring
+    timeval = time.time()
+#ANNOTATION: call the function time.time, substitute the result for timeval.
+    utcdate = time.strftime('%Y%m%d%H%M%S', time.gmtime(timeval))
+#ANNOTATION: call the function time.gmtime with argument timeval, use string '%Y%m%d%H%M%S' and the previous result as an argument for the call to the time.strftime function, substitute the result for utcdate. 
+    try:
+#ANNOTATION: try,
+        pid = os.getpid()
+#ANNOTATION: call the function os.getpid, substitute it for pid.
+    except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+        # No getpid() in Jython, for example.
+        pid = 1
+#ANNOTATION: pid is integer 1.
+    randint = random.randrange(100000)
+#ANNOTATION: call the function random.randrange with argument integer 100000, substitute the result for randint.
+    if idstring is None:
+#ANNOTATION: if idstring is None,
+        idstring = ''
+#ANNOTATION: idstring is an empty string.
+    else:
+#ANNOTATION: if not,
+        idstring = '.' + idstring
+#ANNOTATION: append idstring to the '.' character, substitute it for idstring.
+    idhost = DNS_NAME
+#ANNOTATION: substitute DNS_NAME for idhost.
+    msgid = '<%s.%s.%s%s@%s>' % (utcdate, pid, randint, idstring, idhost)
+#ANNOTATION: msgid is a string '<%s.%s.%s%s@%s>', replace '%s' with utcdate, pid, randint, idstring and idhost, respectively.
+    return msgid
+#ANNOTATION: return msgid.
+
+
+# Header names that contain structured address data (RFC #5322)
+ADDRESS_HEADERS = set([
+    'from',
+    'sender',
+    'reply-to',
+    'to',
+    'cc',
+    'bcc',
+    'resent-from',
+    'resent-sender',
+    'resent-to',
+    'resent-cc',
+    'resent-bcc',
+])
+#ANNOTATION: ADDRESS_HEADERS is a set containing strings: 'from', 'sender', 'reply-to', 'to', 'cc', 'bcc', 'resent-from', 'resent-sender',
+#ANNOTATION: 'resent-to', 'resent-cc' and 'resent-bcc'.
+
+
+def forbid_multi_line_headers(name, val, encoding):
+#ANNOTATION: define the function forbid_multi_line_headers with arguments: name, val and encoding.
+    """Forbids multi-line headers, to prevent header injection."""
+#ANNOTATION: docstring
+    encoding = encoding or settings.DEFAULT_CHARSET
+#ANNOTATION: if encoding does not exists substitute it for settings.DEFAULT_CHARSET. 
+    val = force_text(val)
+#ANNOTATION: call the function force_text with argument val, substitute it for val.
+    if '\n' in val or '\r' in val:
+#ANNOTATION: if characters '\n' or '\r' are contained in val,
+        raise BadHeaderError("Header values can't contain newlines (got %r for header %r)" % (val, name))
+#ANNOTATION: raise an BadHeaderError exception  with argument string "Header values can't contain newlines (got %r for header %r)", 
+#ANNOTATION: where '%r' are replaced by val and name, respectively.
+    try:
+#ANNOTATION: try,
+        val.encode('ascii')
+#ANNOTATION: call the method val.encode with argument string 'ascii'.
+    except UnicodeEncodeError:
+#ANNOTATION: if UnicodeEncodeError exception is caught,
+        if name.lower() in ADDRESS_HEADERS:
+#ANNOTATION: convert name to lower case, if it is contained in ADDRESS_HEADERS,s
+            val = ', '.join(sanitize_address(addr, encoding)
+                for addr in getaddresses((val,)))
+#ANNOTATION: call the function sanitize_address with arguments addr and encoding, for every addr in return value of the getadresses function with tuple containing val as argument, join all the results into a string separated by ', ', substitute the result for val.
+        else:
+#ANNOTATION: if not,
+            val = Header(val, encoding).encode()
+#ANNOTATION: call the encode function on the Header class instance, created with arguments val and encoding, substitute the result for val. 
+    else:
+#ANNOTATION: if not,
+        if name.lower() == 'subject':
+#ANNOTATION: if name converted to lower case equals to string 'subject',
+            val = Header(val).encode()
+#ANNOTATION: call the encode function on the Header class instance, created with argument val, substitute the result for val. 
+    return str(name), val
+#ANNOTATION: return name converted to a string and val.
+
+
+def sanitize_address(addr, encoding):
+#ANNOTATION: define the function sanitize_address with arguments addr and encoding.
+    if isinstance(addr, six.string_types):
+#ANNOTATION: if addr is a instance of six.string_types,
+        addr = parseaddr(force_text(addr))
+#ANNOTATION: call the parseaddr function with return value of the force_text with argument addr, as argument, substitute the result for addr.
+    nm, addr = addr
+#ANNOTATION: nm and addr are addr.
+    # This try-except clause is needed on Python 3 < 3.2.4
+    # http://bugs.python.org/issue14291
+    try:
+#ANNOTATION: try,
+        nm = Header(nm, encoding).encode()
+#ANNOTATION: call the encode function on the Header class instance, created with arguments nm and encoding, substitute the result for nm.
+    except UnicodeEncodeError:
+#ANNOTATION: if UnicodeEncodeError exception is caught,
+        nm = Header(nm, 'utf-8').encode()
+#ANNOTATION: call the encode function on the Header class instance, created with arguments nm and string 'utf-8', substitute the result for nm.
+    try:
+#ANNOTATION: try,
+        addr.encode('ascii')
+#ANNOTATION: call the addr.encode method with string 'ascii' as an argument.
+    except UnicodeEncodeError:  # IDN
+#ANNOTATION: if UnicodeEncodeError exception is caught,
+        if '@' in addr:
+#ANNOTATION: if character '@' is contained in addr,
+            localpart, domain = addr.split('@', 1)
+#ANNOTATION: call the addr.split method with character '@' and integer 1 as arguments, substitute the result for localpart and domain, respectively.
+            localpart = str(Header(localpart, encoding))
+#ANNOTATION: instantiate Header class with localpart and encoding, convert it to a string, substitute the result for localpart.
+            domain = domain.encode('idna').decode('ascii')
+#ANNOTATION: call the decode function with argument string 'ascii' on the return value of the method domain.encode with argument string 'idna' substitute the result for domain.
+            addr = '@'.join([localpart, domain])
+#ANNOTATION: join localpart and domain in a string separated by '@' character, substitute it for addr.
+        else:
+#ANNOTATION: if not,
+            addr = Header(addr, encoding).encode()
+#ANNOTATION: call the encode function on the Header class instance, created with arguments addr and encoding, substitute the result for addr.
+    return formataddr((nm, addr))
+#ANNOTATION: call the formataddr function with argument tuple containing 2 elements nm and addr.
+
+
+class MIMEMixin():
+#ANNOTATION: derive the class MIMEMixin.
+    def as_string(self, unixfrom=False):
+#ANNOTATION: define the method as_string with arguments self and unixfrom set to boolean False.
+        """Return the entire formatted message as a string.
+        Optional `unixfrom' when True, means include the Unix From_ envelope
+        header.
+
+        This overrides the default as_string() implementation to not mangle
+        lines that begin with 'From '. See bug #13433 for details.
+        """
+#ANNOTATION: docstring
+        fp = six.StringIO()
+#ANNOTATION: fp is a instance of a class six.StringIO.
+        g = generator.Generator(fp, mangle_from_=False)
+#ANNOTATION: g is an instance of a class generator.Generator called with fp and mangle_from_ set to False.
+        g.flatten(self, unixfrom=unixfrom)
+#ANNOTATION: call the method g.flatten with arguments self and unixfrom set to unixfrom.
+        return fp.getvalue()
+#ANNOTATION: call the method fp.getvalue, return the result.
+
+    if six.PY2:
+#ANNOTATION: if six.PY2 is boolean True,
+        as_bytes = as_string
+#ANNOTATION: substitute as_string for as_bytes.
+    else:
+#ANNOTATION: if not,
+        def as_bytes(self, unixfrom=False):
+#ANNOTATION: define the method as_bytes with arguments self and unixfrom set to boolean False.
+            """Return the entire formatted message as bytes.
+            Optional `unixfrom' when True, means include the Unix From_ envelope
+            header.
+
+            This overrides the default as_bytes() implementation to not mangle
+            lines that begin with 'From '. See bug #13433 for details.
+            """
+#ANNOTATION: docstring
+            fp = six.BytesIO()
+#ANNOTATION: fp is a instance of a class six.BytesIO.
+            g = generator.BytesGenerator(fp, mangle_from_=False)
+#ANNOTATION: g is an instance of a class generator.BytesGenerator called with fp and mangle_from_ set to False.
+            g.flatten(self, unixfrom=unixfrom)
+#ANNOTATION: call the method g.flatten with arguments self and unixfrom set to unixfrom.
+            return fp.getvalue()
+#ANNOTATION: call the method fp.getvalue, return the result.
+
+
+class SafeMIMEMessage(MIMEMixin, MIMEMessage):
+#ANNOTATION: derive the class SafeMIMEMessage from the MIMEMixin and MIMEMessage base class.
+
+    def __setitem__(self, name, val):
+#ANNOTATION: define the method __setitem__ with arguments self, name and val. 
+        # message/rfc822 attachments must be ASCII
+        name, val = forbid_multi_line_headers(name, val, 'ascii')
+#ANNOTATION: call the function forbid_multi_line_headers with 3 arguments: name, val and string 'ascii', substitute the result for name and val, respectively.
+        MIMEMessage.__setitem__(self, name, val)
+#ANNOTATION: call the method MIMEMessage.__setitem__ with arguments self, name and val.
+
+
+class SafeMIMEText(MIMEMixin, MIMEText):
+#ANNOTATION: derive the class SafeMIMEText from the MIMEMixin and MIMEText base class.
+
+    def __init__(self, text, subtype, charset):
+#ANNOTATION: define the __init__ method with arguments: self, text, subtype and charset.
+        self.encoding = charset
+#ANNOTATION: substitute charset for self.encoding.
+        if charset == 'utf-8':
+#ANNOTATION: if charset equals to string 'utf-8',
+            # Unfortunately, Python doesn't support setting a Charset instance
+            # as MIMEText init parameter (http://bugs.python.org/issue16324).
+            # We do it manually and trigger re-encoding of the payload.
+            MIMEText.__init__(self, text, subtype, None)
+#ANNOTATION: call the method MIMEText.__init__ with 4 arguments: self, text, subtype and None.
+            del self['Content-Transfer-Encoding']
+#ANNOTATION: delete the value under the 'Content-Transfer-Encoding' key of self dictionary.
+            # Workaround for versions without http://bugs.python.org/issue19063
+            if (3, 2) < sys.version_info < (3, 3, 4):
+#ANNOTATION: if integers 3 and 2 in a tuple are smaller than the sys.version_info and sys.version_info is smaller than integers 3,4 and 4 in a tuple, respectively,  
+                payload = text.encode(utf8_charset.output_charset)
+#ANNOTATION: call the method text.encode with argument utf8_charset.output_charset, substitute the result for payload.
+                self._payload = payload.decode('ascii', 'surrogateescape')
+#ANNOTATION: call the method payload.decode with 2 arguments: string 'ascii' and string 'surrogateescape', substitute the result for self._payload.
+                self.set_charset(utf8_charset)
+#ANNOTATION: call the method self.set_charset with utf8_charset as an argument.
+            else:
+#ANNOTATION: if not,
+                self.set_payload(text, utf8_charset)
+#ANNOTATION: call the method payload.decode with 2 arguments: text and utf8_charset, substitute the result for self._payload.
+            self.replace_header('Content-Type', 'text/%s; charset="%s"' % (subtype, charset))
+#ANNOTATION: call the method self.replace_header with argument string 'Content-Type', 'text/%s; charset="%s"', where '%s' symbols are replaced by:
+#ANNOTATION: subtype and charset, respectively.
+        else:
+#ANNOTATION: if not,
+            MIMEText.__init__(self, text, subtype, charset)
+#ANNOTATION: call the method MIMEText.__init__ with 4 arguments: self, text, subtype and charset.
+
+    def __setitem__(self, name, val):
+#ANNOTATION: define the method __setitem__ with arguments self, name and val. 
+        name, val = forbid_multi_line_headers(name, val, self.encoding)
+#ANNOTATION: call the function forbid_multi_line_headers with 3 arguments: name, val and self.encoding, substitute the result for name and val, respectively.
+        MIMEText.__setitem__(self, name, val)
+#ANNOTATION: call the method MIMEText.__setitem__ with arguments self, name and val.
+
+
+class SafeMIMEMultipart(MIMEMixin, MIMEMultipart):
+#ANNOTATION: derive the class SafeMIMEMultipart from the MIMEMixin and MIMEMultipart base class.
+
+    def __init__(self, _subtype='mixed', boundary=None, _subparts=None, encoding=None, **_params):
+#ANNOTATION: define the method __init__ with 6 arguments: self, _subtype set to string 'mixed', boundary set to None, _subparts set to None,
+#ANNOTATION: encoding set to None and unpacked dictionary _params.
+        self.encoding = encoding
+#ANNOTATION: substitute encoding for self.encoding.
+        MIMEMultipart.__init__(self, _subtype, boundary, _subparts, **_params)
+#ANNOTATION: call the method MIMEMultipart.__init__ with 5 arguments: self, _subtype, boundary, _subparts and unpacked dictionary _params.
+
+    def __setitem__(self, name, val):
+#ANNOTATION: define the method __setitem__ with arguments self, name and val.
+        name, val = forbid_multi_line_headers(name, val, self.encoding)
+#ANNOTATION: call the function forbid_multi_line_headers with 3 arguments: name, val and self.encoding, substitute the result for name and val, respectively.
+        MIMEMultipart.__setitem__(self, name, val)
+#ANNOTATION: call the method MIMEMultipart.__setitem__ with arguments self, name and val.
+
+
+class EmailMessage(object):
+#ANNOTATION: derive the class EmailMessage from the object base class.
+    """
+    A container for email information.
+    """
+#ANNOTATION: docstring
+    content_subtype = 'plain'
+#ANNOTATION: content_subtype is a string 'plain'.
+    mixed_subtype = 'mixed'
+#ANNOTATION: mixed_subtype is a string 'mixed'.
+    encoding = None     # None => use settings default
+#ANNOTATION: encoding is None.
+
+    def __init__(self, subject='', body='', from_email=None, to=None, bcc=None,
+                 connection=None, attachments=None, headers=None, cc=None):
+#ANNOTATION: define the method __init__ with 10 arguments: self, subject set to an empty string, body set to an empty string, 
+#ANNOTATION: from_email set to None, to  set to  None, bcc set to None, connection set to None, attachments set to None, headers set to None, #ANNOTATION: and cc set to None.
+        """
+        Initialize a single email message (which can be sent to multiple
+        recipients).
+
+        All strings used to create the message can be unicode strings
+        (or UTF-8 bytestrings). The SafeMIMEText class will handle any
+        necessary encoding conversions.
+        """
+#ANNOTATION: docstring
+        if to:
+#ANNOTATION: if to is true,
+            assert not isinstance(to, six.string_types), '"to" argument must be a list or tuple'
+#ANNOTATION: if to is not an six.string_types instance raise an error with message string '"to" argument must be a list or tuple'.
+            self.to = list(to)
+#ANNOTATION: put to into a list, assign it to self.to.
+        else:
+#ANNOTATION: if not,
+            self.to = []
+#ANNOTATION: self.to is an empty list.
+        if cc:
+#ANNOTATION: if cc is true,
+            assert not isinstance(cc, six.string_types), '"cc" argument must be a list or tuple'
+#ANNOTATION: if cc is not an six.string_types instance raise an error with message string '"cc" argument must be a list or tuple'.
+            self.cc = list(cc)
+#ANNOTATION: put cc into a list, assign it to self.cc.
+        else:
+#ANNOTATION: if not,
+            self.cc = []
+#ANNOTATION: self.cc is an empty list.
+        if bcc:
+#ANNOTATION: if bcc is true,
+            assert not isinstance(bcc, six.string_types), '"bcc" argument must be a list or tuple'
+#ANNOTATION: if bcc is not an six.string_types instance raise an error with message string '"bcc" argument must be a list or tuple'.
+            self.bcc = list(bcc)
+#ANNOTATION: put bcc into a list, assign it to self.bcc.
+        else:
+#ANNOTATION: if not,
+            self.bcc = []
+#ANNOTATION: self.bcc is an empty list.
+        self.from_email = from_email or settings.DEFAULT_FROM_EMAIL
+#ANNOTATION: if from_email exists substitute from_email for self.from_email, if not substitute settings.DEFAULT_FROM_EMAIL for self.from_email.
+        self.subject = subject
+#ANNOTATION: substitute subject for self.subject.
+        self.body = body
+#ANNOTATION: substitute body for self.body.
+        self.attachments = attachments or []
+#ANNOTATION: if attachments exists substitute it for self.attachments, if not attachments is an empty list.
+        self.extra_headers = headers or {}
+#ANNOTATION: if headers exists substitute it for self.extra_headers, if not extra_headers is an empty dictionary.
+        self.connection = connection
+#ANNOTATION: substitute connection for self.connection.
+
+    def get_connection(self, fail_silently=False):
+#ANNOTATION: define the method get_connection with arguments self and fail_silently set to boolean False.
+        from django.core.mail import get_connection
+#ANNOTATION: from django.core.mail import get_connection into default name space.
+        if not self.connection:
+#ANNOTATION: if self.connection is false,
+            self.connection = get_connection(fail_silently=fail_silently)
+#ANNOTATION: call the function get_connection with argument fail_silently set to fail_silently, substitute it for self.connection.
+        return self.connection
+#ANNOTATION: return self.connection.
+
+    def message(self):
+#ANNOTATION: define the method message with argument self.
+        encoding = self.encoding or settings.DEFAULT_CHARSET
+#ANNOTATION: if self.encoding exists substitute it for encoding, if not substitute settings.DEFAULT_CHARSET for encoding.
+        msg = SafeMIMEText(self.body, self.content_subtype, encoding)
+#ANNOTATION: msg is a instance of a SafeMIMEText class created with arguments: self.body, self.content_subtype and encoding.
+        msg = self._create_message(msg)
+#ANNOTATION: call the self._create_message method with argument msg, substitute it for msg.
+        msg['Subject'] = self.subject
+#ANNOTATION: substitute self.subject for value under the 'Subject' key of msg dictionary.
+        msg['From'] = self.extra_headers.get('From', self.from_email)
+#ANNOTATION: call the method self.extra_headers.get with string 'From' and self.from_email as arguments, substitute the result for value under the 'From' key of msg dictionary.
+        msg['To'] = self.extra_headers.get('To', ', '.join(self.to))
+#ANNOTATION: call the method self.extra_headers.get with arguments: string 'To' and joined string from self.to elements separated by ', ',
+#ANNOTATION: substitute the result for value under the 'To' key of msg dictionary.
+        if self.cc:
+#ANNOTATION: if self.cc is true,
+            msg['Cc'] = ', '.join(self.cc)
+#ANNOTATION: join elements of self.cc into a string separated by ', ', substitute the result for value under the 'Cc' key of msg dictionary.
+
+        # Email header names are case-insensitive (RFC 2045), so we have to
+        # accommodate that when doing comparisons.
+        header_names = [key.lower() for key in self.extra_headers]
+#ANNOTATION: call the key.lower method for every key in self.extra_headers, join the results into a header_names.
+        if 'date' not in header_names:
+#ANNOTATION: if 'date' is not in header_names,
+            msg['Date'] = formatdate()
+#ANNOTATION: call the formatdate function, substitute it for value under the 'Date' key of msg dictionary.
+        if 'message-id' not in header_names:
+#ANNOTATION: if message-id' is not in header_names, 
+            msg['Message-ID'] = make_msgid()
+#ANNOTATION: call the make_msgid function, substitute it for value under the 'Message-ID' key of msg dictionary.
+        for name, value in self.extra_headers.items():
+#ANNOTATION: for every name and value in return value of the method self.extra_headers.items,
+            if name.lower() in ('from', 'to'):  # From and To are already handled
+#ANNOTATION: convert name to lower case if it equals to string 'from' or 'to,
+                continue
+#ANNOTATION: skip this loop execution,
+            msg[name] = value
+#ANNOTATION: substitute value for value under name key of msg dictionary.
+        return msg
+#ANNOTATION: return msg.
+
+    def recipients(self):
+#ANNOTATION: define the method recipients with argument self.
+        """
+        Returns a list of all recipients of the email (includes direct
+        addressees as well as Cc and Bcc entries).
+        """
+#ANNOTATION: docstring
+        return self.to + self.cc + self.bcc
+#ANNOTATION: add together self.to, self.cc and self.bcc, return the result.
+
+    def send(self, fail_silently=False):
+#ANNOTATION: define the method send with arguments self and fail_silently set to boolean False.
+        """Sends the email message."""
+#ANNOTATION: docstring
+        if not self.recipients():
+#ANNOTATION: call the method self.recipients, if it evaluates to false,
+            # Don't bother creating the network connection if there's nobody to
+            # send to.
+            return 0
+#ANNOTATION: return an integer 0.
+        return self.get_connection(fail_silently).send_messages([self])
+#ANNOTATION: call the method self.get_connection with argument fail_silently, on the result call the method send_messages with one argument: list containing self, return the result. 
+
+    def attach(self, filename=None, content=None, mimetype=None):
+#ANNOTATION: define the method attach with 4 arguments: self, filename set to None, content set to None and mimetype set to None.
+        """
+        Attaches a file with the given filename and content. The filename can
+        be omitted and the mimetype is guessed, if not provided.
+
+        If the first parameter is a MIMEBase subclass it is inserted directly
+        into the resulting message attachments.
+        """
+#ANNOTATION: docstring
+        if isinstance(filename, MIMEBase):
+#ANNOTATION: if filename is an instance of MIMEBase,
+            assert content is None
+#ANNOTATION: if content is not None raise an error.
+            assert mimetype is None
+#ANNOTATION: if mimetype is not None raise an error.
+            self.attachments.append(filename)
+#ANNOTATION: append filename to the self.attachments list.
+        else:
+#ANNOTATION: if not,
+            assert content is not None
+#ANNOTATION: if content is not None raise an error.
+            self.attachments.append((filename, content, mimetype))
+#ANNOTATION: append a tuple containing 3 elements: filename, content, mimetype to self.attachments list.
+
+    def attach_file(self, path, mimetype=None):
+#ANNOTATION: define the method attach_file with arguments self, path and mimetype set to None.
+        """Attaches a file from the filesystem."""
+#ANNOTATION: docstring
+        filename = os.path.basename(path)
+#ANNOTATION: call the os.path.basename with path as argument, substitute the result for filename.
+        with open(path, 'rb') as f:
+#ANNOTATION: open file named path in 'rb' mode, with file descriptor as f,
+            content = f.read()
+#ANNOTATION: read the whole file f, substitute the result for content.
+        self.attach(filename, content, mimetype)
+#ANNOTATION: call the method self.attach with arguments filename, content and mimetype.
+
+    def _create_message(self, msg):
+#ANNOTATION: define the method _create_message with arguments self and msg.
+        return self._create_attachments(msg)
+#ANNOTATION: call the method self._create_attachments with argument msg, return the result.
+
+    def _create_attachments(self, msg):
+#ANNOTATION: define the method _create_attachments with arguments self and msg.
+        if self.attachments:
+#ANNOTATION: if self.attachments is true,
+            encoding = self.encoding or settings.DEFAULT_CHARSET
+#ANNOTATION: if self.encoding exists substitute it for encoding, if not substitute settings.DEFAULT_CHARSET for encoding.
+            body_msg = msg
+#ANNOTATION: substitute msg for body_msg.
+            msg = SafeMIMEMultipart(_subtype=self.mixed_subtype, encoding=encoding)
+#ANNOTATION: msg is an instance of a class SafeMIMEMultipart, created with arguments: _subtype set to self.mixed_subtype and encoding set to encoding.  
+            if self.body:
+#ANNOTATION: if self.body is true,
+                msg.attach(body_msg)
+#ANNOTATION: call the method msg.attach with an argument body_msg.
+            for attachment in self.attachments:
+#ANNOTATION: for every attachment in self.attachments,
+                if isinstance(attachment, MIMEBase):
+#ANNOTATION: if attachment is an instance of MIMEBase,
+                    msg.attach(attachment)
+#ANNOTATION: call the method msg.attach with an argument attachment.
+                else:
+#ANNOTATION: if not,
+                    msg.attach(self._create_attachment(*attachment))
+#ANNOTATION: call the method self._create_attachment with an unpacked list attachment as an argument, use the result as an argument for the call to the msg.attach method.
+        return msg
+#ANNOTATION: return msg.
+
+    def _create_mime_attachment(self, content, mimetype):
+#ANNOTATION: define the method _create_mime_attachment with arguments self, content and mimetype.
+        """
+        Converts the content, mimetype pair into a MIME attachment object.
+
+        If the mimetype is message/rfc822, content may be an
+        email.Message or EmailMessage object, as well as a str.
+        """
+#ANNOTATION: docstring
+        basetype, subtype = mimetype.split('/', 1)
+#ANNOTATION: call the method mimetype.split with arguments: character '/' and integer 1, substitute the result for basetype and subtype, respectively. 
+        if basetype == 'text':
+#ANNOTATION: if basetype equals a string 'text',
+            encoding = self.encoding or settings.DEFAULT_CHARSET
+#ANNOTATION: if self.encoding exists substitute it for encoding, if not substitute settings.DEFAULT_CHARSET for encoding.
+            attachment = SafeMIMEText(content, subtype, encoding)
+#ANNOTATION: attachment is an instance of a class SafeMIMEText, created with arguments: content, subtype and encoding.
+        elif basetype == 'message' and subtype == 'rfc822':
+#ANNOTATION: otherwise if basetype equals a string 'message' and subtype equals a string 'rfc822',
+            # Bug #18967: per RFC2046 s5.2.1, message/rfc822 attachments
+            # must not be base64 encoded.
+            if isinstance(content, EmailMessage):
+#ANNOTATION: if content is an instance of a EmailMessage class,
+                # convert content into an email.Message first
+                content = content.message()
+#ANNOTATION: call the method content.message, substitute the result for content.
+            elif not isinstance(content, Message):
+#ANNOTATION: otherwise if content is not an instance of Message class,
+                # For compatibility with existing code, parse the message
+                # into an email.Message object if it is not one already.
+                content = message_from_string(content)
+#ANNOTATION: call the message_from_string function with an argument content, substitute the result for content.
+
+            attachment = SafeMIMEMessage(content, subtype)
+#ANNOTATION: attachment is an instance of a class SafeMIMEMessage, created with the arguments content and subtype.
+        else:
+#ANNOTATION: if not,
+            # Encode non-text attachments with base64.
+            attachment = MIMEBase(basetype, subtype)
+#ANNOTATION: attachment is an instance of a class MIMEBase, created with the arguments basetype and subtype.
+            attachment.set_payload(content)
+#ANNOTATION: call the method attachment.set_payload with an argument content.
+            Encoders.encode_base64(attachment)
+#ANNOTATION: call the method Encoders.encode_base64 with an argument attachment.
+        return attachment
+#ANNOTATION: return attachment.
+
+    def _create_attachment(self, filename, content, mimetype=None):
+#ANNOTATION: define the method _create_attachment with 4 arguments: self, filename, content and mimetype set to None.
+        """
+        Converts the filename, content, mimetype triple into a MIME attachment
+        object.
+        """
+#ANNOTATION: docstring
+        if mimetype is None:
+#ANNOTATION: if mimetype is None,
+            mimetype, _ = mimetypes.guess_type(filename)
+#ANNOTATION: call the mimetypes.guess_type with an argument filename, assign the result to the mimetype and _, respectively.
+            if mimetype is None:
+#ANNOTATION: if mimetype is None,
+                mimetype = DEFAULT_ATTACHMENT_MIME_TYPE
+#ANNOTATION: substitute DEFAULT_ATTACHMENT_MIME_TYPE for mimetype.
+        attachment = self._create_mime_attachment(content, mimetype)
+#ANNOTATION: call the method self._create_mime_attachment with the arguments content and mimetype, substitute the result for attachment.
+        if filename:
+#ANNOTATION: if filename is true,
+            try:
+#ANNOTATION: try,
+                filename.encode('ascii')
+#ANNOTATION: call the method filename.encode with an argument string 'ascii'
+            except UnicodeEncodeError:
+#ANNOTATION: if UnicodeEncodeError exception is caught,
+                if six.PY2:
+#ANNOTATION: if six.PY2 is true,
+                    filename = filename.encode('utf-8')
+#ANNOTATION: call the method filename.encode with an argument string 'utf-8', substitute the result for filename.
+                filename = ('utf-8', '', filename)
+#ANNOTATION: filename is a tuple containing 3 initial elements: string 'utf-8', and empty string and filename. 
+            attachment.add_header('Content-Disposition', 'attachment',
+                                  filename=filename)
+#ANNOTATION: call the method attachment.add_header with 3 arguments: string 'Content-Disposition', string 'attachment' and filename set to filename.
+        return attachment
+#ANNOTATION: return attachment.
+
+
+class EmailMultiAlternatives(EmailMessage):
+#ANNOTATION: derive the class EmailMultiAlternatives from the EmailMessage base class.
+    """
+    A version of EmailMessage that makes it easy to send multipart/alternative
+    messages. For example, including text and HTML versions of the text is
+    made easier.
+    """
+#ANNOTATION: docstring
+    alternative_subtype = 'alternative'
+#ANNOTATION: alternative_subtype is a string 'alternative'.
+
+    def __init__(self, subject='', body='', from_email=None, to=None, bcc=None,
+            connection=None, attachments=None, headers=None, alternatives=None,
+            cc=None):
+#ANNOTATION: define the method __init__ with 11 arguments: self, subject set to an empty string, body set to an empty string, 
+#ANNOTATION: from_email set to None, to set to None, bcc set to None, connection set to None, attachments set to None, headers set to None,
+#ANNOTATION: alternatives set to None and cc set to None):
+        """
+        Initialize a single email message (which can be sent to multiple
+        recipients).
+
+        All strings used to create the message can be unicode strings (or UTF-8
+        bytestrings). The SafeMIMEText class will handle any necessary encoding
+        conversions.
+        """
+#ANNOTATION: docstring
+        super(EmailMultiAlternatives, self).__init__(subject, body, from_email, to, bcc, connection, attachments, headers, cc)
+#ANNOTATION: call the method __init__ from the base class of the EmailMultiAlternatives class, with 9 arguments: subject, body, from_email, to,
+#ANNOTATION: bcc, connection, attachments, headers and cc.
+        self.alternatives = alternatives or []
+#ANNOTATION: if alternatives exists substitute it for self.alternatives, if not self.alternatives is an empty list.
+
+    def attach_alternative(self, content, mimetype):
+#ANNOTATION: define the method attach_alternative with arguments self, content and mimetype.
+        """Attach an alternative content representation."""
+#ANNOTATION: docstring
+        assert content is not None
+#ANNOTATION: if content is None, raise an error.
+        assert mimetype is not None
+#ANNOTATION: if mimetype is None, raise an error.
+        self.alternatives.append((content, mimetype))
+#ANNOTATION: append a tuple containing 2 elements: content and mimetype, to the self.alternatives list.
+
+    def _create_message(self, msg):
+#ANNOTATION: define the method _create_message with arguments self and msg.
+        return self._create_attachments(self._create_alternatives(msg))
+#ANNOTATION: call the method self._create_alternatives with an argument msg, use it as an argument for the call to the self._create_attachments method, return the result.
+
+    def _create_alternatives(self, msg):
+#ANNOTATION: define the method _create_alternatives with arguments self and msg.
+        encoding = self.encoding or settings.DEFAULT_CHARSET
+#ANNOTATION: if self.encoding exists substitute it for encoding, if not substitute settings.DEFAULT_CHARSET for encoding.
+        if self.alternatives:
+#ANNOTATION: if self.alternatives is true,
+            body_msg = msg
+#ANNOTATION: substitute msg for body_msg.
+            msg = SafeMIMEMultipart(_subtype=self.alternative_subtype, encoding=encoding)
+#ANNOTATION: msg is an instance of a class SafeMIMEMultipart, created with the arguments: _subtype set to self.alternative_subtype and encoding set to encoding.
+            if self.body:
+#ANNOTATION: if self.body is true,
+                msg.attach(body_msg)
+#ANNOTATION: call the msg.attach with an argument body_msg.
+            for alternative in self.alternatives:
+#ANNOTATION: for every alternative in self.alternatives,
+                msg.attach(self._create_mime_attachment(*alternative))
+#ANNOTATION: call the method self._create_mime_attachment with unpacked list alternative as an argument, use the result as an argument for the call to the msg.attach method.
+        return msg
+#ANNOTATION: return msg.

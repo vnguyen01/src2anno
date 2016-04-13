@@ -1,0 +1,25 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.core.management.commands.check import Command as CheckCommand
+#ANNOTATION: from django.core.management.commands.check import Command as CheckCommand into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+
+
+class Command(CheckCommand):
+#ANNOTATION: derive class Command from CheckCommand base class.
+    help = 'Deprecated. Use "check" command instead. ' + CheckCommand.help
+#ANNOTATION: concatenate CheckCommand.help to string 'Deprecated. Use "check" command instead. ', substitute it for help.
+
+    def handle(self, **options):
+#ANNOTATION: define the method handle with self class instance and dictionary pair of elements options as arguments.
+        warnings.warn('"validate" has been deprecated in favor of "check".',
+            RemovedInDjango19Warning)
+#ANNOTATION: call the method warnings.warn with string '"validate" has been deprecated in favor of "check".' and RemovedInDjango19Warning as arguments.
+        super(Command, self).handle(**options)
+#ANNOTATION: call the handle function with dictionary pair of elements options from the base class of the class Command.

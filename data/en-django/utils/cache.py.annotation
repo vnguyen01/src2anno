@@ -1,0 +1,446 @@
+"""
+This module contains helper functions for controlling caching. It does so by
+managing the "Vary" header of responses. It includes functions to patch the
+header of response objects directly and decorators that change functions to do
+that header-patching themselves.
+
+For information on the Vary header, see:
+
+    http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.44
+
+Essentially, the "Vary" HTTP header defines which headers a cache should take
+into account when building its cache key. Requests with the same path but
+different header content for headers named in "Vary" need to get different
+cache keys to prevent delivery of wrong content.
+
+An example: i18n middleware would need to distinguish caches by the
+"Accept-language" header.
+"""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from module __future__ import unicode_literals to default name space. 
+
+import hashlib
+#ANNOTATION: import hashlib module.
+import re
+#ANNOTATION: import re module.
+import time
+#ANNOTATION: import time module.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings object to the default name space.
+from django.core.cache import caches
+#ANNOTATION: from django.core.cache import caches to the default name space.
+from django.utils.encoding import iri_to_uri, force_bytes, force_text
+#ANNOTATION: from django.utils import iri_to_uri, force_bytes, force_text to the default name space.
+from django.utils.http import http_date
+#ANNOTATION: from django.utils.http import http_date to the default name space.
+from django.utils.timezone import get_current_timezone_name
+#ANNOTATION: from django.utils.timezone import get_current_timezone_name to the default name space.
+from django.utils.translation import get_language
+#ANNOTATION: from django.utils.translation import get_language to the default name space.
+
+cc_delim_re = re.compile(r'\s*,\s*')
+#ANNOTATION: compile regular expression based on the string '\s*,\s*' and assign the result to cc_delim_re.
+
+
+def patch_cache_control(response, **kwargs):
+#ANNOTATION: define function patch_cache_control, with response and dictionary set of arguments, kwargs, as arguments.
+    """
+    This function patches the Cache-Control header by adding all
+    keyword arguments to it. The transformation is as follows:
+
+    * All keyword parameter names are turned to lowercase, and underscores
+      are converted to hyphens.
+    * If the value of a parameter is True (exactly True, not just a
+      true value), only the parameter name is added to the header.
+    * All other parameters are added with their value, after applying
+      str() to it.
+    """
+#ANNOTATION: docstring
+    def dictitem(s):
+#ANNOTATION: define function dictitem with s as an argument.
+        t = s.split('=', 1)
+#ANNOTATION: split string s once, with '=' sign as a delimiter, assign the resulting list to the t.
+        if len(t) > 1:
+#ANNOTATION: if length of t is greater than integer 1,
+            return (t[0].lower(), t[1])
+#ANNOTATION: return first element of t converted to lowercase and second element of t, as a tuple. 
+        else:
+#ANNOTATION: if not,
+            return (t[0].lower(), True)
+#ANNOTATION: return first element of t converted to lowercase and boolean True, as a tuple.
+
+    def dictvalue(t):
+#ANNOTATION: define function dictvale, with an argument t.
+        if t[1] is True:
+#ANNOTATION: if second element of t is boolean True,
+            return t[0]
+#ANNOTATION: return first element of t.
+        else:
+#ANNOTATION: if not,
+            return '%s=%s' % (t[0], t[1])
+#ANNOTATION: return string first element of t, '=', second element of t.
+
+    if response.has_header('Cache-Control'):
+#ANNOTATION: if call to the method response.has_header with string 'Cache-Control' as an argument returns boolean True,
+        cc = cc_delim_re.split(response['Cache-Control'])
+#ANNOTATION: find the value of response under the key 'Cache-Control', use it as a delimiter to split string ss_delim_re, 
+#ANNOTATION: assign the result to cc.  
+        cc = dict(dictitem(el) for el in cc)
+#ANNOTATION: cc is a dictionary populated with items by calling function dictitem with el as argument, for every el in cc.
+    else:
+#ANNOTATION: if not,
+        cc = {}
+#ANNOTATION: cc is an empty dictionary.
+
+    # If there's already a max-age header but we're being asked to set a new
+    # max-age, use the minimum of the two ages. In practice this happens when
+    # a decorator and a piece of middleware both operate on a given view.
+    if 'max-age' in cc and 'max_age' in kwargs:
+#ANNOTATION: if cc contains item 'max-age' and kwargs contains item 'max_age',
+        kwargs['max_age'] = min(int(cc['max-age']), kwargs['max_age'])
+#ANNOTATION: convert to integer value of dictionary cc under the key 'max-age',
+#ANNOTATION: if it is smaller than the value of dictionary kwargs under the key 'max_age', substitute kwargs value under the key 'max-age' by it. 
+
+    # Allow overriding private caching and vice versa
+    if 'private' in cc and 'public' in kwargs:
+#ANNOTATION: if cc contains item 'private' and kwargs contains item 'public',
+        del cc['private']
+#ANNOTATION: delete dictionary item 'private' from cc.
+    elif 'public' in cc and 'private' in kwargs:
+#ANNOTATION: if cc contains item 'public' and kwargs contains item 'private',
+        del cc['public']
+#ANNOTATION: delete dictionary item 'public' from cc.
+
+    for (k, v) in kwargs.items():
+#ANNOTATION: for every k and v in items of dictionary kwargs, respectively,  
+        cc[k.replace('_', '-')] = v
+#ANNOTATION: replace all occurrences of symbol '_' in string k with symbol '-', use new string as key to find a value in dictionary cc, 
+#ANNOTATION: replace this value with v.
+    cc = ', '.join(dictvalue(el) for el in cc.items())
+#ANNOTATION: call the function dictvalue with el as argument for every el in values of dictionary cc,
+#ANNOTATION: join the resulting sequence in a string with comma as separator, assign the string to cc.
+    response['Cache-Control'] = cc
+#ANNOTATION: substitute response dictionary value under the key 'Cache-Control' for cc.
+
+
+def get_max_age(response):
+#ANNOTATION: define function get_max_age with response as an argument.
+    """
+    Returns the max-age from the response Cache-Control header as an integer
+    (or ``None`` if it wasn't found or wasn't an integer.
+    """
+#ANNOTATION: docstring
+    if not response.has_header('Cache-Control'):
+#ANNOTATION: if the result to the method call response.has_header, with string 'Cache-Control' as an argument is boolean False,
+        return
+#ANNOTATION: return from the function
+    cc = dict(_to_tuple(el) for el in
+        cc_delim_re.split(response['Cache-Control']))
+#ANNOTATION: cc is a dictionary populated with items by calling function _to_tuple with el as an argument,
+#ANNOTATION: for every el in split string cc_delim_re, with delimiter being the value of dictionary response under the key 'Cache-Control'.
+    if 'max-age' in cc:
+#ANNOTATION: if cc contains item 'max-age',
+        try:
+#ANNOTATION: try,
+            return int(cc['max-age'])
+#ANNOTATION: convert to integer the value of dictionary cc under the key 'max-age', and return it
+        except (ValueError, TypeError):
+#ANNOTATION: if exception ValueError or TypeError is raised,
+            pass
+#ANNOTATION: do nothing.
+
+
+def _set_response_etag(response):
+#ANNOTATION: define the function _set_response_etag, with response as an argument.
+    if not response.streaming:
+#ANNOTATION: if response.streaming is boolean False,
+        response['ETag'] = '"%s"' % hashlib.md5(response.content).hexdigest()
+#ANNOTATION: create md5 hash from string response.content in hexadecimal format, surround the hash with double quotes, 
+#ANNOTATION: and store it in the value of the dictionary response under the key 'ETag'. 
+    return response
+#ANNOTATION: return response
+
+
+def patch_response_headers(response, cache_timeout=None):
+#ANNOTATION: define the function patch_response_headers, with response and cache_timeout with None as default value, as arguments.
+    """
+    Adds some useful headers to the given HttpResponse object:
+        ETag, Last-Modified, Expires and Cache-Control
+
+    Each header is only added if it isn't already set.
+
+    cache_timeout is in seconds. The CACHE_MIDDLEWARE_SECONDS setting is used
+    by default.
+    """
+#ANNOTATION: docstring
+    if cache_timeout is None:
+#ANNOTATION: if cache_timeout equals to None,
+        cache_timeout = settings.CACHE_MIDDLEWARE_SECONDS
+#ANNOTATION: substitute settings.CACHE_MIDDLEWARE_SECONDS for cache_timeout.
+    if cache_timeout < 0:
+#ANNOTATION: if cache_timeout is lesser than integer 0,
+        cache_timeout = 0  # Can't have max-age negative
+#ANNOTATION: substitute integer 0 for cache_timeout.
+    if settings.USE_ETAGS and not response.has_header('ETag'):
+#ANNOTATION: if settings.USE_ETAGS is True and function call response.has_header with string 'ETag' as argument returns boolean False,
+        if hasattr(response, 'render') and callable(response.render):
+#ANNOTATION: if object response has an attribute 'render' and if response.render is callable object,
+            response.add_post_render_callback(_set_response_etag)
+#ANNOTATION: call the method response.add_post_render_callback with _set_response_etag as argument.
+        else:
+#ANNOTATION: if not,
+            response = _set_response_etag(response)
+#ANNOTATION: substitute return value of call to the function _set_response_etag with response as an argument, for response.
+    if not response.has_header('Last-Modified'):
+#ANNOTATION: if call to the function response.has_header with string 'Last-Modified' as an argument returns boolean False,
+        response['Last-Modified'] = http_date()
+#ANNOTATION: call the function http_date with no arguments, and substitute its return value 
+#ANNOTATION: for value of dictionary response under the key 'Last-Modified'.
+    if not response.has_header('Expires'):
+#ANNOTATION: if call to the function response.has_header with 'Expires' as argument returns boolean False,
+        response['Expires'] = http_date(time.time() + cache_timeout)
+#ANNOTATION: sum return value of the function call time.time() and cache_timeout, use it as an argument for function call of http_date,
+#ANNOTATION: and substitute the return value for value under the key 'Expires' of dictionary response.
+    patch_cache_control(response, max_age=cache_timeout)
+#ANNOTATION: call the function patch_cache_control, with response and max_age set to cache_timeout as arguments.
+
+
+def add_never_cache_headers(response):
+#ANNOTATION: define function add_never_cache_headers, with response as an argument.
+    """
+    Adds headers to a response to indicate that a page should never be cached.
+    """
+#ANNOTATION: docstring
+    patch_response_headers(response, cache_timeout=-1)
+#ANNOTATION: call the function patch_response with response and cache_timeout decremented by integer 1 as arguments.
+
+
+def patch_vary_headers(response, newheaders):
+#ANNOTATION: define function patch_vary_headers, with response and newheaders as arguments.
+    """
+    Adds (or updates) the "Vary" header in the given HttpResponse object.
+    newheaders is a list of header names that should be in "Vary". Existing
+    headers in "Vary" aren't removed.
+    """
+#ANNOTATION: doctring
+    # Note that we need to keep the original order intact, because cache
+    # implementations may rely on the order of the Vary contents in, say,
+    # computing an MD5 hash.
+    if response.has_header('Vary'):
+#ANNOTATION: if call to the function response.has_header with argument 'Vary' returns boolean True,
+        vary_headers = cc_delim_re.split(response['Vary'])
+#ANNOTATION: split the string cc_delim_re with value under the key 'Vary' of response dictionary as delimiter, substitute result for vary_headers.
+    else:
+#ANNOTATION: if not,
+        vary_headers = []
+#ANNOTATION: vary_headers is an empty list.
+    # Use .lower() here so we treat headers as case-insensitive.
+    existing_headers = set(header.lower() for header in vary_headers)
+#ANNOTATION: existing_headers is a set of lowercase headers for every header in vary_headers.
+    additional_headers = [newheader for newheader in newheaders
+                          if newheader.lower() not in existing_headers]
+#ANNOTATION: put every header in newheaders in a list, only if newheader converted to lowercase does not exist in existing_headers,
+#ANNOTATION: substitute this list for additional_headers.
+    response['Vary'] = ', '.join(vary_headers + additional_headers)
+#ANNOTATION: join all of the elements of vary_headers and additional_headers in a string delimited by a comma, 
+#ANNOTATION: substitute it for value of dictionary response under the key 'Vary'. 
+
+
+def has_vary_header(response, header_query):
+#ANNOTATION: define function has_vary_header, with response and header_query as arguments.
+    """
+    Checks to see if the response has a given header name in its Vary header.
+    """
+#ANNOTATION: docstring
+    if not response.has_header('Vary'):
+#ANNOTATION: if return value of function response.has_header with string 'Vary' as argument is boolean False,
+        return False
+#ANNOTATION: return boolean False.
+    vary_headers = cc_delim_re.split(response['Vary'])
+#ANNOTATION: split string cc_delim_re by value of dictionary response under the key 'Vary' as a delimiter, substitute it for vary_headers.
+    existing_headers = set(header.lower() for header in vary_headers)
+#ANNOTATION: existing_headers is a set containing lowercase strings header for every header in vary_headers.
+    return header_query.lower() in existing_headers
+#ANNOTATION: check if lowercase header_query exists is existing_headers, return the boolean result.
+
+
+def _i18n_cache_key_suffix(request, cache_key):
+#ANNOTATION: define function _i18n_cache_key_suffix, with request and cache_key as arguments.
+    """If necessary, adds the current locale or time zone to the cache key."""
+#ANNOTATION: docstring
+    if settings.USE_I18N or settings.USE_L10N:
+#ANNOTATION: if eather one of settings.USE_I18N or settings.USE_L10N is True,
+        # first check if LocaleMiddleware or another middleware added
+        # LANGUAGE_CODE to request, then fall back to the active language
+        # which in turn can also fall back to settings.LANGUAGE_CODE
+        cache_key += '.%s' % getattr(request, 'LANGUAGE_CODE', get_language())
+#ANNOTATION: call the function getattr with request, string 'LANGUAGE_CODE' and function get_language as arguments,
+#ANNOTATION: append the result at the end of string '.', append it all at the end of string cache_key. 
+    if settings.USE_TZ:
+#ANNOTATION: if settings.USE_TZ is True,
+        # The datetime module doesn't restrict the output of tzname().
+        # Windows is known to use non-standard, locale-dependent names.
+        # User-defined tzinfo classes may return absolutely anything.
+        # Hence this paranoid conversion to create a valid cache key.
+        tz_name = force_text(get_current_timezone_name(), errors='ignore')
+#ANNOTATION: call the function force_text, with the function get_current_timezone_name and errors set to string 'ignore' as arguments,
+#ANNOTATION: replace the result for tz_name.
+        cache_key += '.%s' % tz_name.encode('ascii', 'ignore').decode('ascii').replace(' ', '_')
+#ANNOTATION: call the method tz_name.encode with the arguments 'ascii' and 'ignore', call the method decode on the result with 'ascii' as argument,
+#ANNOTATION: in the resulting string replace all occurrences of ' ' with '_' and append it to the end of cache_key.
+    return cache_key
+#ANNOTATION: return cache_key.
+
+
+def _generate_cache_key(request, method, headerlist, key_prefix):
+#ANNOTATION: define function _generate_cache_key, with request, method, headerlist and key_prefix as arguments.
+    """Returns a cache key from the headers given in the header list."""
+#ANNOTATION: docstring
+    ctx = hashlib.md5()
+#ANNOTATION: ctx is an hashlib object, for calculating hash function with md5 algorithm.
+    for header in headerlist:
+#ANNOTATION: for every header in headerlist,
+        value = request.META.get(header, None)
+#ANNOTATION: call method request.META.get with arguments header and None.
+        if value is not None:
+#ANNOTATION: if value is not None,
+            ctx.update(force_bytes(value))
+#ANNOTATION: call function force_bytes with value as argument, use the result to as the result for the call to the methgod ctx.update.
+    url = hashlib.md5(force_bytes(iri_to_uri(request.build_absolute_uri())))
+#ANNOTATION: call iri_to_uri with return value of the request.build_absolute_uri method, us the result as the argument for the call to the 
+#ANNOTATION: force_bytes function, use the result as the argument for the call to the hashlib.mdb function, store the result in url.
+    cache_key = 'views.decorators.cache.cache_page.%s.%s.%s.%s' % (
+        key_prefix, method, url.hexdigest(), ctx.hexdigest())
+#ANNOTATION: substitute the '%s' in string 'views.decorators.cache.cache_page.%s.%s.%s.%s' with key_prefix, method, 
+#ANNOTATION: return value of method url.hexdigest(), return value of method ctx.hexdigest, respectively, substitute it for cache_key. 
+    return _i18n_cache_key_suffix(request, cache_key)
+#ANNOTATION: call the function _i18n_cache_key_suffix with request and cache_key as arguments, return the result.
+
+
+def _generate_cache_header_key(key_prefix, request):
+#ANNOTATION: define the funtion _generate_cache_header_key with key_prefix and request as arguments.
+    """Returns a cache key for the header cache."""
+#ANNOTATION: docstring
+    url = hashlib.md5(force_bytes(iri_to_uri(request.build_absolute_uri())))
+#ANNOTATION: call method request.build_absolute_uri, use the result as an argument for function call of iri_to_uri, 
+#ANNOTATION: use the result as an argument for function call of force_bytes, use the result as an argument for calling the method hashlib.md5,
+#ANNOTATION: put the result in url.
+    cache_key = 'views.decorators.cache.cache_header.%s.%s' % (
+        key_prefix, url.hexdigest())
+#ANNOTATION: substitute the '%s' in string 'views.decorators.cache.cache_header.%s.%s' with key_prefix and result of the function call, 
+#ANNOTATION: to the function url.hexdigest(), respectively, substitute it for cache_key.
+    return _i18n_cache_key_suffix(request, cache_key)
+#ANNOTATION: call the function _i18n_cache_key_suffix with request and cache_key as arguments, return the result.
+
+
+def get_cache_key(request, key_prefix=None, method='GET', cache=None):
+#ANNOTATION: define the function get_cache_key, with request key_prefix set to None, method set to 'GET' and cache set to None as arguments.
+    """
+    Returns a cache key based on the request URL and query. It can be used
+    in the request phase because it pulls the list of headers to take into
+    account from the global URL registry and uses those to build a cache key
+    to check against.
+
+    If there is no headerlist stored, the page needs to be rebuilt, so this
+    function returns None.
+    """
+#ANNOTATION: docstring
+    if key_prefix is None:
+#ANNOTATION: if key_prefix is None,
+        key_prefix = settings.CACHE_MIDDLEWARE_KEY_PREFIX
+#ANNOTATION: substitute settings.CACHE_MIDDLEWARE_KEY_PREFIX for key_prefix.
+    cache_key = _generate_cache_header_key(key_prefix, request)
+#ANNOTATION: call the function _generate_cache_header_key with key_prefix and request as arguments, substitute the result for cache_key.
+    if cache is None:
+#ANNOTATION: if cache is None,
+        cache = caches[settings.CACHE_MIDDLEWARE_ALIAS]
+#ANNOTATION: set cache to the value of the dictionary caches under the key settings.CACHE_MIDDLEWARE_ALIAS.
+    headerlist = cache.get(cache_key, None)
+#ANNOTATION: get the value of dictionary cache under the key cache_key, if key is not available return None, substitute it for headerlist.
+    if headerlist is not None:
+#ANNOTATION: if header list is not None,
+        return _generate_cache_key(request, method, headerlist, key_prefix)
+#ANNOTATION: call the function _generate_cache_key with request, method, headerlist, key_prefix as arguments, return the result.
+    else:
+#ANNOTATION: if not,
+        return None
+#ANNOTATION: return None.
+
+
+def learn_cache_key(request, response, cache_timeout=None, key_prefix=None, cache=None):
+#ANNOTATION: define function learn_cache_key with request, response, cache_timeout set to None, key_prefix set to None, cache set to None as arguments.
+    """
+    Learns what headers to take into account for some request URL from the
+    response object. It stores those headers in a global URL registry so that
+    later access to that URL will know what headers to take into account
+    without building the response object itself. The headers are named in the
+    Vary header of the response, but we want to prevent response generation.
+
+    The list of headers to use for cache key generation is stored in the same
+    cache as the pages themselves. If the cache ages some data out of the
+    cache, this just means that we have to build the response once to get at
+    the Vary header and so at the list of headers to use for the cache key.
+    """
+#ANNOTATION: docstring
+    if key_prefix is None:
+#ANNOTATION: if key_prefix is None,
+        key_prefix = settings.CACHE_MIDDLEWARE_KEY_PREFIX
+#ANNOTATION: substitute settings.CACHE_MIDDLEWARE_KEY_PREFIX for key_prefix.
+    if cache_timeout is None:
+#ANNOTATION: if cache_timeout is None,
+        cache_timeout = settings.CACHE_MIDDLEWARE_SECONDS
+#ANNOTATION: substitute settings.CACHE_MIDDLEWARE_SECONDS for cache_timeout.
+    cache_key = _generate_cache_header_key(key_prefix, request)
+#ANNOTATION: call function _generate_cache_header_key with arguments key_prefix and request, substitute the result for cache_key.
+    if cache is None:
+#ANNOTATION: if cache is None,
+        cache = caches[settings.CACHE_MIDDLEWARE_ALIAS]
+#ANNOTATION: get value under the key settings.CACHE_MIDDLEWARE_ALIAS of caches dictionary, substitute with it the cache.
+    if response.has_header('Vary'):
+#ANNOTATION: if call to the function response.has_header with string 'Vary' as an argument returns True,
+        is_accept_language_redundant = settings.USE_I18N or settings.USE_L10N
+#ANNOTATION: if eather of settings.USE_I18N or settings.USE_L10N is True, set is_accept_language_redundant to True.
+        # If i18n or l10n are used, the generated cache key will be suffixed
+        # with the current locale. Adding the raw value of Accept-Language is
+        # redundant in that case and would result in storing the same content
+        # under multiple keys in the cache. See #18191 for details.
+        headerlist = []
+#ANNOTATION: headerlist is an empty list.
+        for header in cc_delim_re.split(response['Vary']):
+#ANNOTATION: for every header in list of strings compiled by splitting string cc_delim_re with value under the key 'Vary' of response dictionary as a delimiter. 
+            header = header.upper().replace('-', '_')
+#ANNOTATION: convert string header to uppercase and replace all occurrences of '-' with '_', substitute it for header.
+            if header == 'ACCEPT_LANGUAGE' and is_accept_language_redundant:
+#ANNOTATION: if header equals a string 'ACCEPT_LANGUAGE' and is_accept_language_redundant is boolean True,
+                continue
+#ANNOTATION: continue with the next iteration of the for loop. 
+            headerlist.append('HTTP_' + header)
+#ANNOTATION: append header to the string 'HTTP_', append the result to the list headerlist.
+        headerlist.sort()
+#ANNOTATION: call method sort on the headerlist.
+        cache.set(cache_key, headerlist, cache_timeout)
+#ANNOTATION: call the method cache.set, with cache_key, headerlist, cache_timeout as arguments.
+        return _generate_cache_key(request, request.method, headerlist, key_prefix)
+#ANNOTATION: call the function _generate_cache_key with request, request.method, headerlist, key_prefix as arguments, return the result.
+    else:
+#ANNOTATION: if not,
+        # if there is no Vary header, we still need a cache key
+        # for the request.build_absolute_uri() 
+        cache.set(cache_key, [], cache_timeout)
+#ANNOTATION: call the method cache.set with cache_key, an empty list and cache_timeout as arguments.
+        return _generate_cache_key(request, request.method, [], key_prefix)
+#ANNOTATION: call the function _generate_cache_key with request, request.method, an empty list and key_prefix as arguments, return the result.
+
+
+def _to_tuple(s):
+#ANNOTATION: define function _to_tuple with s as an argument.
+    t = s.split('=', 1)
+#ANNOTATION: split string s once, with '=' as delimiter, substitute the result for t.
+    if len(t) == 2:
+#ANNOTATION: if length of t equals to integer 2,
+        return t[0].lower(), t[1]
+#ANNOTATION: return tuple, consisting of first element of t converted to lowercase and second element of t.
+    return t[0].lower(), True
+#ANNOTATION: return tuple, consisting of first element of t converted to lowercase and True.

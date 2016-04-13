@@ -1,0 +1,287 @@
+"""
+A Python "serializer". Doesn't do much serializing per se -- just converts to
+and from basic Python data types (lists, dicts, strings, etc.). Useful as a basis for
+other serializers.
+"""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core.serializers import base
+#ANNOTATION: from django.core.serializers import base into default name space.
+from django.db import models, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import models and DEFAULT_DB_ALIAS into default name space.
+from django.utils.encoding import smart_text, is_protected_type
+#ANNOTATION: from django.utils.encoding import smart_text and is_protected_type into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+class Serializer(base.Serializer):
+#ANNOTATION: derive Serializer from the base.Serializer base class.  
+    """
+    Serializes a QuerySet to basic Python objects.
+    """
+#ANNOTATION: docstring
+
+    internal_use_only = True
+#ANNOTATION: internal_use_only is boolean True.
+
+    def start_serialization(self):
+#ANNOTATION: define the method start_serialization with an argument self.
+        self._current = None
+#ANNOTATION: self._current is None.
+        self.objects = []
+#ANNOTATION: self.objects is an empty list.
+
+    def end_serialization(self):
+#ANNOTATION: define the method end_serialization with an argument self.
+        pass
+#ANNOTATION: do nothing.
+
+    def start_object(self, obj):
+#ANNOTATION: define the method start_object with arguments self and obj.
+        self._current = {}
+#ANNOTATION: self.current is an empty dictionary.
+
+    def end_object(self, obj):
+#ANNOTATION: define the method end_object with arguments self and obj.
+        self.objects.append(self.get_dump_object(obj))
+#ANNOTATION: call the self.get_dum_object method with an argument obj, use the result as an argument for the self.objects.append method.
+        self._current = None
+#ANNOTATION: self._current is None.
+
+    def get_dump_object(self, obj):
+#ANNOTATION: define the method get_dump_object with arguments self and obj.
+        data = {
+            "model": smart_text(obj._meta),
+            "fields": self._current,
+        }
+#ANNOTATION: data is an dictionary with 2 initial entries: return value of the smart_text function with the argument obj._meta for 'model',
+#ANNOTATION: and self._current for 'fields'.
+        if not self.use_natural_primary_keys or not hasattr(obj, 'natural_key'):
+#ANNOTATION: if self.use_natural_primary_keys is false or obj doesnt have a 'natural_key' attribute.
+            data["pk"] = smart_text(obj._get_pk_val(), strings_only=True)
+#ANNOTATION: call the smart_text function with 2 arguments: return value of the obj._get_pk_val function and string_only set to boolean True,
+#ANNOTATION: substitute it for value under the 'pk' key of data dictionary.
+
+        return data
+#ANNOTATION: return data.
+
+    def handle_field(self, obj, field):
+#ANNOTATION: define handle_field method with self, obj and field arguments.
+        value = field._get_val_from_obj(obj)
+#ANNOTATION: call the method field._get_val_from_obj with obj argument, substitute the result for value.
+        # Protected types (i.e., primitives like None, numbers, dates,
+        # and Decimals) are passed through as is. All other values are
+        # converted to string first.
+        if is_protected_type(value):
+#ANNOTATION: call the function is_protected_type with an argument value, if it evaluates to true,
+            self._current[field.name] = value
+#ANNOTATION: substitute value for field.name key of self._current dictionary.
+        else:
+#ANNOTATION: if not,
+            self._current[field.name] = field.value_to_string(obj)
+#ANNOTATION: call the function field.value_to_string with an argument obj, substitute the result for value under the field.name key of self._current dictionary.
+
+    def handle_fk_field(self, obj, field):
+#ANNOTATION: define the method handle_fk_field with self, obj and field arguments.
+        if self.use_natural_foreign_keys and hasattr(field.rel.to, 'natural_key'):
+#ANNOTATION: if self.use_natural_foreign_keys is true and field.rel.to has an 'natural_key' attribute.
+            related = getattr(obj, field.name)
+#ANNOTATION: get field.name from the obj, substitute it for related.
+            if related:
+#ANNOTATION: if related is true,
+                value = related.natural_key()
+#ANNOTATION: call the method related.natural_key, substitute the result for value.
+            else:
+#ANNOTATION: if not,
+                value = None
+#ANNOTATION: value is None.
+        else:
+#ANNOTATION: if not,
+            value = getattr(obj, field.get_attname())
+#ANNOTATION: get return value of the field.get_attname function attribute of the obj object, substitute it for value.
+        self._current[field.name] = value
+#ANNOTATION: substitute value for value under the field.name key of the self._current dictionary.
+
+    def handle_m2m_field(self, obj, field):
+#ANNOTATION: define the method handle_m2m_field with self, obj and field arguments.
+        if field.rel.through._meta.auto_created:
+#ANNOTATION: if field.rel.through._meta.auto_created is true,
+            if self.use_natural_foreign_keys and hasattr(field.rel.to, 'natural_key'):
+#ANNOTATION: if self.use_natural_foreign_keys is true and field.rel.to has an 'natural_key' attribute,
+                m2m_value = lambda value: value.natural_key()
+#ANNOTATION: m2m_value is an lambda function with value as an argument, return value is the result of the method value.natural_key.
+            else:
+#ANNOTATION: if not,
+                m2m_value = lambda value: smart_text(value._get_pk_val(), strings_only=True)
+#ANNOTATION: m2m_value is a lambda function with an argument value, return value is the result of the function smart_text called with arguments:
+#ANNOTATION: return value of the value._get_pk_val method and strings_only set to boolean True.
+            self._current[field.name] = [m2m_value(related)
+                               for related in getattr(obj, field.name).iterator()]
+#ANNOTATION: call the function m2m_value with the argument related, for every related in itterator object generated from the attribute field.name, 
+#ANNOTATION: of the obj object, append the results in a list, substitute it for value under the field.name key of the self._current dictionary.
+
+    def getvalue(self):
+#ANNOTATION: define the method getvalue with an argument self.
+        return self.objects
+#ANNOTATION: return self.objects.
+
+
+def Deserializer(object_list, **options):
+#ANNOTATION: define the function Deserializer with arguments object_list and unpacked dictionary options.
+    """
+    Deserialize simple Python objects back into Django ORM instances.
+
+    It's expected that you pass the Python objects themselves (instead of a
+    stream or a string) to the constructor
+    """
+#ANNOTATION: docstring
+    db = options.pop('using', DEFAULT_DB_ALIAS)
+#ANNOTATION: remove the value under the 'using' key from the options dictionary, assign it to the db, if the entry doesnt exists, 
+#ANNOTATION: substitute DEFAULT_DB_ALIAS for db.  
+    ignore = options.pop('ignorenonexistent', False)
+#ANNOTATION: remove the value under the 'ignorenonexistent' key from the options dictionary, assign it to the ignore, if the entry doesnt exists, 
+#ANNOTATION: substitute boolean False for ignore.
+
+    for d in object_list:
+#ANNOTATION: for every d in object_list,
+        # Look up the model and starting build a dict of data for it.
+        try:
+#ANNOTATION: try,
+            Model = _get_model(d["model"])
+#ANNOTATION: call the function _get_model with an argument value under the 'model' key of the d dictionary, substitute the result for Model.
+        except base.DeserializationError:
+#ANNOTATION: if base.DeserializationError exception is caught,
+            if ignore:
+#ANNOTATION: if ignore is true,
+                continue
+#ANNOTATION: skip this loop iteration,
+            else:
+#ANNOTATION: if not,
+                raise
+#ANNOTATION: raise an exception.
+        data = {}
+#ANNOTATION: data is an empty dictionary,
+        if 'pk' in d:
+#ANNOTATION: if 'pk' is contained in d,
+            data[Model._meta.pk.attname] = Model._meta.pk.to_python(d.get("pk", None))
+#ANNOTATION: call the method Model._meta.pk.to_python with one argument: value under the 'pk' key of dictionary d, or None if previous doesnt exists, 
+#ANNOTATION: substitute the result for the value under the Model._meta.pk.attname key of data dictionary.
+        m2m_data = {}
+#ANNOTATION: m2m_data is an empty dictionary.
+        model_fields = Model._meta.get_all_field_names()
+#ANNOTATION: call the method Model._meta.get_all_field_names, substitute the result for model_fields.
+
+        # Handle each field
+        for (field_name, field_value) in six.iteritems(d["fields"]):
+#ANNOTATION: for every field_name and field_value in return value of the function six.iteritems called with value under the 'fields' key of dictionary d,
+
+            if ignore and field_name not in model_fields:
+#ANNOTATION: if ignore is true and field_name is not contained in model_fields,
+                # skip fields no longer on model
+                continue
+#ANNOTATION: skip this loop iteration,
+
+            if isinstance(field_value, str):
+#ANNOTATION: if field_value is an instance of the str type,
+                field_value = smart_text(field_value, options.get("encoding", settings.DEFAULT_CHARSET), strings_only=True)
+#ANNOTATION: call the smart_text function with 3 arguments: field_value, value under the 'encoding' key of the options dictionary or,
+#ANNOTATION: settings.DEFAULT_CHARSET if the key doesnt exists and strings_only set to boolean True. 
+
+            field = Model._meta.get_field(field_name)
+#ANNOTATION: call the Model._meta.get_field method with an argument field_name, substitute the result for field.
+
+            # Handle M2M relations
+            if field.rel and isinstance(field.rel, models.ManyToManyRel):
+#ANNOTATION: if field.rel is true, and field.rel is an instance of models.ManyToManyRel, 
+                if hasattr(field.rel.to._default_manager, 'get_by_natural_key'):
+#ANNOTATION: if field.rel.to._default_manager has an attribute 'get_by_natural_key', 
+                    def m2m_convert(value):
+#ANNOTATION: define the function m2m_convert with an argument value.
+                        if hasattr(value, '__iter__') and not isinstance(value, six.text_type):
+#ANNOTATION: if value has an attribute '__iter__' and value is not an instance of six.text_type,
+                            return field.rel.to._default_manager.db_manager(db).get_by_natural_key(*value).pk
+#ANNOTATION: call the method field.rel.to._default_manager.db_manager with an argument db on the return value call the method  get_by_natural_key,
+#ANNOTATION: with unpacked list value as an argument, return the pk field of the result.
+                        else:
+#ANNOTATION: if not,
+                            return smart_text(field.rel.to._meta.pk.to_python(value))
+#ANNOTATION: call the method field.rel.to._meta.pk.to_python with an argument value, use the result as an argument for the call to the,
+#ANNOTATION: smart_text function, return the result.
+                else:
+#ANNOTATION: if not,
+                    m2m_convert = lambda v: smart_text(field.rel.to._meta.pk.to_python(v))
+#ANNOTATION: m2m_convert is a lambda function with an argument v, return value is the result of the function smart_text called with an argument:
+#ANNOTATION: return value of the method field.rel.to._meta.pk.to_python called with an argument v.
+                m2m_data[field.name] = [m2m_convert(pk) for pk in field_value]
+#ANNOTATION: call the m2m_convert function with pk as argument, for every pk in field_value, substitute the value under the field.name key of the m2m_data dictionary.
+
+            # Handle FK fields
+            elif field.rel and isinstance(field.rel, models.ManyToOneRel):
+#ANNOTATION: otherwise if field.rel is true and field.rel is an instance of the models.ManyToOneRel object,
+                if field_value is not None:
+#ANNOTATION: if field_value is not None,
+                    if hasattr(field.rel.to._default_manager, 'get_by_natural_key'):
+#ANNOTATION: if field.rel.to._default_manager has an 'get_by_natural_key' attribute,
+                        if hasattr(field_value, '__iter__') and not isinstance(field_value, six.text_type):
+#ANNOTATION: if field_value has an attribute '__iter__' and is not an instance of six.text_type object,
+                            obj = field.rel.to._default_manager.db_manager(db).get_by_natural_key(*field_value)
+#ANNOTATION: call the method field.rel.to._default_manager.db_manager with db as argument, call the get_by_natural_key method on the result with,
+#ANNOTATION: unpacked list field_value as an argument, substitute the result for obj. 
+                            value = getattr(obj, field.rel.field_name)
+#ANNOTATION: get field.rel.field_name attribute of the object obj, substitute it for value.
+                            # If this is a natural foreign key to an object that
+                            # has a FK/O2O as the foreign key, use the FK value
+                            if field.rel.to._meta.pk.rel:
+#ANNOTATION: if field.rel.to._meta.pk.rel is true,
+                                value = value.pk
+#ANNOTATION: substitute value.pk for value.
+                        else:
+#ANNOTATION: if not,
+                            value = field.rel.to._meta.get_field(field.rel.field_name).to_python(field_value)
+#ANNOTATION: all the method field.rel.to._meta.get_field with field.rel.field_name as argument, call the to_python method on the result with,
+#ANNOTATION: unpacked list field_value as an argument, substitute the result for value. 
+                        data[field.attname] = value
+#ANNOTATION: substitute value for value under the field.attname key of the data dictionary. 
+                    else:
+#ANNOTATION: if not,
+                        data[field.attname] = field.rel.to._meta.get_field(field.rel.field_name).to_python(field_value)
+#ANNOTATION: all the method field.rel.to._meta.get_field with field.rel.field_name as argument, call the to_python method on the result with,
+#ANNOTATION: unpacked list field_value as an argument, substitute the result for value of under the field.attname key of the data dictionary. 
+                else:
+#ANNOTATION: if not,
+                    data[field.attname] = None
+#ANNOTATION: value under the field.attname key of the data dictionary is None.
+
+            # Handle all other fields
+            else:
+#ANNOTATION: if not,
+                data[field.name] = field.to_python(field_value)
+#ANNOTATION: call the field.to_python method with field_value, substitute the result for field.name key of the data dictionary.
+
+        obj = base.build_instance(Model, data, db)
+#ANNOTATION: call the method base.build_instance with arguments Model, data and db, substitute the result for obj.
+        yield base.DeserializedObject(obj, m2m_data)
+#ANNOTATION: call the function base.DeserializedObject with obj and m2m_data as arguments, yield the result as the generator return value. 
+
+
+def _get_model(model_identifier):
+#ANNOTATION: define the function _get_model with an argument model_identifier.
+    """
+    Helper to look up a model from an "app_label.model_name" string.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        return apps.get_model(model_identifier)
+#ANNOTATION: call the method apps.get_model with an argument model_identifier.
+    except (LookupError, TypeError):
+#ANNOTATION: if LookupError or TypeError exceptions are caught,
+        raise base.DeserializationError("Invalid model identifier: '%s'" % model_identifier)
+#ANNOTATION: raise an base.DeserializationError exception with an argument string "Invalid model identifier: '%s'", where '%s' is replaced with model_identifier.

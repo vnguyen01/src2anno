@@ -1,0 +1,57 @@
+"""Fixer for __unicode__ methods.
+
+Uses the django.utils.encoding.python_2_unicode_compatible decorator.
+"""
+#ANNOTATION: docstring
+
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from lib2to3 import fixer_base
+#ANNOTATION: from lib2to3 import fixer_base into default name space.
+from lib2to3.fixer_util import find_indentation, Name, syms, touch_import
+#ANNOTATION: from lib2to3.fixer_util import find_indentation, Name, syms and touch_import into default name space.
+from lib2to3.pgen2 import token
+#ANNOTATION: from lib2to3.pgen2 import token into default name space.
+from lib2to3.pytree import Leaf, Node
+#ANNOTATION: from lib2to3.pytree import Leaf and Node into default name space.
+
+
+class FixUnicode(fixer_base.BaseFix):
+#ANNOTATION: derive the class FixUnicode from the base class fixer_base.BaseFix.
+
+    BM_compatible = True
+#ANNOTATION: BM_compatible is boolean True.
+    PATTERN = """
+    classdef< 'class' any+ ':'
+              suite< any*
+                     funcdef< 'def' unifunc='__unicode__'
+                              parameters< '(' NAME ')' > any+ >
+                     any* > >
+    """
+#ANNOTATION: PATTERN is a string  "classdef< 'class' any+ ':'suite< any*funcdef< 'def' unifunc='__unicode__'parameters< '(' NAME ')' > any+ >any* > >".
+
+    def transform(self, node, results):
+#ANNOTATION: define the method transform with 3 arguments: self, node and results.
+        unifunc = results["unifunc"]
+#ANNOTATION: substitute value under the "unifunc" key of the results dictionary for unifunc.
+        strfunc = Name("__str__", prefix=unifunc.prefix)
+#ANNOTATION: strfunc is an instance of a class Name, created with 2 arguments: string "__str__" and prefix as unifunc.prefix.
+        unifunc.replace(strfunc)
+#ANNOTATION: call the method unifunc.replace with an argument strfunc.
+
+        klass = node.clone()
+#ANNOTATION: call the method node.clone, substitute the result for klass.
+        klass.prefix = '\n' + find_indentation(node)
+#ANNOTATION: call the method find_indentation with an argument node, append the result to newline, substitute the result for klass.prefix.
+        decorator = Node(syms.decorator, [Leaf(token.AT, "@"), Name('python_2_unicode_compatible')])
+#ANNOTATION: decorator is an instance of class Node, created with 2 arguments: instance of Leaf class created with 2 arguments: token.AT and "@',
+#ANNOTATION: and instance of Name class created with an argument string 'python_2_unicode_compatible'.
+        decorated = Node(syms.decorated, [decorator, klass], prefix=node.prefix)
+#ANNOTATION: decorated is an instance of class Node, created with 3 arguments: syms.decorated, list with 2 arguments: decorator and klass, 
+#ANNOTATION: and prefix as node.prefix.
+        node.replace(decorated)
+#ANNOTATION: call the method node.replace with an argument decorated.
+
+        touch_import('django.utils.encoding', 'python_2_unicode_compatible', decorated)
+#ANNOTATION: call the function touch_import with 3 arguments: string 'django.utils.encoding', string 'python_2_unicode_compatible' and decorated.

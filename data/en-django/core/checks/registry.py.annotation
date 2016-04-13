@@ -1,0 +1,116 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from itertools import chain
+#ANNOTATION: from itertools import chain into default name space.
+
+from django.utils.itercompat import is_iterable
+#ANNOTATION: from django.utils.itercompat import is_iterable into default name space.
+
+
+class Tags(object):
+#ANNOTATION: derive the class Tags with base class object.
+    """
+    Built-in tags for internal checks.
+    """
+#ANNOTATION: docstring
+    admin = 'admin'
+#ANNOTATION: admin is a string 'admin'
+    compatibility = 'compatibility'
+#ANNOTATION: compatibility is a string 'compatibility'.
+    models = 'models'
+#ANNOTATION: models is a string 'models'
+    signals = 'signals'
+#ANNOTATION: signal is a string 'signals'
+
+
+class CheckRegistry(object):
+#ANNOTATION: derive the class CheckRegistry with object as base class.
+
+    def __init__(self):
+#ANNOTATION: define initialization method __init__ with argument self.
+        self.registered_checks = []
+#ANNOTATION: self.registered_checks is an empty list.
+
+    def register(self, *tags):
+#ANNOTATION: define the method register with self ans unpacked list tags as arguments.
+        """
+        Decorator. Register given function `f` labeled with given `tags`. The
+        function should receive **kwargs and return list of Errors and
+        Warnings.
+
+        Example::
+
+            registry = CheckRegistry()
+            @registry.register('mytag', 'anothertag')
+            def my_check(apps, **kwargs):
+                # ... perform checks and collect `errors` ...
+                return errors
+
+        """
+#ANNOTATION: docstring
+
+        def inner(check):
+#ANNOTATION: define the method inner with argument check.
+            check.tags = tags
+#ANNOTATION: replace tags for check.tags.
+            if check not in self.registered_checks:
+#ANNOTATION: if check is not contained in self.registered_checks. 
+                self.registered_checks.append(check)
+#ANNOTATION: call the method self.registered_checks.append with argument check.
+            return check
+#ANNOTATION: return check.
+
+        return inner
+#ANNOTATION: return inner.
+
+    def run_checks(self, app_configs=None, tags=None):
+#ANNOTATION: define the method run_checks with self class instance, app_configs defaulting to None, tags defaulting to None as argument.
+        """ Run all registered checks and return list of Errors and Warnings.
+        """
+#ANNOTATION: docstring
+        errors = []
+#ANNOTATION: errors is an empty list.
+        if tags is not None:
+#ANNOTATION: if tags is not None.
+            checks = [check for check in self.registered_checks
+                      if hasattr(check, 'tags') and set(check.tags) & set(tags)]
+#ANNOTATION: append check to checks list, for every check in self.register_checks, if check has an attribute 'tags' and check.tags and tags set intersection is a non empty set.
+        else:
+#ANNOTATION: if not.
+            checks = self.registered_checks
+#ANNOTATION: substitute self.registered_checks for checks. 
+
+        for check in checks:
+#ANNOTATION: for every check in checks,
+            new_errors = check(app_configs=app_configs)
+#ANNOTATION: call the check function with argument app_config set to app_config, substitute the result for new_errors.
+            assert is_iterable(new_errors), (
+                "The function %r did not return a list. All functions registered "
+                "with the checks registry must return a list." % check)
+#ANNOTATION: if new_errors is not an iterable object raise an error with error message "The function %r did not return a list. All functions registered with the checks registry must return a list.", with '%s' replaced by value of check.
+            errors.extend(new_errors)
+#ANNOTATION: call the method errors.extend with argument new_errors.
+        return errors
+#ANNOTATION: return errors.
+
+    def tag_exists(self, tag):
+#ANNOTATION: define the method tag_exists with self class instance and tag as arguments.
+        return tag in self.tags_available()
+#ANNOTATION: return boolean True if tag is contained in self.tags_available method return value, return False otherwise.
+
+    def tags_available(self):
+#ANNOTATION: define the method tags_available with argument self.
+        return set(chain(*[check.tags for check in self.registered_checks if hasattr(check, 'tags')]))
+#ANNOTATION: append check.tags into a list for every check in self.registered_checks if check has 'tags' attribute, put the elements into a set and return it.
+
+
+registry = CheckRegistry()
+#ANNOTATION: call the function CheckRegistry, substitute the result for registry.
+register = registry.register
+#ANNOTATION: substitute registry.register for register.
+run_checks = registry.run_checks
+#ANNOTATION: substitute registry.run_checks for run_checks.
+tag_exists = registry.tag_exists
+#ANNOTATION: substitute registry.tag_exists for tag_exists.

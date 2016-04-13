@@ -1,0 +1,77 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from itertools import chain
+#ANNOTATION: from itertools import chain into default name space.
+import types
+#ANNOTATION: import module types.
+
+from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+
+from . import Error, Tags, register
+#ANNOTATION: from . import Error, Tags and register into default name space.
+
+
+@register(Tags.models)
+#ANNOTATION: decorator register with Tags.models as an argument.
+def check_all_models(app_configs=None, **kwargs):
+#ANNOTATION: define the function check_all_models with app_configs defaulting to None and unpacked dictionary kwargs as arguments. 
+    errors = [model.check(**kwargs)
+        for model in apps.get_models()
+        if app_configs is None or model._meta.app_config in app_configs]
+#ANNOTATION: call the model.check method with unpacked dictionary kwargs for every model in return value of function apps.get_models,
+#ANNOTATION: only if app_configs is None ot model._meta.app_config is contained in app_configs, error is a list containing all the previous elements. 
+    return list(chain(*errors))
+#ANNOTATION: chain all errors elements into a list, return it.
+
+
+@register(Tags.models, Tags.signals)
+#ANNOTATION: decorator register with Tags.models and Tags.signals as arguments.
+def check_model_signals(app_configs=None, **kwargs):
+#ANNOTATION: define the function check_model_signals with app_config defaulting to None and unpacked dictionary kwargs as arguments,
+    """Ensure lazily referenced model signals senders are installed."""
+#ANNOTATION: docstring
+    from django.db import models
+#ANNOTATION: from django.db import models into default name space.
+    errors = []
+#ANNOTATION: errors is an empty list. 
+
+    for name in dir(models.signals):
+#ANNOTATION: for name in attributes of models_signals object,
+        obj = getattr(models.signals, name)
+#ANNOTATION: get models.signals name attribute, store it in obj.
+        if isinstance(obj, models.signals.ModelSignal):
+#ANNOTATION: if obj is instance of models.signals.ModelSignal class, 
+            for reference, receivers in obj.unresolved_references.items():
+#ANNOTATION: for every reference and receivers in return value of the call of obj.unresolved_references.items method,  
+                for receiver, _, _ in receivers:
+#ANNOTATION: for every receiver, _ and _ in receivers,
+                    # The receiver is either a function or an instance of class
+                    # defining a `__call__` method.
+                    if isinstance(receiver, types.FunctionType):
+#ANNOTATION: if receiver is an instance of types.FunctionType type,
+                        description = "The '%s' function" % receiver.__name__
+#ANNOTATION: description is a string "The '%s' function" replaced by value of receiver.__name__.
+                    else:
+#ANNOTATION: if not,
+                        description = "An instance of the '%s' class" % receiver.__class__.__name__
+#ANNOTATION: description is a string "An instance of the '%s' class" with '%s' replaced by value of receiver.__class__.__name__. 
+                    errors.append(
+                        Error(
+                            "%s was connected to the '%s' signal "
+                            "with a lazy reference to the '%s' sender, "
+                            "which has not been installed." % (
+                                description, name, '.'.join(reference)
+                            ),
+                            obj=receiver.__module__,
+                            hint=None,
+                            id='signals.E001'
+                        )
+                    )
+#ANNOTATION: call the Error function with 4 arguments, string "%s was connected to the '%s' signal with a lazy reference to the '%s' sender, 
+#ANNOTATION: which has not been installed." with all the '%s' replaced by values of description, name and reference joined into a string delimited by '.', respectively, 
+#ANNOTATION: obj set to receiver.__module__, hint set to None and id set to string 'signals.E001', append the result to errors.
+    return errors
+#ANNOTATION: return errors.

@@ -1,0 +1,1561 @@
+"""Default variable filters."""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import re
+#ANNOTATION: import module re.
+import random as random_module
+#ANNOTATION: import module random as random_module.
+from decimal import Decimal, InvalidOperation, Context, ROUND_HALF_UP
+#ANNOTATION: from decimal import Decimal, InvalidOperation, Context and ROUND_HALF_UP into default name space.
+from functools import wraps
+#ANNOTATION: from functools import wraps into default name space.
+from pprint import pformat
+#ANNOTATION: from pprint import pformat into default name space.
+
+from django.template.base import Variable, Library, VariableDoesNotExist
+#ANNOTATION: from django.template.base import Variable, Library and VariableDoesNotExist into default name space.
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.utils import formats
+#ANNOTATION: from django.utils import formats into default name space.
+from django.utils.dateformat import format, time_format
+#ANNOTATION: from django.utils.dateformat import format and time_format into default name space.
+from django.utils.encoding import force_text, iri_to_uri
+#ANNOTATION: from django.utils.encoding import force_text and iri_to_uri into default name space.
+from django.utils.html import (conditional_escape, escapejs,
+    escape, urlize as _urlize, linebreaks, strip_tags, avoid_wrapping,
+    remove_tags)
+#ANNOTATION: from django.utils.html import conditional_escape, escapejs, escape, urlize as _urlize, linebreaks, strip_tags, avoid_wrapping,
+#ANNOTATION: and remove_tags.
+from django.utils.http import urlquote
+#ANNOTATION: from django.utils.http import urlquote into default name space.
+from django.utils.text import Truncator, wrap, phone2numeric
+#ANNOTATION: from django.utils.text import Truncator, wrap and phone2numeric into default name space.
+from django.utils.safestring import mark_safe, SafeData, mark_for_escaping
+#ANNOTATION: from django.utils.safestring import mark_safe, SafeData and mark_for_escaping into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.timesince import timesince, timeuntil
+#ANNOTATION: from django.utils.timesince import timesince and timeuntil into default name space.
+from django.utils.translation import ugettext, ungettext
+#ANNOTATION: from django.utils.translation import ugettext and ungettext into default name space.
+from django.utils.text import normalize_newlines, slugify as _slugify
+#ANNOTATION: from django.utils.text import normalize_newlines and slugify as _slugify into default name space.
+
+register = Library()
+#ANNOTATION: register is an instance of Library class.
+
+
+#######################
+# STRING DECORATOR    #
+#######################
+
+def stringfilter(func):
+#ANNOTATION: define the method stringfilter with an argument func.
+    """
+    Decorator for filters which should only receive unicode objects. The object
+    passed as the first positional argument will be converted to a unicode
+    object.
+    """
+#ANNOTATION: docstring
+    def _dec(*args, **kwargs):
+#ANNOTATION: define the method _dec with 2 arguments: unpacked list args and unpacked dictionary kwargs.
+        if args:
+#ANNOTATION: if args in true,
+            args = list(args)
+#ANNOTATION: convert args into a list, substitute it for args.
+            args[0] = force_text(args[0])
+#ANNOTATION: call the function force_text with an argument first element of args, substitute the result for first element of args.
+            if (isinstance(args[0], SafeData) and
+                    getattr(_dec._decorated_function, 'is_safe', False)):
+#ANNOTATION: if first element of args is an instance of SafeData, and 'is_safe' attribute of dec._decorated_function object is true,
+                return mark_safe(func(*args, **kwargs))
+#ANNOTATION: call the function func with 2 arguments: unpacked list args and unpacked dictionary kwargs, 
+#ANNOTATION: use the result as an argument for the call to the mark_safe function, return the result.
+        return func(*args, **kwargs)
+#ANNOTATION: call the function func with 2 arguments: unpacked list args and unpacked dictionary kwargs, return the result.
+
+    # Include a reference to the real function (used to check original
+    # arguments by the template parser, and to bear the 'is_safe' attribute
+    # when multiple decorators are applied).
+    _dec._decorated_function = getattr(func, '_decorated_function', func)
+#ANNOTATION: get '_decorated_function' attribute from the func object, substitute it for _dec._decorated_function, if it doesnt exist, 
+#ANNOTATION: substitute func for _dec._decorated_function.
+
+    return wraps(func)(_dec)
+#ANNOTATION: call the function wraps with an argument func, call the result with an argument _dec, return the result.
+
+
+###################
+# STRINGS         #
+###################
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def addslashes(value):
+#ANNOTATION: define the function addslashes with an argument value.
+    """
+    Adds slashes before quotes. Useful for escaping strings in CSV, for
+    example. Less useful for escaping JavaScript; use the ``escapejs``
+    filter instead.
+    """
+#ANNOTATION: docstring
+    return value.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'")
+#ANNOTATION: replace all occurrences of '\\' with '\\\\' in value, replace all occurrences of '"' with '\\"' in the previous result,
+#ANNOTATION: replace all occurrences of "'" with "\\'" in the previous result, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def capfirst(value):
+#ANNOTATION: define the function capfirst with an argument value.
+    """Capitalizes the first character of the value."""
+#ANNOTATION: docstring
+    return value and value[0].upper() + value[1:]
+#ANNOTATION: if value is false, return it, if it is true convert first element of value to uppercase letter, return the value.
+
+
+@register.filter("escapejs")
+#ANNOTATION: decorator function register.filter with an argument string "escapejs".
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def escapejs_filter(value):
+#ANNOTATION: define the function escapejs_filter with an argument value.
+    """Hex encodes characters for use in JavaScript strings."""
+#ANNOTATION: docstring
+    return escapejs(value)
+#ANNOTATION: call the function escapejs with an argument value, return the result. 
+
+
+# Values for testing floatformat input against infinity and NaN representations,
+# which differ across platforms and Python versions.  Some (i.e. old Windows
+# ones) are not recognized by Decimal but we want to return them unchanged vs.
+# returning an empty string as we do for completely invalid input.  Note these
+# need to be built up from values that are not inf/nan, since inf/nan values do
+# not reload properly from .pyc files on Windows prior to some level of Python 2.5
+# (see Python Issue757815 and Issue1080440).
+pos_inf = 1e200 * 1e200
+#ANNOTATION: multiply 10 to the power of 200, with itself, substitute the result for pos_inf.
+neg_inf = -1e200 * 1e200
+#ANNOTATION: multiply 10 to the power of 200, with 10 to the power of 200, negative, substitute the result for neg_inf.
+nan = (1e200 * 1e200) // (1e200 * 1e200)
+#ANNOTATION: divide 10 to the power of 400 by 10 to the power of 400, substitute the result for nan.
+special_floats = [str(pos_inf), str(neg_inf), str(nan)]
+#ANNOTATION: special_floats is an list with 3 elements, pos_inf, neg_inf and nan, all converted to strings.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+def floatformat(text, arg=-1):
+#ANNOTATION: define the function floatformat with 2 arguments text and arg set to integer -1.
+    """
+    Displays a float to a specified number of decimal places.
+
+    If called without an argument, it displays the floating point number with
+    one decimal place -- but only if there's a decimal place to be displayed:
+
+    * num1 = 34.23234
+    * num2 = 34.00000
+    * num3 = 34.26000
+    * {{ num1|floatformat }} displays "34.2"
+    * {{ num2|floatformat }} displays "34"
+    * {{ num3|floatformat }} displays "34.3"
+
+    If arg is positive, it will always display exactly arg number of decimal
+    places:
+
+    * {{ num1|floatformat:3 }} displays "34.232"
+    * {{ num2|floatformat:3 }} displays "34.000"
+    * {{ num3|floatformat:3 }} displays "34.260"
+
+    If arg is negative, it will display arg number of decimal places -- but
+    only if there are places to be displayed:
+
+    * {{ num1|floatformat:"-3" }} displays "34.232"
+    * {{ num2|floatformat:"-3" }} displays "34"
+    * {{ num3|floatformat:"-3" }} displays "34.260"
+
+    If the input float is infinity or NaN, the (platform-dependent) string
+    representation of that value will be displayed.
+    """
+#ANNOTATION: docstring
+
+    try:
+#ANNOTATION: try,
+        input_val = force_text(text)
+#ANNOTATION: call the function force_text with an argument text, substitute the result for input_val.
+        d = Decimal(input_val)
+#ANNOTATION: d is an instance of Decimal class created with an argument input_val.
+    except UnicodeEncodeError:
+#ANNOTATION: if UnicodeEncodeError exception is caught,
+        return ''
+#ANNOTATION: return an empty string.
+    except InvalidOperation:
+#ANNOTATION: if InvalidOperation exception is caught,
+        if input_val in special_floats:
+#ANNOTATION: if every input_val in special_floats,
+            return input_val
+#ANNOTATION: return input_val.
+        try:
+#ANNOTATION: try,
+            d = Decimal(force_text(float(text)))
+#ANNOTATION: d is an instance of class Decimal, created with result of the function force_text, 
+#ANNOTATION: called with an argument text converted into a floating point number.
+        except (ValueError, InvalidOperation, TypeError, UnicodeEncodeError):
+#ANNOTATION: if ValueError, InvalidOperation, TypeError or UnicodeEncodeError exceptions are caught,
+            return ''
+#ANNOTATION: return an empty string.
+    try:
+#ANNOTATION: try,
+        p = int(arg)
+#ANNOTATION: convert arg to an integer, substitute it for p.
+    except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+        return input_val
+#ANNOTATION: return input_val.
+
+    try:
+#ANNOTATION: try,
+        m = int(d) - d
+#ANNOTATION: convert d into a integer, subtract d from it, substitute the result for m.
+    except (ValueError, OverflowError, InvalidOperation):
+#ANNOTATION: if ValueError, OverflowError or InvalidOperation exceptions are caught,
+        return input_val
+#ANNOTATION: return input_val.
+
+    if not m and p < 0:
+#ANNOTATION: if m is false and p is lesser than integer 0,
+        return mark_safe(formats.number_format('%d' % (int(d)), 0))
+#ANNOTATION: call the method formats.number_format with 2 arguments, d converted to a integer and then to string, and integer 0,
+#ANNOTATION: use the result as an argument for the call to the function mark_safe, return the result. 
+
+    if p == 0:
+#ANNOTATION: if p equals integer 0,
+        exp = Decimal(1)
+#ANNOTATION: exp is an instance of Decimal, created with an argument integer 1.
+    else:
+#ANNOTATION: if not,
+        exp = Decimal('1.0') / (Decimal(10) ** abs(p))
+#ANNOTATION: instantiate class Decimal with string '1.0' as argument, divide it by product of instance of Decimal class created with integer 10, 
+#ANNOTATION: and absolute value of p, substitute the result for exp.
+    try:
+#ANNOTATION: try,
+        # Set the precision high enough to avoid an exception, see #15789.
+        tupl = d.as_tuple()
+#ANNOTATION: call the method d.as_tuple, substitute the result for tupl.
+        units = len(tupl[1]) - tupl[2]
+#ANNOTATION: subtract third element of tupl from length of second element of tupl, substitute the result for units.
+        prec = abs(p) + units + 1
+#ANNOTATION: sum absolute p with units an integer 1, substitute the result for prec.
+
+        # Avoid conversion to scientific notation by accessing `sign`, `digits`
+        # and `exponent` from `Decimal.as_tuple()` directly.
+        sign, digits, exponent = d.quantize(exp, ROUND_HALF_UP,
+            Context(prec=prec)).as_tuple()
+#ANNOTATION: call the method d.quantize with 3 arguments: exp, ROUND_HALF_UP and instance of Context class created with prec as prec,
+#ANNOTATION: call the method as_tuple on the result, substitute the result for sign, digits and exponent, respectively.
+        digits = [six.text_type(digit) for digit in reversed(digits)]
+#ANNOTATION: append result of method six.text_type called with an argument digit to an list, for every digit in reversed order of digits,
+#ANNOTATION: substitute the resulting list for digits.
+        while len(digits) <= abs(exponent):
+#ANNOTATION: while length of digits is smaller than or equal to absolute value of exponent,
+            digits.append('0')
+#ANNOTATION: append '0' to digits.
+        digits.insert(-exponent, '.')
+#ANNOTATION: insert '.' to digits at negative exponent index.
+        if sign:
+#ANNOTATION: if sign is true,
+            digits.append('-')
+#ANNOTATION: append '-' to digits.
+        number = ''.join(reversed(digits))
+#ANNOTATION: reverse element order of dicts, join them in a string, substitute the result for number.
+        return mark_safe(formats.number_format(number, abs(p)))
+#ANNOTATION: call the method formats.number_format with 2 arguments: number and absolute value of p, 
+#ANNOTATION: use the result as an argument for the call to the mark_safe function, return the result.
+    except InvalidOperation:
+#ANNOTATION: if InvalidOperation exception is caught,
+        return input_val
+#ANNOTATION: return input_val.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def iriencode(value):
+#ANNOTATION: define the function iriencode with an argument value.
+    """Escapes an IRI value for use in a URL."""
+#ANNOTATION: docstring
+    return force_text(iri_to_uri(value))
+#ANNOTATION: call the function iri_to_uri with an argument value, use the result as an argument for the call to the force_text function,
+#ANNOTATION: return the result.
+
+
+@register.filter(is_safe=True, needs_autoescape=True)
+#ANNOTATION: decorator function register.filter with 2 arguments is_safe set to boolean True and needs_autoescape set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def linenumbers(value, autoescape=None):
+#ANNOTATION: define the function linenumbers with 2 arguments value and autoescape set to None.
+    """Displays text with line numbers."""
+#ANNOTATION: docstring
+    lines = value.split('\n')
+#ANNOTATION: split value by newline characters, substitute the result for lines.
+    # Find the maximum width of the line count, for use with zero padding
+    # string format command
+    width = six.text_type(len(six.text_type(len(lines))))
+#ANNOTATION: call the function six.text_type with length of lines as an argument, 
+#ANNOTATION: use length of result as an argument for the call to the function six.text_type, substitute the result for width.
+    if not autoescape or isinstance(value, SafeData):
+#ANNOTATION: if autoescape is false, if value is an instance of SafeData,
+        for i, line in enumerate(lines):
+#ANNOTATION: for every i and line in enumerated iterable lines,
+            lines[i] = ("%0" + width + "d. %s") % (i + 1, line)
+#ANNOTATION: concatenate string '%0', width and string "d. %s", format the previous string with i incremented by 1 and line, 
+#ANNOTATION: substitute the result for i-th element of lines.
+    else:
+#ANNOTATION: if not,
+        for i, line in enumerate(lines):
+#ANNOTATION: for every i and line in enumerated iterable lines,
+            lines[i] = ("%0" + width + "d. %s") % (i + 1, escape(line))
+#ANNOTATION: concatenate string '%0', width and string "d. %s", format the previous string with i incremented by 1, 
+#ANNOTATION: and result of the function escape called with an argument line, substitute the result for i-th element of lines.
+    return mark_safe('\n'.join(lines))
+#ANNOTATION: call the method mark_safe with lines joined into a string, separated by newlines as argument, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def lower(value):
+#ANNOTATION: define the function lower with an argument value.
+    """Converts a string into all lowercase."""
+#ANNOTATION: docstring
+    return value.lower()
+#ANNOTATION: convert value to lowercase and return the result.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def make_list(value):
+#ANNOTATION: define the function make_list with an argument value.
+    """
+    Returns the value turned into a list.
+
+    For an integer, it's a list of digits.
+    For a string, it's a list of characters.
+    """
+#ANNOTATION: docstring
+    return list(value)
+#ANNOTATION: return value converted into a list.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def slugify(value):
+#ANNOTATION: define the function slugify with an argument value.
+    """
+    Converts to lowercase, removes non-word characters (alphanumerics and
+    underscores) and converts spaces to hyphens. Also strips leading and
+    trailing whitespace.
+    """
+#ANNOTATION: docstring
+    return _slugify(value)
+#ANNOTATION: call the function _slugify with an argument value, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+def stringformat(value, arg):
+#ANNOTATION: define the function stringformat with 2 arguments value and arg.
+    """
+    Formats the variable according to the arg, a string formatting specifier.
+
+    This specifier uses Python string formating syntax, with the exception that
+    the leading "%" is dropped.
+
+    See http://docs.python.org/lib/typesseq-strings.html for documentation
+    of Python string formatting
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        return ("%" + six.text_type(arg)) % value
+#ANNOTATION: call the function six.text_type with an argument arg, append the result to '%', format the previous with value, return the result.
+    except (ValueError, TypeError):
+#ANNOTATION: if TypeError or ValueError exceptions are caught,
+        return ""
+#ANNOTATION: return an empty string.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def title(value):
+#ANNOTATION: define the function title with an argument value.
+    """Converts a string into titlecase."""
+#ANNOTATION: docstring
+    t = re.sub("([a-z])'([A-Z])", lambda m: m.group(0).lower(), value.title())
+#ANNOTATION: call the function re.sub with 3 arguments: string "([a-z])'([A-Z])", lambda function with an argument m and return value,
+#ANNOTATION: result of the m.group method called with an argument integer 0 converted into lowercase and result of the method value.title, 
+#ANNOTATION: substitute the result for t.
+    return re.sub("\d([A-Z])", lambda m: m.group(0).lower(), t)
+#ANNOTATION: call the function re.sub with 3 arguments: string "\d([A-Z])", lambda function with an argument m and return value,
+#ANNOTATION: result of the m.group method called with an argument integer 0 converted into lowercase and t, return the result. 
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def truncatechars(value, arg):
+#ANNOTATION: define the function truncatechars with 2 arguments value and arg.
+    """
+    Truncates a string after a certain number of characters.
+
+    Argument: Number of characters to truncate after.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        length = int(arg)
+#ANNOTATION: substitute arg converted into a integer for length.
+    except ValueError:  # Invalid literal for int().
+#ANNOTATION: if ValueError exception is caught,
+        return value  # Fail silently.
+#ANNOTATION: return value.
+    return Truncator(value).chars(length)
+#ANNOTATION: instantiate class Truncator, with an argument value, call the method chars on the result with an argument length, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def truncatechars_html(value, arg):
+#ANNOTATION: define the function truncatechars_html with 2 arguments value and arg.
+    """
+    Truncates HTML after a certain number of chars.
+
+    Argument: Number of chars to truncate after.
+
+    Newlines in the HTML are preserved.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        length = int(arg)
+#ANNOTATION: substitute arg converted into an integer for length.
+    except ValueError:  # invalid literal for int()
+#ANNOTATION: if ValueError exception is caught,
+        return value  # Fail silently.
+#ANNOTATION: return value.
+    return Truncator(value).chars(length, html=True)
+#ANNOTATION: instantiate class Truncator, with an argument value, call the method chars on the result with 2 arguments length,
+#ANNOTATION: and html set to boolean True, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def truncatewords(value, arg):
+#ANNOTATION: define the function truncatewords with 2 arguments value and arg.
+    """
+    Truncates a string after a certain number of words.
+
+    Argument: Number of words to truncate after.
+
+    Newlines within the string are removed.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        length = int(arg)
+#ANNOTATION: substitute arg converted into an integer for length.
+    except ValueError:  # Invalid literal for int().
+#ANNOTATION: if ValueError exception is caught,
+        return value  # Fail silently.
+#ANNOTATION: return value.
+    return Truncator(value).words(length, truncate=' ...')
+#ANNOTATION: instantiate class Truncator, with an argument value, call the method words on the result with 2 arguments length,
+#ANNOTATION: and truncate set to string ' ...', return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def truncatewords_html(value, arg):
+#ANNOTATION: define the function truncatewords_html with 2 arguments value and arg.
+    """
+    Truncates HTML after a certain number of words.
+
+    Argument: Number of words to truncate after.
+
+    Newlines in the HTML are preserved.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        length = int(arg)
+#ANNOTATION: substitute arg converted into an integer for length.
+    except ValueError:  # invalid literal for int()
+#ANNOTATION: if ValueError exception is caught,
+        return value  # Fail silently.
+#ANNOTATION: return value.
+    return Truncator(value).words(length, html=True, truncate=' ...')
+#ANNOTATION: instantiate class Truncator, with an argument value, call the method words on the result with 3 arguments length,
+#ANNOTATION: html set to boolean True and truncate set to string ' ...', return the result.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def upper(value):
+#ANNOTATION: define the function upper with an argument value.
+    """Converts a string into all uppercase."""
+#ANNOTATION: docstring
+    return value.upper()
+#ANNOTATION: convert value to uppercase, return the result.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def urlencode(value, safe=None):
+#ANNOTATION: define the function urlencode with 2 arguments value and safe set to None.
+    """
+    Escapes a value for use in a URL.
+
+    Takes an optional ``safe`` parameter used to determine the characters which
+    should not be escaped by Django's ``urlquote`` method. If not provided, the
+    default safe characters will be used (but an empty string can be provided
+    when *all* characters should be escaped).
+    """
+#ANNOTATION: docstring
+    kwargs = {}
+#ANNOTATION: kwargs is an empty dictionary.
+    if safe is not None:
+#ANNOTATION: if safe is not None,
+        kwargs['safe'] = safe
+#ANNOTATION: substitute safe for value under the 'safe' key of kwargs dictionary.
+    return urlquote(value, **kwargs)
+#ANNOTATION: call the function urlquote with 2 arguments value and unpacked dictionary kwargs, return the result.
+
+
+@register.filter(is_safe=True, needs_autoescape=True)
+#ANNOTATION: decorator function register.filter with 2 arguments is_safe set to boolean True and needs_autoescape set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def urlize(value, autoescape=None):
+#ANNOTATION: define the function urlize with 2 arguments value and autoescape set to None.
+    """Converts URLs in plain text into clickable links."""
+#ANNOTATION: docstring
+    return mark_safe(_urlize(value, nofollow=True, autoescape=autoescape))
+#ANNOTATION: call the function _urlize with 3 arguments: value, nofollow set to boolean True, autoescape set to autoescape, 
+#ANNOTATION: use the result as an argument for the call to the function mark_safe, return the result.
+
+
+@register.filter(is_safe=True, needs_autoescape=True)
+#ANNOTATION: decorator function register.filter with 2 arguments is_safe set to boolean True and needs_autoescape set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def urlizetrunc(value, limit, autoescape=None):
+#ANNOTATION: define the function urlizetrunc with 3 arguments value, limit and autoescape set to None.
+    """
+    Converts URLs into clickable links, truncating URLs to the given character
+    limit, and adding 'rel=nofollow' attribute to discourage spamming.
+
+    Argument: Length to truncate URLs to.
+    """
+#ANNOTATION: docstring
+    return mark_safe(_urlize(value, trim_url_limit=int(limit), nofollow=True,
+                            autoescape=autoescape))
+#ANNOTATION: call the function _urlize with 4 arguments: value, trim_url_limit as limit converted into an integer, nofollow as boolean True,  
+#ANNOTATION: and autoescape as autoescape, use the result as an argument for the call to the function mark_safe, return the result.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def wordcount(value):
+#ANNOTATION: define the function wordcount with an argument value.
+    """Returns the number of words."""
+#ANNOTATION: docstring
+    return len(value.split())
+#ANNOTATION: split value into words, return the length of the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def wordwrap(value, arg):
+#ANNOTATION: define the function wordwrap with 2 arguments value and arg.
+    """
+    Wraps words at specified line length.
+
+    Argument: number of characters to wrap the text at.
+    """
+#ANNOTATION: docstring
+    return wrap(value, int(arg))
+#ANNOTATION: call the method wrap with 2 arguments, value and arg converted into a integer, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def ljust(value, arg):
+#ANNOTATION: define the function ljust with 2 arguments value and arg.
+    """
+    Left-aligns the value in a field of a given width.
+
+    Argument: field size.
+    """
+#ANNOTATION: docstring
+    return value.ljust(int(arg))
+#ANNOTATION: call the method value.ljust with an argument, arg converted into a integer, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def rjust(value, arg):
+#ANNOTATION: define the function rjust with 2 arguments value and arg.
+    """
+    Right-aligns the value in a field of a given width.
+
+    Argument: field size.
+    """
+#ANNOTATION: docstring
+    return value.rjust(int(arg))
+#ANNOTATION: call the method value.rjust with an argument, arg converted into a integer, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def center(value, arg):
+#ANNOTATION: define the function center with 2 arguments value and arg.
+    """Centers the value in a field of a given width."""
+#ANNOTATION: docstring
+    return value.center(int(arg))
+#ANNOTATION: call the method value.center with an argument, arg converted into a integer, return the result.
+
+
+@register.filter
+#ANNOTATION: decorator register.filter.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def cut(value, arg):
+#ANNOTATION: define the function cut with 2 arguments value and arg.
+    """
+    Removes all values of arg from the given string.
+    """
+#ANNOTATION: docstring
+    safe = isinstance(value, SafeData)
+#ANNOTATION: if value is an instance of SafeData, safe is boolean True, otherwise it is boolean False.
+    value = value.replace(arg, '')
+#ANNOTATION: replace every occurrence of arg is value for an empty string, substitute the result for value.
+    if safe and arg != ';':
+#ANNOTATION: if safe is true and arg is not equal to string ';',
+        return mark_safe(value)
+#ANNOTATION: call the function mark_safe with an argument value, return the result.
+    return value
+#ANNOTATION: return value.
+
+
+###################
+# HTML STRINGS    #
+###################
+
+@register.filter("escape", is_safe=True)
+#ANNOTATION: decorator function register.filter with 2 arguments string "escape" and is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def escape_filter(value):
+#ANNOTATION: define the function escape_filter with an argument value.
+    """
+    Marks the value as a string that should not be auto-escaped.
+    """
+#ANNOTATION: docstring
+    return mark_for_escaping(value)
+#ANNOTATION: call the function mark_for_escaping with an argument value, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def force_escape(value):
+#ANNOTATION: define the function force_escape with an argument value.
+    """
+    Escapes a string's HTML. This returns a new string containing the escaped
+    characters (as opposed to "escape", which marks the content for later
+    possible escaping).
+    """
+#ANNOTATION: docstring
+    return escape(value)
+#ANNOTATION: call the function escape with an argument value, return the result.
+
+
+@register.filter("linebreaks", is_safe=True, needs_autoescape=True)
+#ANNOTATION: decorator function register.filter with 3 arguments string "slice", is_safe set to boolean True and needs_autoescape set to True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def linebreaks_filter(value, autoescape=None):
+#ANNOTATION: define the function linebreaks_filter with 2 arguments value and autoescape set to None.
+    """
+    Replaces line breaks in plain text with appropriate HTML; a single
+    newline becomes an HTML line break (``<br />``) and a new line
+    followed by a blank line becomes a paragraph break (``</p>``).
+    """
+#ANNOTATION: docstring
+    autoescape = autoescape and not isinstance(value, SafeData)
+#ANNOTATION: if autoescape is true and value is not an instance of SafeData, autoescape is boolean True, otherwise it is boolean False.
+    return mark_safe(linebreaks(value, autoescape))
+#ANNOTATION: call the function linebreaks with 2 arguments value and autoescape, use the result as an argument for the call to the mark_safe,
+#ANNOTATION: return the result.
+
+
+@register.filter(is_safe=True, needs_autoescape=True)
+#ANNOTATION: decorator function register.filter with 2 arguments is_safe set to boolean True and needs_autoescape set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def linebreaksbr(value, autoescape=None):
+#ANNOTATION: define the function linebreaksbr with 2 arguments value and autoescape set to None.
+    """
+    Converts all newlines in a piece of plain text to HTML line breaks
+    (``<br />``).
+    """
+#ANNOTATION: docstring
+    autoescape = autoescape and not isinstance(value, SafeData)
+#ANNOTATION: if autoescape is true and value is not an instance of SafeData, autoescape is boolean True, otherwise it is boolean False.
+    value = normalize_newlines(value)
+#ANNOTATION: call the function normalize_newlines with an argument value, substitute the result for value. 
+    if autoescape:
+#ANNOTATION: if autoescape is true,
+        value = escape(value)
+#ANNOTATION: call the function escape with an argument value, substitute it for value.
+    return mark_safe(value.replace('\n', '<br />'))
+#ANNOTATION: replace every occurrence of newline character in value with string '<br />', use it as an argument for the call to the mark_safe,
+#ANNOTATION: return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def safe(value):
+#ANNOTATION: define the function safe with an argument value.
+    """
+    Marks the value as a string that should not be auto-escaped.
+    """
+#ANNOTATION: docstring
+    return mark_safe(value)
+#ANNOTATION: call the function mark_safe with an argument value, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+def safeseq(value):
+#ANNOTATION: define the function safeseq with an argument value.
+    """
+    A "safe" filter for sequences. Marks each element in the sequence,
+    individually, as safe, after converting them to unicode. Returns a list
+    with the results.
+    """
+#ANNOTATION: docstring
+    return [mark_safe(force_text(obj)) for obj in value]
+#ANNOTATION: for every obj in value call the function mark_safe with an argument result of the function force_text called with an argument obj,
+#ANNOTATION: return all the results in a list.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def removetags(value, tags):
+#ANNOTATION: define the function removetags with 2 arguments value and arg.
+    """Removes a space separated list of [X]HTML tags from the output."""
+#ANNOTATION: docstring
+    return remove_tags(value, tags)
+#ANNOTATION: call the function remove_tags with 2 arguments value and tags, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+@stringfilter
+#ANNOTATION: decorator stringfilter,
+def striptags(value):
+#ANNOTATION: define the function striptags with an argument value.
+    """Strips all [X]HTML tags."""
+#ANNOTATION: docstring
+    return strip_tags(value)
+#ANNOTATION: call the function strip_tags with an argument value, return the result.
+
+
+###################
+# LISTS           #
+###################
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+def dictsort(value, arg):
+#ANNOTATION: define the function dictsort with 2 arguments value and arg.
+    """
+    Takes a list of dicts, returns that list sorted by the property given in
+    the argument.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        return sorted(value, key=Variable(arg).resolve)
+#ANNOTATION: sort value with key set to filed resolve of instance of a class Variable, created with an argument arg, return the result.
+    except (TypeError, VariableDoesNotExist):
+#ANNOTATION: if TypeError or VariableDoesNotExist exceptions are caught,
+        return ''
+#ANNOTATION: return an empty string.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+def dictsortreversed(value, arg):
+#ANNOTATION: define the function dictsortreversed with 2 arguments value and arg.
+    """
+    Takes a list of dicts, returns that list sorted in reverse order by the
+    property given in the argument.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        return sorted(value, key=Variable(arg).resolve, reverse=True)
+#ANNOTATION: sort value with key set to filed resolve of instance of a class Variable, created with an argument arg, reverse the sort and return the result.
+    except (TypeError, VariableDoesNotExist):
+#ANNOTATION: if TypeError or VariableDoesNotExist exceptions are caught,
+        return ''
+#ANNOTATION: return an empty string.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+def first(value):
+#ANNOTATION: define the function first with an argument value.
+    """Returns the first item in a list."""
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        return value[0]
+#ANNOTATION: return first element of value.
+    except IndexError:
+#ANNOTATION: if IndexError exception is caught,
+        return ''
+#ANNOTATION: return an empty string.
+
+
+@register.filter(is_safe=True, needs_autoescape=True)
+#ANNOTATION: decorator function register.filter with 2 arguments is_safe set to boolean True and needs_autoescape set to boolean True.
+def join(value, arg, autoescape=None):
+#ANNOTATION: define the function join with 3 arguments: value, arg and autoescape set to None.
+    """
+    Joins a list with a string, like Python's ``str.join(list)``.
+    """
+#ANNOTATION: docstring
+    value = map(force_text, value)
+#ANNOTATION: map elements of value through mapping function force_text, substitute the result for value.
+    if autoescape:
+#ANNOTATION: if autoescape is true,
+        value = [conditional_escape(v) for v in value]
+#ANNOTATION: for every v in value call the function conditional_escape with an argument v, append the result in a list, substitute the resulting list for value.
+    try:
+#ANNOTATION: try,
+        data = conditional_escape(arg).join(value)
+#ANNOTATION: call the function conditional_escape with an argument arg, call the method join on the result with an argument value, 
+#ANNOTATION: substitute the result for data.
+    except AttributeError:  # fail silently but nicely
+#ANNOTATION: if AttributeError exception is caught,
+        return value
+#ANNOTATION: return value.
+    return mark_safe(data)
+#ANNOTATION: call the function mark_safe with an argument data, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+def last(value):
+#ANNOTATION: define the function last with an argument value.
+    "Returns the last item in a list"
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        return value[-1]
+#ANNOTATION: return last element of value.
+    except IndexError:
+#ANNOTATION: if IndexError exception is caught,
+        return ''
+#ANNOTATION: return an empty string.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+def length(value):
+#ANNOTATION: define the function length with an argument value.
+    """Returns the length of the value - useful for lists."""
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        return len(value)
+#ANNOTATION: return length of value,
+    except (ValueError, TypeError):
+#ANNOTATION: if TypeError or ValueError exceptions are caught,
+        return 0
+#ANNOTATION: return integer 0.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+def length_is(value, arg):
+#ANNOTATION: define the function length_is with 2 arguments value and arg.
+    """Returns a boolean of whether the value's length is the argument."""
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        return len(value) == int(arg)
+#ANNOTATION: if lengths of value and arg are equal, return boolean True, otherwise return boolean False.
+    except (ValueError, TypeError):
+#ANNOTATION: if TypeError or ValueError exceptions are caught,
+        return ''
+#ANNOTATION: return an empty string.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+def random(value):
+#ANNOTATION: define the function random with an argument value.
+    """Returns a random item from the list."""
+#ANNOTATION: docstring
+    return random_module.choice(value)
+#ANNOTATION: call the function random_module.choice with an argument value, return the result.
+
+
+@register.filter("slice", is_safe=True)
+#ANNOTATION: decorator function register.filter with 2 arguments string "slice" and is_safe set to boolean True. 
+def slice_filter(value, arg):
+#ANNOTATION: define the function slice_filter with 2 arguments value and arg.
+    """
+    Returns a slice of the list.
+
+    Uses the same syntax as Python's list slicing; see
+    http://www.diveintopython3.net/native-datatypes.html#slicinglists
+    for an introduction.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        bits = []
+#ANNOTATION: bits is an empty list.
+        for x in arg.split(':'):
+#ANNOTATION: split arg by ':', for every x in result,
+            if len(x) == 0:
+#ANNOTATION: if length of x is equal to integer 0,
+                bits.append(None)
+#ANNOTATION: append None to bits.
+            else:
+#ANNOTATION: if not,
+                bits.append(int(x))
+#ANNOTATION: append x converted to an integer to bits.
+        return value[slice(*bits)]
+#ANNOTATION: slice the list value with unpacked list bits as an argument, return the result.
+
+    except (ValueError, TypeError):
+#ANNOTATION: if TypeError or ValueError exceptions are caught,
+        return value  # Fail silently.
+#ANNOTATION: return value.
+
+
+@register.filter(is_safe=True, needs_autoescape=True)
+#ANNOTATION: decorator function register.filter with 2 arguments is_safe set to boolean True and needs_autoescape set to boolean True.
+def unordered_list(value, autoescape=None):
+#ANNOTATION: define the function unordered_list with 2 arguments value and autoescape set to None.
+    """
+    Recursively takes a self-nested list and returns an HTML unordered list --
+    WITHOUT opening and closing <ul> tags.
+
+    The list is assumed to be in the proper format. For example, if ``var``
+    contains: ``['States', ['Kansas', ['Lawrence', 'Topeka'], 'Illinois']]``,
+    then ``{{ var|unordered_list }}`` would return::
+
+        <li>States
+        <ul>
+                <li>Kansas
+                <ul>
+                        <li>Lawrence</li>
+                        <li>Topeka</li>
+                </ul>
+                </li>
+                <li>Illinois</li>
+        </ul>
+        </li>
+    """
+#ANNOTATION: docstring
+    if autoescape:
+#ANNOTATION: if autoescape is true,
+        escaper = conditional_escape
+#ANNOTATION: substitute conditional_escape for escaper.
+    else:
+#ANNOTATION: if not,
+        escaper = lambda x: x
+#ANNOTATION: escaper is an identity lambda function.
+
+    def convert_old_style_list(list_):
+#ANNOTATION: define the function convert_old_style_list with an argument list_.
+        """
+        Converts old style lists to the new easier to understand format.
+
+        The old list format looked like:
+            ['Item 1', [['Item 1.1', []], ['Item 1.2', []]]
+
+        And it is converted to:
+            ['Item 1', ['Item 1.1', 'Item 1.2]]
+        """
+#ANNOTATION: docstring
+        if not isinstance(list_, (tuple, list)) or len(list_) != 2:
+#ANNOTATION: if list_ is not an instance of tuple or list types and length of list_ is not equal to integer 2,
+            return list_, False
+#ANNOTATION: return list_ and boolean False.
+        first_item, second_item = list_
+#ANNOTATION: substitute list_ for first_item and second_item, respectively.
+        if second_item == []:
+#ANNOTATION: if second_item is an empty list,
+            return [first_item], True
+#ANNOTATION: return list with an element first_item, and boolean True.
+        try:
+#ANNOTATION: try,
+            # see if second item is iterable
+            iter(second_item)
+#ANNOTATION: convert second item to an iterable,
+        except TypeError:
+#ANNOTATION: if TypeError exception is caught,
+            return list_, False
+#ANNOTATION: return list_ and boolean False.
+        old_style_list = True
+#ANNOTATION: old_style_list is boolean True.
+        new_second_item = []
+#ANNOTATION: new_second_item is an empty list.
+        for sublist in second_item:
+#ANNOTATION: for every sublist in second_item,
+            item, old_style_list = convert_old_style_list(sublist)
+#ANNOTATION: call the function convert_old_style_list with an argument sublist, substitute the result for item and old_style_list.
+            if not old_style_list:
+#ANNOTATION: if old_style_list is false,
+                break
+#ANNOTATION: break from the loop execution,
+            new_second_item.extend(item)
+#ANNOTATION: extend new_second_item with item.
+        if old_style_list:
+#ANNOTATION: if old_style_list is true,
+            second_item = new_second_item
+#ANNOTATION: substitute new_second_item with second_item.
+        return [first_item, second_item], old_style_list
+#ANNOTATION: return list with 2 elements: first_item and second_item, and old_style_list.
+
+    def _helper(list_, tabs=1):
+#ANNOTATION: define the function _helper with 2 arguments list and tabs set to integer 1.
+        indent = '\t' * tabs
+#ANNOTATION: indent contain tabs number of tab character.
+        output = []
+#ANNOTATION: output is an empty list.
+
+        list_length = len(list_)
+#ANNOTATION: substitute length of list_ for list_length.
+        i = 0
+#ANNOTATION: i is integer 0.
+        while i < list_length:
+#ANNOTATION: while i is smaller than list_length,
+            title = list_[i]
+#ANNOTATION: substitute i-th element of list for title.
+            sublist = ''
+#ANNOTATION: sublist is an empty string.
+            sublist_item = None
+#ANNOTATION: sublist_item is None.
+            if isinstance(title, (list, tuple)):
+#ANNOTATION: if title is an instance of list or tuple,
+                sublist_item = title
+#ANNOTATION: substitute title for sublist_item.
+                title = ''
+#ANNOTATION: title is an empty string.
+            elif i < list_length - 1:
+#ANNOTATION: otherwise if i is smaller than list_length decremented by one,
+                next_item = list_[i + 1]
+#ANNOTATION: substitute (i+1)-th element of list_ for next_item.
+                if next_item and isinstance(next_item, (list, tuple)):
+#ANNOTATION: if next_item is true and next_item is an instance of list or tuple type,
+                    # The next item is a sub-list.
+                    sublist_item = next_item
+#ANNOTATION: substitute next_item for sublist_item.
+                    # We've processed the next item now too.
+                    i += 1
+#ANNOTATION: increment i by integer 1.
+            if sublist_item:
+#ANNOTATION: if sublist_item is true,
+                sublist = _helper(sublist_item, tabs + 1)
+#ANNOTATION: call the function _helper with 2 arguments: sublist_item and tabs incremented by 1, substitute the result for sublist.
+                sublist = '\n%s<ul>\n%s\n%s</ul>\n%s' % (indent, sublist,
+                                                         indent, indent)
+#ANNOTATION: sublist is an string '\n%s<ul>\n%s\n%s</ul>\n%s', where every '%s' is replaced with indent, sublist, indent and indent, respectively.
+            output.append('%s<li>%s%s</li>' % (indent,
+                    escaper(force_text(title)), sublist))
+#ANNOTATION: substitute every '%s' in string '%s<li>%s%s</li>' with indent, with result of the function escaper called with an argument: 
+#ANNOTATION: result of the function force_text called with an argument title, and with sublist, append the string to output.
+            i += 1
+#ANNOTATION: increment i by 1.
+        return '\n'.join(output)
+#ANNOTATION: join elements of output into a string, separated with newlines, return the result.
+    value, converted = convert_old_style_list(value)
+#ANNOTATION: call the function convert_old_style_list with an argument value, substitute the result for value and converted, respectively.
+    return mark_safe(_helper(value))
+#ANNOTATION: call the function _helper with an argument value, use it as an argument for the call to the function mark_safe, return the result.
+
+
+###################
+# INTEGERS        #
+###################
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+def add(value, arg):
+#ANNOTATION: define the function add with 2 arguments value and arg.
+    """Adds the arg to the value."""
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        return int(value) + int(arg)
+#ANNOTATION: convert value and arg into a integers, return their sum.
+    except (ValueError, TypeError):
+#ANNOTATION: if TypeError or ValueError exceptions are caught,
+        try:
+#ANNOTATION: try,
+            return value + arg
+#ANNOTATION: sum value and arg, return the result.
+        except Exception:
+#ANNOTATION: if Exception exception is caught,
+            return ''
+#ANNOTATION: return an empty string.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+def get_digit(value, arg):
+#ANNOTATION: define the function get_digit with 2 arguments value and arg.
+    """
+    Given a whole number, returns the requested digit of it, where 1 is the
+    right-most digit, 2 is the second-right-most digit, etc. Returns the
+    original value for invalid input (if input or argument is not an integer,
+    or if argument is less than 1). Otherwise, output is always an integer.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        arg = int(arg)
+#ANNOTATION: convert arg to an integer.
+        value = int(value)
+#ANNOTATION: convert value to an integer.
+    except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+        return value  # Fail silently for an invalid argument
+#ANNOTATION: return value.
+    if arg < 1:
+#ANNOTATION: if arg is smaller than integer 1,
+        return value
+#ANNOTATION: return value.
+    try:
+#ANNOTATION: try,
+        return int(str(value)[-arg])
+#ANNOTATION: convert value into a string, take character at the negative arg index, convert it into an integer, return it.
+    except IndexError:
+#ANNOTATION: if IndexError exception is caught,
+        return 0
+#ANNOTATION: return integer 0.
+
+
+###################
+# DATES           #
+###################
+
+@register.filter(expects_localtime=True, is_safe=False)
+#ANNOTATION: decorator function register.filter with 2 arguments expects_localtime set to boolean True and is_safe set to boolean False.
+def date(value, arg=None):
+#ANNOTATION: define the function date with 2 arguments value and arg set to None.
+    """Formats a date according to the given format."""
+#ANNOTATION: docstring
+    if value in (None, ''):
+#ANNOTATION: if vale is None or an empty string,
+        return ''
+#ANNOTATION: return an empty string.
+    if arg is None:
+#ANNOTATION: if arg is None,
+        arg = settings.DATE_FORMAT
+#ANNOTATION: substitute settings.DATE_FORMAT for arg.
+    try:
+#ANNOTATION: try,
+        return formats.date_format(value, arg)
+#ANNOTATION: call the method formats.time_format with 2 arguments: value and arg, return the result. 
+    except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+        try:
+#ANNOTATION: try,
+            return format(value, arg)
+#ANNOTATION: format value into printable data representation with formating rules arg, return the result.
+        except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+            return ''
+#ANNOTATION: return an empty string.
+
+
+@register.filter(expects_localtime=True, is_safe=False)
+#ANNOTATION: decorator function register.filter with 2 arguments expects_localtime set to boolean True and is_safe set to boolean False.
+def time(value, arg=None):
+#ANNOTATION: define the function time with 2 arguments value and arg set to None.
+    """Formats a time according to the given format."""
+#ANNOTATION: docstring
+    if value in (None, ''):
+#ANNOTATION: if vale is None or an empty string,
+        return ''
+#ANNOTATION: return an empty string.
+    if arg is None:
+#ANNOTATION: if arg is None 
+        arg = settings.TIME_FORMAT
+#ANNOTATION: substitute settings.TIME_FORMAT for arg.
+    try:
+#ANNOTATION: try,
+        return formats.time_format(value, arg)
+#ANNOTATION: call the method formats.time_format with 2 arguments: value and arg, return the result. 
+    except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+        try:
+#ANNOTATION: try,
+            return time_format(value, arg)
+#ANNOTATION: call the function time_format with 2 arguments: value and arg, return the result. 
+        except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+            return ''
+#ANNOTATION: return an empty string.
+
+
+@register.filter("timesince", is_safe=False)
+#ANNOTATION: decorator function register.filter with 2 arguments string "timesince" and is_safe set to boolean False. 
+def timesince_filter(value, arg=None):
+#ANNOTATION: define the function timesince_filter with 2 arguments value and arg set to None.
+    """Formats a date as the time since that date (i.e. "4 days, 6 hours")."""
+#ANNOTATION: docstring
+    if not value:
+#ANNOTATION: if value is false,
+        return ''
+#ANNOTATION: return an empty string.
+    try:
+#ANNOTATION: try,
+        if arg:
+#ANNOTATION: if arg is true,
+            return timesince(value, arg)
+#ANNOTATION: call the function timesince with 2 arguments: value and arg, return the result. 
+        return timesince(value)
+#ANNOTATION: call the function timesince with an argument value, return the result.
+    except (ValueError, TypeError):
+#ANNOTATION: if TypeError or ValueError exceptions are caught,
+        return ''
+#ANNOTATION: return an empty string.
+
+
+@register.filter("timeuntil", is_safe=False)
+#ANNOTATION: decorator function register.filter with 2 arguments string "timeuntil" and is_safe set to boolean False.
+def timeuntil_filter(value, arg=None):
+#ANNOTATION: define the function timeuntil_filter with 2 arguments value and arg set to None.
+    """Formats a date as the time until that date (i.e. "4 days, 6 hours")."""
+#ANNOTATION: docstring
+    if not value:
+#ANNOTATION: if value is false,
+        return ''
+#ANNOTATION: return an empty string.
+    try:
+#ANNOTATION: try,
+        return timeuntil(value, arg)
+#ANNOTATION: call the function timeuntil with 2 arguments value and arg, return the result.
+    except (ValueError, TypeError):
+#ANNOTATION: if TypeError or ValueError exceptions are caught,
+        return ''
+#ANNOTATION: return an empty string.
+
+
+###################
+# LOGIC           #
+###################
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+def default(value, arg):
+#ANNOTATION: define the function default with 2 arguments value and arg.
+    """If value is unavailable, use given default."""
+#ANNOTATION: docstring
+    return value or arg
+#ANNOTATION: return value, if it is None return arg.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+def default_if_none(value, arg):
+#ANNOTATION: define the function default_if_none with 2 arguments value and arg.
+    """If value is None, use given default."""
+#ANNOTATION: docstring
+    if value is None:
+#ANNOTATION: if value is None,
+        return arg
+#ANNOTATION: return arg.
+    return value
+#ANNOTATION: return value.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+def divisibleby(value, arg):
+#ANNOTATION: define the function divisibleby with 2 arguments value and arg.
+    """Returns True if the value is devisible by the argument."""
+#ANNOTATION: docstring
+    return int(value) % int(arg) == 0
+#ANNOTATION: convert value and arg to integers, if value is divisible by arg, return True, otherwise return boolean False.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+def yesno(value, arg=None):
+#ANNOTATION: define the function yesno with 2 arguments value and arg set to None.
+    """
+    Given a string mapping values for true, false and (optionally) None,
+    returns one of those strings according to the value:
+
+    ==========  ======================  ==================================
+    Value       Argument                Outputs
+    ==========  ======================  ==================================
+    ``True``    ``"yeah,no,maybe"``     ``yeah``
+    ``False``   ``"yeah,no,maybe"``     ``no``
+    ``None``    ``"yeah,no,maybe"``     ``maybe``
+    ``None``    ``"yeah,no"``           ``"no"`` (converts None to False
+                                        if no mapping for None is given.
+    ==========  ======================  ==================================
+    """
+#ANNOTATION: docstring
+    if arg is None:
+#ANNOTATION: if arg is None
+        arg = ugettext('yes,no,maybe')
+#ANNOTATION: call the function ugettext with string 'yes,no,maybe' as an argument, substitute the result for arg.
+    bits = arg.split(',')
+#ANNOTATION: split arg by ',', substitute the result for bits.
+    if len(bits) < 2:
+#ANNOTATION: if length of bits is lesser than integer 2,
+        return value  # Invalid arg.
+#ANNOTATION: return value.
+    try:
+#ANNOTATION: try,
+        yes, no, maybe = bits
+#ANNOTATION: assign bits elements to yes, no and maybe, respectively.
+    except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+        # Unpack list of wrong size (no "maybe" value provided).
+        yes, no, maybe = bits[0], bits[1], bits[1]
+#ANNOTATION: substitute first, second and second elements of bits for yes, no, maybe, respectively.
+    if value is None:
+#ANNOTATION: if value is None,
+        return maybe
+#ANNOTATION: return maybe.
+    if value:
+#ANNOTATION: if value is true, 
+        return yes
+#ANNOTATION: return yes.
+    return no
+#ANNOTATION: return no.
+
+
+###################
+# MISC            #
+###################
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+def filesizeformat(bytes):
+#ANNOTATION: define the function filesizeformat with an argument bytes.
+    """
+    Formats the value like a 'human-readable' file size (i.e. 13 KB, 4.1 MB,
+    102 bytes, etc).
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        bytes = float(bytes)
+#ANNOTATION: convert bytes to floating point number, substitute it for bytes.
+    except (TypeError, ValueError, UnicodeDecodeError):
+#ANNOTATION: if TypeError, ValueError or UnicodeDecodeError exceptions are caught,
+        value = ungettext("%(size)d byte", "%(size)d bytes", 0) % {'size': 0}
+#ANNOTATION: call the function ungettext with 3 arguments: string "%(size)d byte", string "%(size)d bytes" and 0, '%(size)d' is replaced with 0,
+#ANNOTATION: substitute the result for value.
+        return avoid_wrapping(value)
+#ANNOTATION: call the function avoid_wrapping with an argument value, return the result.
+
+    filesize_number_format = lambda value: formats.number_format(round(value, 1), 1)
+#ANNOTATION: filesize_number_format is an lambda function with an argument value, return value is the result of the method formats.number_format,
+#ANNOTATION: called with 2 arguments: value rounded to 1 decimal point and integer 1. 
+
+    KB = 1 << 10
+#ANNOTATION: move integer 1 left for 10 bits, substitute the result for KB.
+    MB = 1 << 20
+#ANNOTATION: move integer 1 left for 20 bits, substitute the result for MB.
+    GB = 1 << 30
+#ANNOTATION: move integer 1 left for 30 bits, substitute the result for GB.
+    TB = 1 << 40
+#ANNOTATION: move integer 1 left for 40 bits, substitute the result for TB.
+    PB = 1 << 50
+#ANNOTATION: move integer 1 left for 50 bits, substitute the result for PB.
+
+    if bytes < KB:
+#ANNOTATION: if bytes is smaller than KB,
+        value = ungettext("%(size)d byte", "%(size)d bytes", bytes) % {'size': bytes}
+#ANNOTATION: call the function ugettext with 3 arguments, string "%(size)d byte", string "%(size)d bytes" and bytes,
+#ANNOTATION: replace '%(size)d with bytes, substitute the result for value.
+    elif bytes < MB:
+#ANNOTATION: otherwise if bytes is smaller than MB,
+        value = ugettext("%s KB") % filesize_number_format(bytes / KB)
+#ANNOTATION: call the function ugettext with an argument string "%s KB", substitute '%s' with the result of the call to the function,
+#ANNOTATION: filesize_number_format with result of division of bytes by KB as an argument, substitute the result for value.
+    elif bytes < GB:
+#ANNOTATION: otherwise if bytes is smaller than GB,
+        value = ugettext("%s MB") % filesize_number_format(bytes / MB)
+#ANNOTATION: call the function ugettext with an argument string "%s MB", substitute '%s' with the result of the call to the function,
+#ANNOTATION: filesize_number_format with result of division of bytes by MB as an argument, substitute the result for value.
+    elif bytes < TB:
+#ANNOTATION: otherwise if bytes is smaller than TB,
+        value = ugettext("%s GB") % filesize_number_format(bytes / GB)
+#ANNOTATION: call the function ugettext with an argument string "%s GB", substitute '%s' with the result of the call to the function,
+#ANNOTATION: filesize_number_format with result of division of bytes by GB as an argument, substitute the result for value.
+    elif bytes < PB:
+#ANNOTATION: otherwise if bytes is smaller than PB,
+        value = ugettext("%s TB") % filesize_number_format(bytes / TB)
+#ANNOTATION: call the function ugettext with an argument string "%s TB", substitute '%s' with the result of the call to the function,
+#ANNOTATION: filesize_number_format with result of division of bytes by TB as an argument, substitute the result for value.
+    else:
+#ANNOTATION: if not,
+        value = ugettext("%s PB") % filesize_number_format(bytes / PB)
+#ANNOTATION: call the function ugettext with an argument string "%s PB", substitute '%s' with the result of the call to the function,
+#ANNOTATION: filesize_number_format with result of division of bytes by PB as an argument, substitute the result for value.
+
+    return avoid_wrapping(value)
+#ANNOTATION: call the function avoid_wrapping with an argument value, return the result.
+
+
+@register.filter(is_safe=False)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean False.
+def pluralize(value, arg='s'):
+#ANNOTATION: define the function pluralize with 2 arguments value and arg set to character 's'.
+    """
+    Returns a plural suffix if the value is not 1. By default, 's' is used as
+    the suffix:
+
+    * If value is 0, vote{{ value|pluralize }} displays "0 votes".
+    * If value is 1, vote{{ value|pluralize }} displays "1 vote".
+    * If value is 2, vote{{ value|pluralize }} displays "2 votes".
+
+    If an argument is provided, that string is used instead:
+
+    * If value is 0, class{{ value|pluralize:"es" }} displays "0 classes".
+    * If value is 1, class{{ value|pluralize:"es" }} displays "1 class".
+    * If value is 2, class{{ value|pluralize:"es" }} displays "2 classes".
+
+    If the provided argument contains a comma, the text before the comma is
+    used for the singular case and the text after the comma is used for the
+    plural case:
+
+    * If value is 0, cand{{ value|pluralize:"y,ies" }} displays "0 candies".
+    * If value is 1, cand{{ value|pluralize:"y,ies" }} displays "1 candy".
+    * If value is 2, cand{{ value|pluralize:"y,ies" }} displays "2 candies".
+    """
+#ANNOTATION: docstring
+    if ',' not in arg:
+#ANNOTATION: if ',' is not contained in arg,
+        arg = ',' + arg
+#ANNOTATION: append arg to ',', substitute the result for arg.
+    bits = arg.split(',')
+#ANNOTATION: split arg by ',', substitute the result for bits.s
+    if len(bits) > 2:
+#ANNOTATION: if length of bits is greater than integer 2,
+        return ''
+#ANNOTATION: return an empty string.
+    singular_suffix, plural_suffix = bits[:2]
+#ANNOTATION: substitute first 2 elements of bits for singular_suffix and plural_suffix, respectively.
+
+    try:
+#ANNOTATION: try,
+        if float(value) != 1:
+#ANNOTATION: convert value to an floating point number if it is not equal to integer 1,
+            return plural_suffix
+#ANNOTATION: return plural_suffix.
+    except ValueError:  # Invalid string that's not a number.
+#ANNOTATION: if ValueError exception is caught,
+        pass
+#ANNOTATION: do nothing,
+    except TypeError:  # Value isn't a string or a number; maybe it's a list?
+#ANNOTATION: if TypeError exception is caught,
+        try:
+#ANNOTATION: try,
+            if len(value) != 1:
+#ANNOTATION: if length of value is not equal to integer 1,
+                return plural_suffix
+#ANNOTATION: return plural_suffix.
+        except TypeError:  # len() of unsized object.
+#ANNOTATION: if TypeError exception is caught,
+            pass
+#ANNOTATION: do nothing,
+    return singular_suffix
+#ANNOTATION: return singular_suffix.
+
+
+@register.filter("phone2numeric", is_safe=True)
+#ANNOTATION: decorator function register.filter with 2 arguments string "phone2numeric" and is_safe set to boolean True.
+def phone2numeric_filter(value):
+#ANNOTATION: define the function phone2numeric_filter with an argument value.
+    """Takes a phone number and converts it in to its numerical equivalent."""
+#ANNOTATION: docstring
+    return phone2numeric(value)
+#ANNOTATION: call the function phone2numeric with an argument value, return the result.
+
+
+@register.filter(is_safe=True)
+#ANNOTATION: decorator function register.filter with an argument is_safe set to boolean True.
+def pprint(value):
+#ANNOTATION: define the function pprint with an argument value.
+    """A wrapper around pprint.pprint -- for debugging, really."""
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        return pformat(value)
+#ANNOTATION: call the function pformat with an argument value, return the result.
+    except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+        return "Error in formatting: %s" % force_text(e, errors="replace")
+#ANNOTATION: return an string "Error in formatting: %s", replace '%s' with result of the function force_text, 
+#ANNOTATION: called with 2 arguments: e and errors set to string 'replace'.

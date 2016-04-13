@@ -1,0 +1,73 @@
+"""Base email backend class."""
+#ANNOTATION: docstring
+
+
+class BaseEmailBackend(object):
+#ANNOTATION: derive the class BaseEmailBackend from the object base class.
+    """
+    Base class for email backend implementations.
+
+    Subclasses must at least overwrite send_messages().
+
+   open() and close() can be called indirectly by using a backend object as a
+   context manager:
+
+       with backend as connection:
+           # do something with connection
+           pass
+    """
+#ANNOTATION: docstring
+    def __init__(self, fail_silently=False, **kwargs):
+#ANNOTATION: define the method __init__ with arguments: self, fail_silently set to boolean False and unpacked dictionary kwargs.
+        self.fail_silently = fail_silently
+#ANNOTATION: substitute fail_silently for self.fail_silently.
+
+    def open(self):
+#ANNOTATION: define the method open with argument self.
+        """Open a network connection.
+
+        This method can be overwritten by backend implementations to
+        open a network connection.
+
+        It's up to the backend implementation to track the status of
+        a network connection if it's needed by the backend.
+
+        This method can be called by applications to force a single
+        network connection to be used when sending mails. See the
+        send_messages() method of the SMTP backend for a reference
+        implementation.
+
+        The default implementation does nothing.
+        """
+#ANNOTATION: docstring
+        pass
+#ANNOTATION: do nothing.
+
+    def close(self):
+#ANNOTATION: define the method close with argument self.
+        """Close a network connection."""
+#ANNOTATION: docstring
+        pass
+#ANNOTATION: do nothing
+
+    def __enter__(self):
+#ANNOTATION: define the method __enter__ with argument self.
+        self.open()
+#ANNOTATION: call the method self.open.
+        return self
+#ANNOTATION: return self.
+
+    def __exit__(self, exc_type, exc_value, traceback):
+#ANNOTATION: define the method __exit__ with arguments: self, exc_type, exc_value and traceback.
+        self.close()
+#ANNOTATION: call the method self.close.
+
+    def send_messages(self, email_messages):
+#ANNOTATION: define the method send_messages with arguments self and email_messages.
+        """
+        Sends one or more EmailMessage objects and returns the number of email
+        messages sent.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of BaseEmailBackend must override send_messages() method')
+#ANNOTATION: raise an NotImplementedError exception with argument string 'subclasses of BaseEmailBackend must override send_messages() method'.

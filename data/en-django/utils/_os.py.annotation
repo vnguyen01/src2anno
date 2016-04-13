@@ -1,0 +1,198 @@
+import os
+#ANNOTATION: import module os.
+import stat
+#ANNOTATION: import module sta.
+import sys
+#ANNOTATION: import module sys.
+import tempfile
+#ANNOTATION: import module tempfile.
+from os.path import join, normcase, normpath, abspath, isabs, sep, dirname
+#ANNOTATION: from os.path import join, normcase, normpath, abspath, isabs, sep and dirname into default name space.
+
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+try:
+#ANNOTATION: try,
+    WindowsError = WindowsError
+#ANNOTATION: substitute WindowsError for WindowsError.
+except NameError:
+#ANNOTATION: if NameError exception is caught,
+    class WindowsError(Exception):
+#ANNOTATION: derive class WindowsError from Exception base class.
+        pass
+#ANNOTATION: do nothing.
+
+if six.PY2:
+#ANNOTATION: if six.PY2 is true,
+    fs_encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
+#ANNOTATION: call the function sys.getfilesystemencoding if it evaluates to true, substitute its result for fs_encoding, 
+#ANNOTATION: otherwise call the function sys.getdefaultencoding and substitute its result for fs_encoding. 
+
+
+# Under Python 2, define our own abspath function that can handle joining
+# unicode paths to a current working directory that has non-ASCII characters
+# in it.  This isn't necessary on Windows since the Windows version of abspath
+# handles this correctly. It also handles drive letters differently than the
+# pure Python implementation, so it's best not to replace it.
+if six.PY3 or os.name == 'nt':
+#ANNOTATION: if six.PY3 is true or os.name equals a string 'nt',
+    abspathu = abspath
+#ANNOTATION: substitute abspath for abspathu.
+else:
+#ANNOTATION: if not,
+    def abspathu(path):
+#ANNOTATION: define the function abspathu with an argument path.
+        """
+        Version of os.path.abspath that uses the unicode representation
+        of the current working directory, thus avoiding a UnicodeDecodeError
+        in join when the cwd has non-ASCII characters.
+        """
+#ANNOTATION: docstring
+        if not isabs(path):
+#ANNOTATION: call the function isabs with an argument path, if it evaluates to false,
+            path = join(os.getcwdu(), path)
+#ANNOTATION: get the unicode representation of current working directory, join it and path into a string, substitute the result for path.
+        return normpath(path)
+#ANNOTATION: call the function normpath with an argument path, return the result.
+
+
+def upath(path):
+#ANNOTATION: define the function upath with an argument path.
+    """
+    Always return a unicode path.
+    """
+#ANNOTATION: docstring
+    if six.PY2 and not isinstance(path, six.text_type):
+#ANNOTATION: if six.PY2 is true and path is not an instance of six.text_type type,
+        return path.decode(fs_encoding)
+#ANNOTATION: call the method path.decode with an argument fs_encoding, return the result.
+    return path
+#ANNOTATION: return path.
+
+
+def npath(path):
+#ANNOTATION: define the function npath with an argument path.
+    """
+    Always return a native path, that is unicode on Python 3 and bytestring on
+    Python 2.
+    """
+#ANNOTATION: docstring
+    if six.PY2 and not isinstance(path, bytes):
+#ANNOTATION: if six.PY2 is true and path is not an instance of byes type,
+        return path.encode(fs_encoding)
+#ANNOTATION: call the method path.encode with an argument fs_encoding, return the result.
+    return path
+#ANNOTATION: return path.
+
+
+def safe_join(base, *paths):
+#ANNOTATION: define the function safe_join with 2 arguments base and unpacked dictionary paths.
+    """
+    Joins one or more path components to the base path component intelligently.
+    Returns a normalized, absolute version of the final path.
+
+    The final path must be located inside of the base path component (otherwise
+    a ValueError is raised).
+    """
+#ANNOTATION: docstring
+    base = force_text(base)
+#ANNOTATION: call the function force_text with an argument base, substitute the result for base.
+    paths = [force_text(p) for p in paths]
+#ANNOTATION: paths is a list containing results of the function force_text called with an argument p, for every p in paths.
+    final_path = abspathu(join(base, *paths))
+#ANNOTATION: join base an unpacked list paths into a string, get the absolute path in unicode representation of the result, substitute the result for final_path.
+    base_path = abspathu(base)
+#ANNOTATION: get the unicode representation of the absolute path of base, substitute it for base_path.
+    # Ensure final_path starts with base_path (using normcase to ensure we
+    # don't false-negative on case insensitive operating systems like Windows),
+    # further, one of the following conditions must be true:
+    #  a) The next character is the path separator (to prevent conditions like
+    #     safe_join("/dir", "/../d"))
+    #  b) The final path must be the same as the base path.
+    #  c) The base path must be the most root path (meaning either "/" or "C:\\")
+    if (not normcase(final_path).startswith(normcase(base_path + sep)) and
+            normcase(final_path) != normcase(base_path) and
+            dirname(normcase(base_path)) != normcase(base_path)):
+#ANNOTATION: if return value of the function normcase called with an argument final_path doesnt starts with result of the function normcase,
+#ANNOTATION: called with sep appended to base_path as an argument and results of the function normcase called twice with final_path,
+#ANNOTATION: and base_pah are not equal and directory name of the result of the function normcase called with an argument base_path,
+#ANNOTATION: if not equal to the result of the function normcase called with an argument base_path.
+        raise ValueError('The joined path (%s) is located outside of the base '
+                         'path component (%s)' % (final_path, base_path))
+#ANNOTATION: raise an ValueError with an argument string 'The joined path (%s) is located outside of the base path component (%s)',
+#ANNOTATION: where '%s' is replaced with final_path and base_path.
+    return final_path
+#ANNOTATION: return final_path.
+
+
+def rmtree_errorhandler(func, path, exc_info):
+#ANNOTATION: define the function rmtree_errorhandler with 3 arguments func, path and exc_info.
+    """
+    On Windows, some files are read-only (e.g. in in .svn dirs), so when
+    rmtree() tries to remove them, an exception is thrown.
+    We catch that here, remove the read-only attribute, and hopefully
+    continue without problems.
+    """
+#ANNOTATION: docstring
+    exctype, value = exc_info[:2]
+#ANNOTATION: substitute fist and second element of exc_info for exctype and value, respectively.
+    # looking for a windows error
+    if exctype is not WindowsError or 'Access is denied' not in str(value):
+#ANNOTATION: if exctype is not WindowsError or string 'Access is denied' is not contained in value converted into a string,
+        raise
+#ANNOTATION: raise an exception.
+    # file type should currently be read only
+    if ((os.stat(path).st_mode & stat.S_IREAD) != stat.S_IREAD):
+#ANNOTATION: call the function os.stat with an argument path, perform bitwise and on 2 operands st_mode field of the result and stat.S_IREAD,
+#ANNOTATION: if it is not equal to stat.S_IREAD,
+        raise
+#ANNOTATION: raise an exception.
+    # convert to read/write
+    os.chmod(path, stat.S_IWRITE)
+#ANNOTATION: change access mode of path to stat.S_IWRITE mode.
+    # use the original function to repeat the operation
+    func(path)
+#ANNOTATION: call the function func with an argument path.
+
+
+def symlinks_supported():
+#ANNOTATION: define the method symlinks_supported.
+    """
+    A function to check if creating symlinks are supported in the
+    host platform and/or if they are allowed to be created (e.g.
+    on Windows it requires admin permissions).
+    """
+#ANNOTATION: docstring
+    tmpdir = tempfile.mkdtemp()
+#ANNOTATION: call the function tempfile.mkdtemp, substitute the result for tmpdir.
+    original_path = os.path.join(tmpdir, 'original')
+#ANNOTATION: join tmpdir and sting 'original' into a file path name, substitute it for original_path.
+    symlink_path = os.path.join(tmpdir, 'symlink')
+#ANNOTATION: join tmpdir and sting 'symlink' into a file path name, substitute it for symlink_path.
+    os.makedirs(original_path)
+#ANNOTATION: make a directory named original_path.
+    try:
+#ANNOTATION: try,
+        os.symlink(original_path, symlink_path)
+#ANNOTATION: make a system symbolic link between original_path and symlink_path.
+        supported = True
+#ANNOTATION: supported is boolean True.
+    except (OSError, NotImplementedError, AttributeError):
+#ANNOTATION: if OSError, NotImplementedError or AttributeError exceptions are caught,
+        supported = False
+#ANNOTATION: supported is boolean False.
+    else:
+#ANNOTATION: if not,
+        os.remove(symlink_path)
+#ANNOTATION: remove symlink_path file.
+    finally:
+#ANNOTATION: finally perform,
+        os.rmdir(original_path)
+#ANNOTATION: remove original_path directory.
+        os.rmdir(tmpdir)
+#ANNOTATION: remove tmpdir directory.
+        return supported
+#ANNOTATION: return supported.

@@ -1,0 +1,167 @@
+import sys
+#ANNOTATION: import module sys.
+from importlib import import_module
+#ANNOTATION: from importlib import import_module into default name space.
+
+from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+from django.db import connections, router, transaction, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import connections, router, transaction and DEFAULT_DB_ALIAS into default name space.
+from django.core.management import call_command
+#ANNOTATION: from django.core.management import call_command into default name space.
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+from django.core.management.color import no_style
+#ANNOTATION: from django.core.management.color import no_style into default name space.
+from django.core.management.sql import sql_flush, emit_post_migrate_signal
+#ANNOTATION: from django.core.management.sql import sql_flush and emit_post_migrate_signal into default name space.
+from django.utils.six.moves import input
+#ANNOTATION: from django.utils.six.moves import input into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand base class.
+    help = ('Removes ALL DATA from the database, including data added during '
+           'migrations. Unmigrated apps will also have their initial_data '
+           'fixture reloaded. Does not achieve a "fresh install" state.')
+#ANNOTATION: help is a tuple containing a string: 'Removes ALL DATA from the database, including data added during '
+#ANNOTATION: 'migrations. Unmigrated apps will also have their initial_data fixture reloaded. Does not achieve a "fresh install" state.'
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the add_arguments with arguments self and parser. 
+        parser.add_argument('--noinput', action='store_false', dest='interactive', default=True,
+            help='Tells Django to NOT prompt the user for input of any kind.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--noinput', action set to string 'store_false', 
+#ANNOTATION: dest set to string 'interactive', default set to boolean True, help as a string 'Tells Django to NOT prompt the user for input of any kind.'.
+        parser.add_argument('--database', action='store', dest='database',
+            default=DEFAULT_DB_ALIAS,
+            help='Nominates a database to flush. Defaults to the "default" database.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--database', action set to string 'store', dest as a string 'database',
+#ANNOTATION: default set to DEFAULT_DB_ALIAS and help as a string 'Nominates a database to flush. Defaults to the "default" database.'.
+        parser.add_argument('--no-initial-data', action='store_false',
+            dest='load_initial_data', default=True,
+            help='Tells Django not to load any initial data after database synchronization.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--no-initial-data', action set to string 'store_false',
+#ANNOTATION: dest set to string 'load_initial_data', default=True and help as a string 'Tells Django not to load any initial data after database synchronization.'.
+
+    def handle(self, **options):
+#ANNOTATION: define the method handle with arguments self and unpacked dictionary options.
+        database = options.get('database')
+#ANNOTATION: substitute value under the 'database' key of the options dictionary for database.
+        connection = connections[database]
+#ANNOTATION: substitute value under the database key of the connections dictionary for connection.
+        verbosity = options.get('verbosity')
+#ANNOTATION: substitute value under the 'verbosity' key of the options dictionary for verbosity.
+        interactive = options.get('interactive')
+#ANNOTATION: substitute value under the 'interactive' key of the options dictionary for interactive.
+        # The following are stealth options used by Django's internals.
+        reset_sequences = options.get('reset_sequences', True)
+#ANNOTATION: get the value 'reset_sequences' key of the options dictionary, if it exists substitute it for reset_sequences, otherwise reset_sequences is boolean True.
+        allow_cascade = options.get('allow_cascade', False)
+#ANNOTATION: get the value 'allow_cascade' key of the options dictionary, if it exists substitute it for allow_cascade, otherwise allow_cascade is boolean False.
+        inhibit_post_migrate = options.get('inhibit_post_migrate', False)
+#ANNOTATION: get the value 'inhibit_post_migrate' key of the options dictionary, if it exists substitute it for inhibit_post_migrate, otherwise inhibit_post_migrate is boolean False.
+
+        self.style = no_style()
+#ANNOTATION: call the function no_style, substitute it for self.style.
+
+        # Import the 'management' module within each installed app, to register
+        # dispatcher events.
+        for app_config in apps.get_app_configs():
+#ANNOTATION: for every app_config in return value of the method apps.get_app_configs,
+            try:
+#ANNOTATION: try,
+                import_module('.management', app_config.name)
+#ANNOTATION: call the function import_module with 2 arguments: string .management and app_config.name.
+            except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+
+        sql_list = sql_flush(self.style, connection, only_django=True,
+                             reset_sequences=reset_sequences,
+                             allow_cascade=allow_cascade)
+#ANNOTATION: call the method sql_flush with 5 arguments: self.style, connection, only_django set to boolean True, 
+#ANNOTATION: reset_sequences set to reset_sequences, allow_cascade set to allow_cascade, substitute the result for sql_list. 
+
+        if interactive:
+#ANNOTATION: if interactive is true,
+            confirm = input("""You have requested a flush of the database.
+This will IRREVERSIBLY DESTROY all data currently in the %r database,
+and return each table to an empty state.
+Are you sure you want to do this?
+
+    Type 'yes' to continue, or 'no' to cancel: """ % connection.settings_dict['NAME'])
+#ANNOTATION: request user input from the standard input, assign it o confirm, with the query string: "You have requested a flush of the database."
+#ANNOTATION: "This will IRREVERSIBLY DESTROY all data currently in the %r database, and return each table to an empty state."
+#ANNOTATION: "Are you sure you want to do this?"Type 'yes' to continue, or 'no' to cancel: ", where '%s' is replaced with value under the 'NAME' key of the connection.settings_dict dictionary. 
+        else:
+#ANNOTATION: if not,
+            confirm = 'yes'
+#ANNOTATION: confirm is a string 'yes'.
+
+        if confirm == 'yes':
+#ANNOTATION: if confirm equals a string 'yes',
+            try:
+#ANNOTATION: try,
+                with transaction.atomic(using=database,
+                                        savepoint=connection.features.can_rollback_ddl):
+#ANNOTATION: call the method transaction.atomic with 2 arguments: using set to database, savepoint set to connection.features.can_rollback_ddl,
+#ANNOTATION: with the result,
+                    with connection.cursor() as cursor:
+#ANNOTATION: call the method connection.cursor, with the result as cursor,
+                        for sql in sql_list:
+#ANNOTATION: for every sql in sql_list,
+                            cursor.execute(sql)
+#ANNOTATION: call the method cursor.execute with an argument sql.
+            except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+                new_msg = (
+                    "Database %s couldn't be flushed. Possible reasons:\n"
+                    "  * The database isn't running or isn't configured correctly.\n"
+                    "  * At least one of the expected database tables doesn't exist.\n"
+                    "  * The SQL was invalid.\n"
+                    "Hint: Look at the output of 'django-admin.py sqlflush'. That's the SQL this command wasn't able to run.\n"
+                    "The full error: %s") % (connection.settings_dict['NAME'], e)
+#ANNOTATION: new_msg is a tuple containing a string: "Database %s couldn't be flushed. Possible reasons:\n"
+#ANNOTATION: "  * The database isn't running or isn't configured correctly.\n  * At least one of the expected database tables doesn't exist.\n"
+#ANNOTATION: "  * The SQL was invalid.\nHint: Look at the output of 'django-admin.py sqlflush'. That's the SQL this command wasn't able to run.\n"
+#ANNOTATION: "The full error: %s", where '%s' is replaced by value under the 'NAME' key of the connection.settings_dict dictionary and e. 
+                six.reraise(CommandError, CommandError(new_msg), sys.exc_info()[2])
+#ANNOTATION: call the function six.reraise with 3 arguments: CommandError, CommandError created with argument new_msg, 
+#ANNOTATION: and third element of the return value of the function sys.exc_info.
+
+            if not inhibit_post_migrate:
+#ANNOTATION: if inhibit_post_migrate is false,
+                self.emit_post_migrate(verbosity, interactive, database)
+#ANNOTATION: call the method self.emit_post_migrate with arguments verbosity, interactive and database.
+
+            # Reinstall the initial_data fixture.
+            if options.get('load_initial_data'):
+#ANNOTATION: if value under the 'load_initial_data' key of the options dictionary is true,
+                # Reinstall the initial_data fixture.
+                call_command('loaddata', 'initial_data', **options)
+#ANNOTATION: call the function call_command with 3 arguments: string 'loaddata', string 'initial_data' and unpacked dictionary options.
+
+        else:
+#ANNOTATION: if not,
+            self.stdout.write("Flush cancelled.\n")
+#ANNOTATION: write string "Flush cancelled.\n" to self.stdout stream.
+
+    @staticmethod
+#ANNOTATION: class static method,
+    def emit_post_migrate(verbosity, interactive, database):
+#ANNOTATION: define the method emit_post_migrate with arguments verbosity, interactive and database. 
+        # Emit the post migrate signal. This allows individual applications to
+        # respond as if the database had been migrated from scratch.
+        all_models = []
+#ANNOTATION: all_models is an empty list.
+        for app_config in apps.get_app_configs():
+#ANNOTATION: for every app_config in return value of the method apps.get_app_configs,
+            all_models.extend(router.get_migratable_models(app_config, database, include_auto_created=True))
+#ANNOTATION: call the method router.get_migratable_models with arguments app_config, database and include_auto_created set to boolean True,
+#ANNOTATION: extend all_models list with the result.
+        emit_post_migrate_signal(set(all_models), verbosity, interactive, database)
+#ANNOTATION: call the function emit_post_migrate_signal with 4 arguments: all_models converted into a set, verbosity, interactive and database.

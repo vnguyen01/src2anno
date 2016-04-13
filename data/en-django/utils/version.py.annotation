@@ -1,0 +1,125 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import datetime
+#ANNOTATION: import module datetime.
+import os
+#ANNOTATION: import module os.
+import subprocess
+#ANNOTATION: import module subprocess.
+
+
+def get_version(version=None):
+#ANNOTATION: define the function get_version with version set to None as argument.
+    "Returns a PEP 386-compliant version number from VERSION."
+#ANNOTATION: docstring
+    version = get_complete_version(version)
+#ANNOTATION: call the get_complete_version function with version as argument, store the result in version.
+
+    # Now build the two parts of the version number:
+    # major = X.Y[.Z]
+    # sub = .devN - for pre-alpha releases
+    #     | {a|b|c}N - for alpha, beta and rc releases
+
+    major = get_major_version(version)
+#ANNOTATION: call the get_major_version wit version as argument, store the result in major.
+
+    sub = ''
+#ANNOTATION: sub is an empty string.
+    if version[3] == 'alpha' and version[4] == 0:
+#ANNOTATION: if fourth element of version equals to string 'alpha' and fight element of version equals to integer 0,
+        git_changeset = get_git_changeset()
+#ANNOTATION: call the function get_git_changeset, store the result in git_changeset.
+        if git_changeset:
+#ANNOTATION: if git_changeset is true,
+            sub = '.dev%s' % git_changeset
+#ANNOTATION: convert git_changeset to string, append it to the string '.dev', replace it for sub.
+
+    elif version[3] != 'final':
+#ANNOTATION: otherwise if fourth element of version does not equals to 'final',
+        mapping = {'alpha': 'a', 'beta': 'b', 'rc': 'c'}
+#ANNOTATION: mapping is a dictionary with 3 initial entries: 'a' for 'alpha', 'b' for 'beta' and 'c' for 'rc'.
+        sub = mapping[version[3]] + str(version[4])
+#ANNOTATION: use fourth element of version as a key to get the value from mapping dictionary, append to it fourth element of version converted to string, substitute it for sub.
+
+    return str(major + sub)
+#ANNOTATION: sum major and sub, return the result converted to string.
+
+
+def get_major_version(version=None):
+#ANNOTATION: define the function get_major_version with an argument version defaulting to None.
+    "Returns major version from VERSION."
+#ANNOTATION: docstring
+    version = get_complete_version(version)
+#ANNOTATION: call the get_complete_version with an argument version, store the result in version.
+    parts = 2 if version[2] == 0 else 3
+#ANNOTATION: assign integer 2 to parts if third element of version equals to zero, otherwise assign it integer 3.
+    major = '.'.join(str(x) for x in version[:parts])
+#ANNOTATION: convert x into a string for every x in list of version elements up to the parts index, join the previous into a string separated by '.', assign the result to major.
+    return major
+#ANNOTATION: return major.
+
+
+def get_complete_version(version=None):
+#ANNOTATION: define the function get_complete_version with in argument version, defaulting to None.
+    """Returns a tuple of the django version. If version argument is non-empy,
+    then checks for correctness of the tuple provided.
+    """
+#ANNOTATION: docstring
+    if version is None:
+#ANNOTATION: if version is None,
+        from django import VERSION as version
+#ANNOTATION: from django import VERSION as version into default name space.
+    else:
+#ANNOTATION: if not,
+        assert len(version) == 5
+#ANNOTATION: if length of version does not equals to integer 5, raise an exception.
+        assert version[3] in ('alpha', 'beta', 'rc', 'final')
+#ANNOTATION: if fourth element of version does not equals to string 'alpha' or 'beta' or 'rc' or 'final', raise an exception.
+
+    return version
+#ANNOTATION: return version
+
+
+def get_git_changeset():
+#ANNOTATION: define the function get_git_changeset.
+    """Returns a numeric identifier of the latest git changeset.
+
+    The result is the UTC timestamp of the changeset in YYYYMMDDHHMMSS format.
+    This value isn't guaranteed to be unique, but collisions are very unlikely,
+    so it's sufficient for generating the development version numbers.
+    """
+#ANNOTATION: docstring
+    # FIXME: Replace with @lru_cache when we upgrade the docs server to PY2.7+.
+    if hasattr(get_git_changeset, 'cache'):
+#ANNOTATION: if get_git_changeset has an attribute 'cache',
+        return get_git_changeset.cache
+#ANNOTATION: return get_git_changeset.cache.
+
+    repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#ANNOTATION: get the absolute path of the __file__, repo_dir is name of the directory two leveles above it.
+    git_log = subprocess.Popen('git log --pretty=format:%ct --quiet -1 HEAD',
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            shell=True, cwd=repo_dir, universal_newlines=True)
+#ANNOTATION: call the subprocess.Popen function with, 'git log --pretty=format:%ct --quiet -1 HEAD', stdout set to subprocess.PIPE, 
+#ANNOTATION: stderr set to subprocess.PIPE, shell set to boolean True, cwd set to repo_dir and universal_newlines set to boolean True, 
+#ANNOTATION: as arguments, substitute the result for git_log.
+    timestamp = git_log.communicate()[0]
+#ANNOTATION: evaluate the method git_log.communicate, substitute first element of the result for timestamp. 
+    try:
+#ANNOTATION: try
+        timestamp = datetime.datetime.utcfromtimestamp(int(timestamp))
+#ANNOTATION: call the datetime.datetime.utcfromtimestamp with timestamp converted to an integer as argument, substitute result for timestamp.
+    except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+        changeset = None
+#ANNOTATION: changeset is None.
+    else:
+#ANNOTATION: if not,
+        changeset = timestamp.strftime('%Y%m%d%H%M%S')
+#ANNOTATION: call the timestamp.strftime with string '%Y%m%d%H%M%S' as an argument, substitute the result for changeset.
+
+    get_git_changeset.cache = changeset
+#ANNOTATION: substitute changeset for get_git_changeset.cache.
+    return changeset
+#ANNOTATION: return changeset.

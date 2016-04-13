@@ -1,0 +1,346 @@
+"""
+Parser and utilities for the smart 'if' tag
+"""
+#ANNOTATION: docstring
+
+
+# Using a simple top down parser, as described here:
+#    http://effbot.org/zone/simple-top-down-parsing.htm.
+# 'led' = left denotation
+# 'nud' = null denotation
+# 'bp' = binding power (left = lbp, right = rbp)
+
+class TokenBase(object):
+#ANNOTATION: derive the class TokenBase from the object base class.
+    """
+    Base class for operators and literals, mainly for debugging and for throwing
+    syntax errors.
+    """
+#ANNOTATION: docstring
+    id = None  # node/token type name
+#ANNOTATION: id is None.
+    value = None  # used by literals
+#ANNOTATION: value is None.
+    first = second = None  # used by tree nodes
+#ANNOTATION: first and second are None.
+
+    def nud(self, parser):
+#ANNOTATION: define the method nud with 2 arguments: self and parser.
+        # Null denotation - called in prefix context
+        raise parser.error_class(
+            "Not expecting '%s' in this position in if tag." % self.id
+        )
+#ANNOTATION: raise an exception parser.error_class with an argument string "Not expecting '%s' in this position in if tag.",
+#ANNOTATION: where '%s' is replaced with self.id.
+
+    def led(self, left, parser):
+#ANNOTATION: define the method led with 3 arguments: self, left and parser.
+        # Left denotation - called in infix context
+        raise parser.error_class(
+            "Not expecting '%s' as infix operator in if tag." % self.id
+        )
+#ANNOTATION: raise an exception parser.error_class with an argument string "Not expecting '%s' as infix operator in if tag.",
+#ANNOTATION: where '%s' is replaced with self.id.
+
+    def display(self):
+#ANNOTATION: define the method display with an argument self.
+        """
+        Returns what to display in error messages for this node
+        """
+#ANNOTATION: docstring
+        return self.id
+#ANNOTATION: return self.id.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        out = [str(x) for x in [self.id, self.first, self.second] if x is not None]
+#ANNOTATION: for x in a list containing 3 elements: self.id, self.first and self.second, if x is not None, 
+#ANNOTATION: convert x into a string and append it to a list, substitute the resulting list for out.
+        return "(" + " ".join(out) + ")"
+#ANNOTATION: join elements of out into a string, separated with whitespaces, append ')' to it, append the result to '(', return it.
+
+
+def infix(bp, func):
+#ANNOTATION: define the function infix with 2 arguments bp and func.
+    """
+    Creates an infix operator, given a binding power and a function that
+    evaluates the node
+    """
+#ANNOTATION: docstring
+    class Operator(TokenBase):
+#ANNOTATION: derive the class Operator from the base class TokenBase.
+        lbp = bp
+#ANNOTATION: substitute bp for lbp.
+
+        def led(self, left, parser):
+#ANNOTATION: define the method led with 3 arguments self, left and parser.
+            self.first = left
+#ANNOTATION: substitute left for self.first.
+            self.second = parser.expression(bp)
+#ANNOTATION: call the method parser.expression with an argument bp, substitute it for self.seconds.
+            return self
+#ANNOTATION: return self.
+
+        def eval(self, context):
+#ANNOTATION: define the method eval with 2 arguments self and context.
+            try:
+#ANNOTATION: try,
+                return func(context, self.first, self.second)
+#ANNOTATION: call the function func with 3 arguments: context, self.first and self.second, return the result.
+            except Exception:
+#ANNOTATION: if Exception exception is caught,
+                # Templates shouldn't throw exceptions when rendering.  We are
+                # most likely to get exceptions for things like {% if foo in bar
+                # %} where 'bar' does not support 'in', so default to False
+                return False
+#ANNOTATION: return boolean False.
+
+    return Operator
+#ANNOTATION: return Operator.
+
+
+def prefix(bp, func):
+#ANNOTATION: define the function prefix with 2 arguments bp and func.
+    """
+    Creates a prefix operator, given a binding power and a function that
+    evaluates the node.
+    """
+#ANNOTATION: docstring
+    class Operator(TokenBase):
+#ANNOTATION: derive the class Operator from the base class TokenBase.
+        lbp = bp
+#ANNOTATION: substitute bp for lbp.
+
+        def nud(self, parser):
+#ANNOTATION: define the method nud with 2 arguments self and parser.
+            self.first = parser.expression(bp)
+#ANNOTATION: call the method parser.expression with an argument bp, substitute the result for self.first.
+            self.second = None
+#ANNOTATION: self.second is None.
+            return self
+#ANNOTATION: return self.
+
+        def eval(self, context):
+#ANNOTATION: define the method evalu with 2 arguments self and context.
+            try:
+#ANNOTATION: try,
+                return func(context, self.first)
+#ANNOTATION: call the function func with 2 arguments: context and self.first, return the result.
+            except Exception:
+#ANNOTATION: if Exception exception is caught,
+                return False
+#ANNOTATION: return boolean False.
+
+    return Operator
+#ANNOTATION: return Operator.
+
+
+# Operator precedence follows Python.
+# NB - we can get slightly more accurate syntax error messages by not using the
+# same object for '==' and '='.
+# We defer variable evaluation to the lambda to ensure that terms are
+# lazily evaluated using Python's boolean parsing logic.
+OPERATORS = {
+    'or': infix(6, lambda context, x, y: x.eval(context) or y.eval(context)),
+    'and': infix(7, lambda context, x, y: x.eval(context) and y.eval(context)),
+    'not': prefix(8, lambda context, x: not x.eval(context)),
+    'in': infix(9, lambda context, x, y: x.eval(context) in y.eval(context)),
+    'not in': infix(9, lambda context, x, y: x.eval(context) not in y.eval(context)),
+    '=': infix(10, lambda context, x, y: x.eval(context) == y.eval(context)),
+    '==': infix(10, lambda context, x, y: x.eval(context) == y.eval(context)),
+    '!=': infix(10, lambda context, x, y: x.eval(context) != y.eval(context)),
+    '>': infix(10, lambda context, x, y: x.eval(context) > y.eval(context)),
+    '>=': infix(10, lambda context, x, y: x.eval(context) >= y.eval(context)),
+    '<': infix(10, lambda context, x, y: x.eval(context) < y.eval(context)),
+    '<=': infix(10, lambda context, x, y: x.eval(context) <= y.eval(context)),
+}
+#ANNOTATION: OPERATORS is an dictionary with 12 initial entries: result of the function inflix called with 2 arguments, integer 6,  
+#ANNOTATION: and lambda function with 3 arguments context, x and y, returns boolean True if x.eval(context) or y.eval(context) is True, for 'or',
+#ANNOTATION: result of the function inflix called with 2 arguments, integer 7,  
+#ANNOTATION: and lambda function with 3 arguments context, x and y, returns boolean True if x.eval(context) and y.eval(context) is True for 'and',
+#ANNOTATION: result of the function prefix called with 2 arguments, integer 8,  
+#ANNOTATION: and lambda function with 2 arguments context and x, returns boolean True if x.eval(context) is True for 'not',
+#ANNOTATION: result of the function inflix called with 2 arguments, integer 9,  
+#ANNOTATION: and lambda function with 2 arguments context and x, returns boolean True if x.eval(context) is contained in y.eval(context) for 'in',
+#ANNOTATION: result of the function inflix called with 2 arguments, integer 9,  
+#ANNOTATION: and lambda function with 2 arguments context and x, returns boolean True if x.eval(context) is not contained in y.eval(context),
+#ANNOTATION: for 'not in', result of the function inflix called with 2 arguments, integer 10,  
+#ANNOTATION: and lambda function with 3 arguments context, x and y, returns boolean True if x.eval(context) equals y.eval(context) for '=',
+#ANNOTATION: result of the function inflix called with 2 arguments, integer 10,  
+#ANNOTATION: and lambda function with 3 arguments context, x and y, returns boolean True if x.eval(context) equals y.eval(context) for '==',
+#ANNOTATION: result of the function inflix called with 2 arguments, integer 10,  
+#ANNOTATION: and lambda function with 3 arguments context, x and y, returns boolean True if x.eval(context) doesnt equals y.eval(context) for '!=',
+#ANNOTATION: result of the function inflix called with 2 arguments, integer 10 and,
+#ANNOTATION: lambda function with 3 arguments context, x and y, returns boolean True if x.eval(context) is greater than y.eval(context) for '>',
+#ANNOTATION: result of the function inflix called with 2 arguments, integer 10 and and lambda function with 3 arguments context, x and y, 
+#ANNOTATION: returns boolean True if x.eval(context) is greater than or equal to y.eval(context) for '>=',
+#ANNOTATION: result of the function inflix called with 2 arguments, integer 10 and and lambda function with 3 arguments context, x and y, 
+#ANNOTATION: returns boolean True if x.eval(context) is smaller than y.eval(context) for '<',
+#ANNOTATION: result of the function inflix called with 2 arguments, integer 10 and and lambda function with 3 arguments context, x and y, 
+#ANNOTATION: returns boolean True if x.eval(context) is smaller than or equal to y.eval(context) for '<=',
+
+# Assign 'id' to each:
+for key, op in OPERATORS.items():
+#ANNOTATION: call the function OPERATORS.items, for every key and op in result,
+    op.id = key
+#ANNOTATION: substitute key for op.id.
+
+
+class Literal(TokenBase):
+#ANNOTATION: derive the class Literal from the TokenBase base class.
+    """
+    A basic self-resolvable object similar to a Django template variable.
+    """
+#ANNOTATION: docstring
+    # IfParser uses Literal in create_var, but TemplateIfParser overrides
+    # create_var so that a proper implementation that actually resolves
+    # variables, filters etc is used.
+    id = "literal"
+#ANNOTATION: id is a string "literal".
+    lbp = 0
+#ANNOTATION: lbp is integer 0.
+
+    def __init__(self, value):
+#ANNOTATION: define the method __init__ with 2 arguments: self and value.
+        self.value = value
+#ANNOTATION: substitute value for self.value.
+
+    def display(self):
+#ANNOTATION: define the method display with an argument self.
+        return repr(self.value)
+#ANNOTATION: return printable representation of self.value.
+
+    def nud(self, parser):
+#ANNOTATION: define the method nud with 2 arguments: self and parser.
+        return self
+#ANNOTATION: return self.
+
+    def eval(self, context):
+#ANNOTATION: define the method eval with 2 arguments: self and context.
+        return self.value
+#ANNOTATION: return self.value.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return "(%s %r)" % (self.id, self.value)
+#ANNOTATION: return string "(%s %r)", replace '%s' with self.if and '%r' with self.value.
+
+
+class EndToken(TokenBase):
+#ANNOTATION: derive the class EndToken from the TokenBase base class.
+    lbp = 0
+#ANNOTATION: lbp is an integer 0.
+
+    def nud(self, parser):
+#ANNOTATION: define the method nud with 2 arguments: self and parser.
+        raise parser.error_class("Unexpected end of expression in if tag.")
+#ANNOTATION: raise an exception parser.error_class with an argument string "Unexpected end of expression in if tag.".
+
+EndToken = EndToken()
+#ANNOTATION: EndToken is an instance of EndToken class.
+
+
+class IfParser(object):
+#ANNOTATION: derive the class IfParser from the object base class.
+    error_class = ValueError
+#ANNOTATION: substitute ValueError for error_class.
+
+    def __init__(self, tokens):
+#ANNOTATION: define the method __init__ with 2 arguments: self and tokens.
+        # pre-pass necessary to turn  'not','in' into single token
+        l = len(tokens)
+#ANNOTATION: substitute length of tokens for l.
+        mapped_tokens = []
+#ANNOTATION: mapped_tokens is an empty list.
+        i = 0
+#ANNOTATION: i is integer 0.
+        while i < l:
+#ANNOTATION: while i is smaller than l,
+            token = tokens[i]
+#ANNOTATION: substitute i-th element of tokens for token.
+            if token == "not" and i + 1 < l and tokens[i + 1] == "in":
+#ANNOTATION: if token equals a string "not" and i incremented by 1 is lesser than l,
+#ANNOTATION: and element of tokens at i incremented by 1 index equals a string "in",
+                token = "not in"
+#ANNOTATION: token is a string "not in".
+                i += 1  # skip 'in'
+#ANNOTATION: increment i by integer 1.
+            mapped_tokens.append(self.translate_token(token))
+#ANNOTATION: call the method self.translate_token with an argument token, append the result to mapped_tokens.
+            i += 1
+#ANNOTATION: increment i by integer 1.
+
+        self.tokens = mapped_tokens
+#ANNOTATION: substitute mapped_tokens for self.tokens.
+        self.pos = 0
+#ANNOTATION: self.pos is integer 0.
+        self.current_token = self.next_token()
+#ANNOTATION: call the method self.next_token, substitute the result for self.current_token.
+
+    def translate_token(self, token):
+#ANNOTATION: define the method translate_token with 2 arguments: self and token.
+        try:
+#ANNOTATION: try,
+            op = OPERATORS[token]
+#ANNOTATION: substitute OPERATORS dictionary element under token key for op.
+        except (KeyError, TypeError):
+#ANNOTATION: if KeyError and TypeError exceptions are caught,
+            return self.create_var(token)
+#ANNOTATION: call the function self.create_var with an argument token, return the result.
+        else:
+#ANNOTATION: if not,
+            return op()
+#ANNOTATION: call the function op, return the result.
+
+    def next_token(self):
+#ANNOTATION: define the method next_token with an argument self.
+        if self.pos >= len(self.tokens):
+#ANNOTATION: if self.pos is greater than or equal to self.tokens,
+            return EndToken
+#ANNOTATION: return EndToken.
+        else:
+#ANNOTATION: if not,
+            retval = self.tokens[self.pos]
+#ANNOTATION: substitute element at self.pos index of self.tokens for retval.
+            self.pos += 1
+#ANNOTATION: increment self.pos by integer 1.
+            return retval
+#ANNOTATION: return retval.
+
+    def parse(self):
+#ANNOTATION: define the method parse with an argument self.
+        retval = self.expression()
+#ANNOTATION: call the method self.expression, substitute the result for retval.
+        # Check that we have exhausted all the tokens
+        if self.current_token is not EndToken:
+#ANNOTATION: if self.current_token is not EndToken,
+            raise self.error_class("Unused '%s' at end of if expression." %
+                                   self.current_token.display())
+#ANNOTATION: raise an exception self.error_class with an argument string ""Unused '%s' at end of if expression",
+#ANNOTATION: where '%s' is replaced with result of the method self.current_token.display.
+        return retval
+#ANNOTATION: return retval.
+
+    def expression(self, rbp=0):
+#ANNOTATION: define the method expression with 2 arguments: self and rbp set to integer 0.
+        t = self.current_token
+#ANNOTATION: substitute self.current_token for t.
+        self.current_token = self.next_token()
+#ANNOTATION: call the method self.next_token, substitute the result for self.current_token.
+        left = t.nud(self)
+#ANNOTATION: call the method t.nud with an argument self, substitute the result for left.
+        while rbp < self.current_token.lbp:
+#ANNOTATION: while rbp is smaller than self.current_token.lbp,
+            t = self.current_token
+#ANNOTATION: substitute self.current_token for t.
+            self.current_token = self.next_token()
+#ANNOTATION: call the method self.next_token, substitute the result for self.current_token.
+            left = t.led(left, self)
+#ANNOTATION: call the method t.led with 2 arguments left and self.
+        return left
+#ANNOTATION: return left.
+
+    def create_var(self, value):
+#ANNOTATION: define the method create_var with 2 arguments: self and value.
+        return Literal(value)
+#ANNOTATION: return an instance of Literal class, created with an argumen value.

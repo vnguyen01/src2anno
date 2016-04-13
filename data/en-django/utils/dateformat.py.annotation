@@ -1,0 +1,593 @@
+"""
+PHP date() style date formatting
+See http://www.php.net/date for format strings
+
+Usage:
+>>> import datetime
+>>> d = datetime.datetime.now()
+>>> df = DateFormat(d)
+>>> print(df.format('jS F Y H:i'))
+7th October 2003 11:39
+>>>
+"""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import re
+#ANNOTATION: import module re.
+import time
+#ANNOTATION: import module time.
+import calendar
+#ANNOTATION: import module calendar.
+import datetime
+#ANNOTATION: import module datetime.
+
+from django.utils.dates import MONTHS, MONTHS_3, MONTHS_ALT, MONTHS_AP, WEEKDAYS, WEEKDAYS_ABBR
+#ANNOTATION: from django.utils.dates import MONTHS, MONTHS_3, MONTHS_ALT, MONTHS_AP, WEEKDAYS and WEEKDAYS_ABBR into default name space.
+from django.utils.translation import ugettext as _
+#ANNOTATION: from django.utils.translation import ugettext as _ into default name space.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.timezone import get_default_timezone, is_aware, is_naive
+#ANNOTATION: from django.utils.timezone import get_default_timezone, is_aware and is_naive into default name space.
+
+re_formatchars = re.compile(r'(?<!\\)([aAbBcdDeEfFgGhHiIjlLmMnNoOPrsStTUuwWyYzZ])')
+#ANNOTATION: compile regex from a string '(?<!\\)([aAbBcdDeEfFgGhHiIjlLmMnNoOPrsStTUuwWyYzZ])', substitute it for re_formatchars.
+re_escaped = re.compile(r'\\(.)')
+#ANNOTATION: compile regex from a string '\\(.)', substitute it for re_escaped.
+
+
+class Formatter(object):
+#ANNOTATION: derive the class Formatter from object base class.
+    def format(self, formatstr):
+#ANNOTATION: define the function format with 2 arguments self and formatstr.
+        pieces = []
+#ANNOTATION: pieces is an empty list.
+        for i, piece in enumerate(re_formatchars.split(force_text(formatstr))):
+#ANNOTATION: call the function force_text with an argument formatstr, use the result as an argument for the call to the method,
+#ANNOTATION: re_formatchars.split, for every i and piece in enumerated result,
+            if i % 2:
+#ANNOTATION: if i is even number,
+                pieces.append(force_text(getattr(self, piece)()))
+#ANNOTATION: get attribute piece of the self object, call it and use the result as an argument for the call to the function force_text,
+#ANNOTATION: append the result to pieces.
+            elif piece:
+#ANNOTATION: otherwise if piece is true,
+                pieces.append(re_escaped.sub(r'\1', piece))
+#ANNOTATION: call the method re_escaped.sub with 2 arguments: raw string '\1' and piece, append the result to pieces.
+        return ''.join(pieces)
+#ANNOTATION: join elements of pieces into a string, return it.
+
+
+class TimeFormat(Formatter):
+#ANNOTATION: derive the class TimeFormat from the base class Formatter.
+
+    def __init__(self, obj):
+#ANNOTATION: define the method __init__ with 2 arguments: self and obj.
+        self.data = obj
+#ANNOTATION: substitute obj for self.data.
+        self.timezone = None
+#ANNOTATION: self.timezone is None.
+
+        # We only support timezone when formatting datetime objects,
+        # not date objects (timezone information not appropriate),
+        # or time objects (against established django policy).
+        if isinstance(obj, datetime.datetime):
+#ANNOTATION: if obj is an instance of datetime.datetime,
+            if is_naive(obj):
+#ANNOTATION: call the function is_naive with an argument obj.
+                self.timezone = get_default_timezone()
+#ANNOTATION: call the function get_default_timezone, substitute the result for self.timezone.
+            else:
+#ANNOTATION: if not,
+                self.timezone = obj.tzinfo
+#ANNOTATION: substitute obj.tzinfo for self.timezone.
+
+    def a(self):
+#ANNOTATION: define the method a with an argument self.
+        "'a.m.' or 'p.m.'"
+#ANNOTATION: docstring
+        if self.data.hour > 11:
+#ANNOTATION: if self.data.hour is greater than integer 11,
+            return _('p.m.')
+#ANNOTATION: call the function _ with an argument string 'p.m.', return the result.
+        return _('a.m.')
+#ANNOTATION: call the function _ with an argument string 'a.m.', return the result.
+
+    def A(self):
+#ANNOTATION: define the method A with an argument self.
+        "'AM' or 'PM'"
+#ANNOTATION: docstring
+        if self.data.hour > 11:
+#ANNOTATION: if self.data.hour is greater than integer 11,
+            return _('PM')
+#ANNOTATION: call the function _ with an argument string 'PM', return the result.
+        return _('AM')
+#ANNOTATION: call the function _ with an argument string 'AM', return the result.
+
+    def B(self):
+#ANNOTATION: define the method B with an argument self.
+        "Swatch Internet time"
+#ANNOTATION: docstring
+        raise NotImplementedError('may be implemented in a future release')
+#ANNOTATION: raise an NotImplementedError exception with an argument string 'may be implemented in a future release'.
+
+    def e(self):
+#ANNOTATION: define the method e with an argument self.
+        """
+        Timezone name.
+
+        If timezone information is not available, this method returns
+        an empty string.
+        """
+#ANNOTATION: docstring
+        if not self.timezone:
+#ANNOTATION: if self.timezone is false,
+            return ""
+#ANNOTATION: return an empty string.
+
+        try:
+#ANNOTATION: try,
+            if hasattr(self.data, 'tzinfo') and self.data.tzinfo:
+#ANNOTATION: is self.data has an attribute 'tzinfo' and self.data.tzinfo is true,
+                # Have to use tzinfo.tzname and not datetime.tzname
+                # because datatime.tzname does not expect Unicode
+                return self.data.tzinfo.tzname(self.data) or ""
+#ANNOTATION: call the method self.data.tzinfo.tzname with an argument self.data, if it is true, return it, otherwise return an empty string.
+        except NotImplementedError:
+#ANNOTATION: if NotImplementedError exception is caught,
+            pass
+#ANNOTATION: do nothing.
+        return ""
+#ANNOTATION: return an empty string.
+
+    def f(self):
+#ANNOTATION: define the method f with an argument self.
+        """
+        Time, in 12-hour hours and minutes, with minutes left off if they're
+        zero.
+        Examples: '1', '1:30', '2:05', '2'
+        Proprietary extension.
+        """
+#ANNOTATION: docstring
+        if self.data.minute == 0:
+#ANNOTATION: if self.data.minute equals integer 0,
+            return self.g()
+#ANNOTATION: call the method self.g, return the result.
+        return '%s:%s' % (self.g(), self.i())
+#ANNOTATION: return a string '%s:%s' formated with the results of the functions self.g and self.i, respectivley.
+
+    def g(self):
+#ANNOTATION: define the method g with an argument self.
+        "Hour, 12-hour format without leading zeros; i.e. '1' to '12'"
+#ANNOTATION: docstring
+        if self.data.hour == 0:
+#ANNOTATION: if self.data.hour equals integer 0,
+            return 12
+#ANNOTATION: return integer 12.
+        if self.data.hour > 12:
+#ANNOTATION: if self.data.hour is greater than inreger 12,
+            return self.data.hour - 12
+#ANNOTATION: subtract integer 12 from self.data.hour, return the result.
+        return self.data.hour
+#ANNOTATION: return self.data.hour.
+
+    def G(self):
+#ANNOTATION: define the method G with an argument self.
+        "Hour, 24-hour format without leading zeros; i.e. '0' to '23'"
+#ANNOTATION: docstring
+        return self.data.hour
+#ANNOTATION: return self.data.hour.
+
+    def h(self):
+#ANNOTATION: define the method h with an argument self.
+        "Hour, 12-hour format; i.e. '01' to '12'"
+#ANNOTATION: docstring
+        return '%02d' % self.g()
+#ANNOTATION: return a string '%02d' formated with the result of the function self.g.
+
+    def H(self):
+#ANNOTATION: define the method H with an argument self.
+        "Hour, 24-hour format; i.e. '00' to '23'"
+#ANNOTATION: docstring
+        return '%02d' % self.G()
+#ANNOTATION: return a string '%02d' formated with the result of the function self.G.
+
+    def i(self):
+#ANNOTATION: define the method i with an argument self.
+        "Minutes; i.e. '00' to '59'"
+#ANNOTATION: docstring
+        return '%02d' % self.data.minute
+#ANNOTATION: return a string '%02d' formated with self.data.minute.
+
+    def O(self):
+#ANNOTATION: define the method O with an argument self.
+        """
+        Difference to Greenwich time in hours; e.g. '+0200', '-0430'.
+
+        If timezone information is not available, this method returns
+        an empty string.
+        """
+#ANNOTATION: docstring
+        if not self.timezone:
+#ANNOTATION: if self.timezone is false,
+            return ""
+#ANNOTATION: return an empty string.
+
+        seconds = self.Z()
+#ANNOTATION: call the method self.Z, substitute the result for seconds.
+        sign = '-' if seconds < 0 else '+'
+#ANNOTATION: if seconds smaller than integer 0, sign is '-', otherwise sign is '+',
+        seconds = abs(seconds)
+#ANNOTATION: substitute absolute seconds for seconds.
+        return "%s%02d%02d" % (sign, seconds // 3600, (seconds // 60) % 60)
+#ANNOTATION: return a string "%s%02d%02d" formated with sign, floored result of the division of seconds by integer 3000, 
+#ANNOTATION: reminder of the division of floored result of division of seconds by 60, by integer 60.
+
+    def P(self):
+#ANNOTATION: define the method P with an argument self.
+        """
+        Time, in 12-hour hours, minutes and 'a.m.'/'p.m.', with minutes left off
+        if they're zero and the strings 'midnight' and 'noon' if appropriate.
+        Examples: '1 a.m.', '1:30 p.m.', 'midnight', 'noon', '12:30 p.m.'
+        Proprietary extension.
+        """
+#ANNOTATION: docstring
+        if self.data.minute == 0 and self.data.hour == 0:
+#ANNOTATION: if self.data.minute equals integer 0 and self.data.hour equals integer 0,
+            return _('midnight')
+#ANNOTATION: call the function _ with an argument string 'midnight', return the result.
+        if self.data.minute == 0 and self.data.hour == 12:
+#ANNOTATION: if self.data.minute equals integer 0 and self.data.hour equals integer 12,
+            return _('noon')
+#ANNOTATION: call the function _ with an argument string 'noon', return the result.
+        return '%s %s' % (self.f(), self.a())
+#ANNOTATION: return a string '%02d' formated with self.data.month.
+
+    def s(self):
+#ANNOTATION: define the method s with an argument self.
+        "Seconds; i.e. '00' to '59'"
+#ANNOTATION: docstring
+        return '%02d' % self.data.second
+#ANNOTATION: return a string '%02d' formated with self.data.second.
+
+    def T(self):
+#ANNOTATION: define the method T with an argument self.
+        """
+        Time zone of this machine; e.g. 'EST' or 'MDT'.
+
+        If timezone information is not available, this method returns
+        an empty string.
+        """
+#ANNOTATION: docstring
+        if not self.timezone:
+#ANNOTATION: if self.timezone is false,
+            return ""
+#ANNOTATION: return an empty string.
+
+        name = self.timezone.tzname(self.data) if self.timezone else None
+#ANNOTATION: if self.timezone is true, call the method self.timezone.tzname with an argument self.data, substitute the result for name,
+#ANNOTATION: otherwise name is None.
+        if name is None:
+#ANNOTATION: if name is None,
+            name = self.format('O')
+#ANNOTATION: call the method self.format with an argument string '0', substitute the result for name.
+        return six.text_type(name)
+#ANNOTATION: call the function six.text_type with an argument name, return the result.
+
+    def u(self):
+#ANNOTATION: define the method u with an argument self.
+        "Microseconds; i.e. '000000' to '999999'"
+#ANNOTATION: docstring
+        return '%06d' % self.data.microsecond
+#ANNOTATION: return a string '%06d' formated with self.data.microsecond.
+
+    def Z(self):
+#ANNOTATION: define the method Z with an argument self.
+        """
+        Time zone offset in seconds (i.e. '-43200' to '43200'). The offset for
+        timezones west of UTC is always negative, and for those east of UTC is
+        always positive.
+
+        If timezone information is not available, this method returns
+        an empty string.
+        """
+#ANNOTATION: docstring
+        if not self.timezone:
+#ANNOTATION: if self.timezone is true,
+            return ""
+#ANNOTATION: return an empty string.
+
+        offset = self.timezone.utcoffset(self.data)
+#ANNOTATION: call the method self.timezone.utcoffset with an argument self.data, substitute the result for offset.
+        # `offset` is a datetime.timedelta. For negative values (to the west of
+        # UTC) only days can be negative (days=-1) and seconds are always
+        # positive. e.g. UTC-1 -> timedelta(days=-1, seconds=82800, microseconds=0)
+        # Positive offsets have days=0
+        return offset.days * 86400 + offset.seconds
+#ANNOTATION: multiply offset.days with 86400, add offset.seconds to the result, return the result.
+
+
+class DateFormat(TimeFormat):
+#ANNOTATION: derive the class DateFormat from the base class TimeFormat.
+    year_days = [None, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
+#ANNOTATION: year_days is a list with 13 elements: None, integer 0, integer 31, integer 59, integer 90, integer 120, integer 151, integer 181,
+#ANNOTATION: integer 212, integer 243, integer 273, integer 304 and integer 334.
+
+    def b(self):
+#ANNOTATION: define the method b with an argument self.
+        "Month, textual, 3 letters, lowercase; e.g. 'jan'"
+#ANNOTATION: docstring
+        return MONTHS_3[self.data.month]
+#ANNOTATION: return the value under the self.data.month key of the MONTHS_3 dictionary.
+
+    def c(self):
+#ANNOTATION: define the method c with an argument self.
+        """
+        ISO 8601 Format
+        Example : '2008-01-02T10:30:00.000123'
+        """
+#ANNOTATION: docstring
+        return self.data.isoformat()
+#ANNOTATION: call the method self.data.isoformat, return the result.
+
+    def d(self):
+#ANNOTATION: define the method d with an argument self.
+        "Day of the month, 2 digits with leading zeros; i.e. '01' to '31'"
+#ANNOTATION: docstring
+        return '%02d' % self.data.day
+#ANNOTATION: return a string '%02d' formated with self.data.day.
+
+    def D(self):
+#ANNOTATION: define the method D with an argument self.
+        "Day of the week, textual, 3 letters; e.g. 'Fri'"
+#ANNOTATION: docstring
+        return WEEKDAYS_ABBR[self.data.weekday()]
+#ANNOTATION: call the method self.data.weekday, use the result as an key for obtaining WEEKDAYS_ABBR dictionary value, return it.
+
+    def E(self):
+#ANNOTATION: define the method E with an argument self.
+        "Alternative month names as required by some locales. Proprietary extension."
+#ANNOTATION: docstring
+        return MONTHS_ALT[self.data.month]
+#ANNOTATION: return the value under the self.data.month key of the MONTHS_ALT dictionary.
+
+    def F(self):
+#ANNOTATION: define the method F with an argument self.
+        "Month, textual, long; e.g. 'January'"
+#ANNOTATION: docstring
+        return MONTHS[self.data.month]
+#ANNOTATION: return the value under the self.data.month key of the MONTHS dictionary.
+
+    def I(self):
+#ANNOTATION: define the method I with an argument self.
+        "'1' if Daylight Savings Time, '0' otherwise."
+#ANNOTATION: docstring
+        if self.timezone and self.timezone.dst(self.data):
+#ANNOTATION: if self.timezone is true and call to the method self.timezone.dst with an argument self.data, evaluates to true,
+            return '1'
+#ANNOTATION: return string '1'.
+        else:
+#ANNOTATION: if not,
+            return '0'
+#ANNOTATION: return string '0'.
+
+    def j(self):
+#ANNOTATION: define the method j with an argument self.
+        "Day of the month without leading zeros; i.e. '1' to '31'"
+#ANNOTATION: docstring
+        return self.data.day
+#ANNOTATION: return self.data.day.
+
+    def l(self):
+#ANNOTATION: define the method l with an argument self.
+        "Day of the week, textual, long; e.g. 'Friday'"
+#ANNOTATION: docstring
+        return WEEKDAYS[self.data.weekday()]
+#ANNOTATION: call the method self.data.weekday, use the result as an key for obtaining WEEKDAYS dictionary value, return it.
+
+    def L(self):
+#ANNOTATION: define the method L with an argument self.
+        "Boolean for whether it is a leap year; i.e. True or False"
+#ANNOTATION: docstring
+        return calendar.isleap(self.data.year)
+#ANNOTATION: call the method calendar.isleap with an argument self.data.year, return the result.
+
+    def m(self):
+#ANNOTATION: define the method m with an argument self.
+        "Month; i.e. '01' to '12'"
+#ANNOTATION: docstring
+        return '%02d' % self.data.month
+#ANNOTATION: return a string '%02d' formated with self.data.month.
+
+    def M(self):
+#ANNOTATION: define the method M with an argument self.
+        "Month, textual, 3 letters; e.g. 'Jan'"
+#ANNOTATION: docstring
+        return MONTHS_3[self.data.month].title()
+#ANNOTATION: get the value under the self.data.month key of the MONTHS_3 dictionary, call on it the method title, return the result.
+
+    def n(self):
+#ANNOTATION: define the method n with an argument self.
+        "Month without leading zeros; i.e. '1' to '12'"
+#ANNOTATION: docstring
+        return self.data.month
+#ANNOTATION: return self.data.month.
+
+    def N(self):
+#ANNOTATION: define the method N with an argument self.
+        "Month abbreviation in Associated Press style. Proprietary extension."
+#ANNOTATION: docstring
+        return MONTHS_AP[self.data.month]
+#ANNOTATION: return the value under the self.data.month key of the MONTHS_AP dictionary.
+
+    def o(self):
+#ANNOTATION: define the method o with an argument self.
+        "ISO 8601 year number matching the ISO week number (W)"
+#ANNOTATION: docstring
+        return self.data.isocalendar()[0]
+#ANNOTATION: call the method self.data.isocalendar, return the first element of the result.
+
+    def r(self):
+#ANNOTATION: define the method r with an argument self.
+        "RFC 2822 formatted date; e.g. 'Thu, 21 Dec 2000 16:01:07 +0200'"
+#ANNOTATION: docstring
+        return self.format('D, j M Y H:i:s O')
+#ANNOTATION: call the method return self.format with an argument string 'D, j M Y H:i:s O', return the result.
+
+    def S(self):
+#ANNOTATION: define the method S with an argument self.
+        "English ordinal suffix for the day of the month, 2 characters; i.e. 'st', 'nd', 'rd' or 'th'"
+#ANNOTATION: docstring
+        if self.data.day in (11, 12, 13):  # Special case
+#ANNOTATION: if self.data.day equals integer 11, 12 or 13,
+            return 'th'
+#ANNOTATION: return string 'th'.
+        last = self.data.day % 10
+#ANNOTATION: divide self.data.day by 10, substitute reminder of the result for last.
+        if last == 1:
+#ANNOTATION: if las equals integer 1,
+            return 'st'
+#ANNOTATION: return string 'st'.
+        if last == 2:
+#ANNOTATION: if las equals integer 2,
+            return 'nd'
+#ANNOTATION: return string 'nd'.
+        if last == 3:
+#ANNOTATION: if las equals integer 3,
+            return 'rd'
+#ANNOTATION: return string 'rd'.
+        return 'th'
+#ANNOTATION: return string 'th'.
+
+    def t(self):
+#ANNOTATION: define the method t with an argument self.
+        "Number of days in the given month; i.e. '28' to '31'"
+#ANNOTATION: docstring
+        return '%02d' % calendar.monthrange(self.data.year, self.data.month)[1]
+#ANNOTATION: call the method calendar.monthrange with 2 arguments: self.data.year and self.data.month,
+#ANNOTATION: format string '%02d' with the second element of the result, return it.
+
+    def U(self):
+#ANNOTATION: define the method U with an argument self.
+        "Seconds since the Unix epoch (January 1 1970 00:00:00 GMT)"
+#ANNOTATION: docstring
+        if isinstance(self.data, datetime.datetime) and is_aware(self.data):
+#ANNOTATION: if self.data is an instance of datetime.datetime and result of the function is_aware called with an argument self.data evaluates to true,
+            return int(calendar.timegm(self.data.utctimetuple()))
+#ANNOTATION: call the method self.data.utctimetuple, use the result as an argument for the call to the function calendar.timegm,
+#ANNOTATION: return result converted into an integer.
+        else:
+#ANNOTATION: if not,
+            return int(time.mktime(self.data.timetuple()))
+#ANNOTATION: call the method self.data.timetuple, use the result as an argument for the call to the function time.mktime,
+#ANNOTATION: return result converted into an integer.
+
+    def w(self):
+#ANNOTATION: define the method w with an argument self.
+        "Day of the week, numeric, i.e. '0' (Sunday) to '6' (Saturday)"
+#ANNOTATION: docstring
+        return (self.data.weekday() + 1) % 7
+#ANNOTATION: call the method self.data.weekday, increment the result by an integer 1, divide it with integer 7, return the reminder of the division.
+
+    def W(self):
+#ANNOTATION: define the method W with an argument self.
+        "ISO-8601 week number of year, weeks starting on Monday"
+#ANNOTATION: docstring
+        # Algorithm from http://www.personal.ecu.edu/mccartyr/ISOwdALG.txt
+        week_number = None
+#ANNOTATION: week_number is None.
+        jan1_weekday = self.data.replace(month=1, day=1).weekday() + 1
+#ANNOTATION: call the method self.data.replace with 2 arguments: month as integer 1 and day as integer 1, on the result call the method,
+#ANNOTATION: weekday, increment the result by integer 1 and substitute it for jan1_weekday.
+        weekday = self.data.weekday() + 1
+#ANNOTATION: call the method self.data.weekday, increment the result by integer 1, substitute the result for weekday.
+        day_of_year = self.z()
+#ANNOTATION: call the method self.z, substitute the result for day_of_year. 
+        if day_of_year <= (8 - jan1_weekday) and jan1_weekday > 4:
+#ANNOTATION: if day_of_year is smaller than or equalt to jan1_weekday subtracted from integer 8 and jan1_weekday is greater than integer 4,
+            if jan1_weekday == 5 or (jan1_weekday == 6 and calendar.isleap(self.data.year - 1)):
+#ANNOTATION: if jan1_weekday equals integer 5, or if jan1_weekday equals integer 6 and call to the function calendar.isleap, 
+#ANNOTATION: with an argument self.data.year decremented by 1, evaluates to true,
+                week_number = 53
+#ANNOTATION: week_number is integer 53.
+            else:
+#ANNOTATION: if not,
+                week_number = 52
+#ANNOTATION: week_number is integer 52.
+        else:
+#ANNOTATION: if not,
+            if calendar.isleap(self.data.year):
+#ANNOTATION: call the function calendar.isleap with an argument self.data.year, if it evaluates to true,
+                i = 366
+#ANNOTATION: i is integer 366.
+            else:
+#ANNOTATION: if not,
+                i = 365
+#ANNOTATION: i is integer 365.
+            if (i - day_of_year) < (4 - weekday):
+#ANNOTATION: subtract day_of_year from i, if the result is smaller than the result of subtraction of weekday from integer 4,
+                week_number = 1
+#ANNOTATION: week_number is integer 1.
+            else:
+#ANNOTATION: if not,
+                j = day_of_year + (7 - weekday) + (jan1_weekday - 1)
+#ANNOTATION: sum day_of_year, result of the subtraction of weekday from integer 7 and subtraction of integer 1 from jan1_weekday.
+                week_number = j // 7
+#ANNOTATION: divide j by integer 7, substitute the floored result for week_number.
+                if jan1_weekday > 4:
+#ANNOTATION: if jan1_weekday is greater than integer 4,
+                    week_number -= 1
+#ANNOTATION: decrement week_number by integer 1.
+        return week_number
+#ANNOTATION: return week_number.
+
+    def y(self):
+#ANNOTATION: define the method y with an argument self.
+        "Year, 2 digits; e.g. '99'"
+#ANNOTATION: docstring
+        return six.text_type(self.data.year)[2:]
+#ANNOTATION: call the function six.text_type with an argument self.data.year, return the result without the first 2 elements.
+
+    def Y(self):
+#ANNOTATION: define the method Y with an argument self.
+        "Year, 4 digits; e.g. '1999'"
+#ANNOTATION: docstring
+        return self.data.year
+#ANNOTATION: return self.data.year.
+
+    def z(self):
+#ANNOTATION: define the method z with an argument self.
+        "Day of the year; i.e. '0' to '365'"
+#ANNOTATION: docstring
+        doy = self.year_days[self.data.month] + self.data.day
+#ANNOTATION: append self.data.day to the value under the self.data.month key of the self.year_days dictionary, substitute the result for doy.
+        if self.L() and self.data.month > 2:
+#ANNOTATION: if call to the method self.L evaluates to true, and result of the call to the method self.data.month is greater than integer 2, 
+            doy += 1
+#ANNOTATION: increment doy by integer 1.
+        return doy
+#ANNOTATION: return doy.
+
+
+def format(value, format_string):
+#ANNOTATION: define the function format with 2 arguments: value and format_string.
+    "Convenience function"
+#ANNOTATION: docstring
+    df = DateFormat(value)
+#ANNOTATION: df is an instance of DateFormat class, created with an argument value.
+    return df.format(format_string)
+#ANNOTATION: call the method df.format with an argument format_string, return the result.
+
+
+def time_format(value, format_string):
+#ANNOTATION: define the function time_format with 2 arguments: value and format_string.
+    "Convenience function"
+#ANNOTATION: docstring
+    tf = TimeFormat(value)
+#ANNOTATION: tf is an instance of TimeFormat class, created with an argument value.
+    return tf.format(format_string)
+#ANNOTATION: call the method tf.format with an argument format_string, return the result.

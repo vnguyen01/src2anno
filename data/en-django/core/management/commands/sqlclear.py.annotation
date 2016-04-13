@@ -1,0 +1,41 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.core.management.base import AppCommand
+#ANNOTATION: from django.core.management.base import AppCommand into default name space.
+from django.core.management.sql import sql_delete
+#ANNOTATION: from django.core.management.sql import sql_delete into default name space.
+from django.db import connections, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import connections and DEFAULT_DB_ALIAS into default name space.
+
+
+class Command(AppCommand):
+#ANNOTATION: derive the class Command from the AppCommand base class.
+    help = "Prints the DROP TABLE SQL statements for the given app name(s)."
+#ANNOTATION: help is a string "Prints the DROP TABLE SQL statements for the given app name(s).".
+
+    output_transaction = True
+#ANNOTATION: output_transaction is boolean True.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with 2 arguments self and parser.
+        super(Command, self).add_arguments(parser)
+#ANNOTATION: call the method add_arguments from the base class of the class Command, with an argument parser.
+        parser.add_argument('--database', default=DEFAULT_DB_ALIAS,
+            help='Nominates a database to print the SQL for. Defaults to the '
+                 '"default" database.')
+#ANNOTATION: call the method parser.add_argument with 3 arguments: string '--database', default set to DEFAULT_DB_ALIAS,
+#ANNOTATION: and help set to a string 'Nominates a database to print the SQL for. Defaults to the "default" database.'.
+
+    def handle_app_config(self, app_config, **options):
+#ANNOTATION: define the method handle_app_config with 3 arguments: self, app_config and unpacked dictionary options. 
+        if app_config.models_module is None:
+#ANNOTATION: if app_config.models_module is None,
+            return
+#ANNOTATION: return nothing.
+        connection = connections[options['database']]
+#ANNOTATION: get the value under the 'database' key of the options dictionary, use it as the key to get the value from the connections dictionary, substitute the result for connection.
+        statements = sql_delete(app_config, self.style, connection)
+#ANNOTATION: call the function sql_destroy_indexes with 3 arguments: app_config, self.style and connection, substitute the result for statements.
+        return '\n'.join(statements)
+#ANNOTATION: join statements into a string, separated by newlines, return it.

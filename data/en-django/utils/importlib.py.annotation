@@ -1,0 +1,81 @@
+# Taken from Python 2.7 with permission from/by the original author.
+import warnings
+#ANNOTATION: import module warnings.
+import sys
+#ANNOTATION: import module sys.
+
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+
+
+warnings.warn("django.utils.importlib will be removed in Django 1.9.",
+    RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the function warnings.warn with 3 arguments: string "django.utils.importlib will be removed in Django 1.9.",
+#ANNOTATION: RemovedInDjango19Warning and stacklevel set to integer 2.
+
+
+def _resolve_name(name, package, level):
+#ANNOTATION: define the function _resolve_name with 3 arguments: name, package and level.
+    """Return the absolute name of the module to be imported."""
+#ANNOTATION: docstring
+    if not hasattr(package, 'rindex'):
+#ANNOTATION: if package doesnt have an 'rindex' attribute,
+        raise ValueError("'package' not set to a string")
+#ANNOTATION: raise an ValueError with an argument string "'package' not set to a string". 
+    dot = len(package)
+#ANNOTATION: substitute length of package for dot.
+    for x in range(level, 1, -1):
+#ANNOTATION: for every x is the range of integers from level to the integer 2, in the reversed order,
+        try:
+#ANNOTATION: try,
+            dot = package.rindex('.', 0, dot)
+#ANNOTATION: call the method package.rindex with 3 arguments: string '.', integer 0 and dot, substitute the result for dot.
+        except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+            raise ValueError("attempted relative import beyond top-level package")
+#ANNOTATION: raise an ValueError with an argument string "attempted relative import beyond top-level package".
+    return "%s.%s" % (package[:dot], name)
+#ANNOTATION: return a string "%s.%s" formated with first dot package elements and name.
+
+
+if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+    from importlib import import_module
+#ANNOTATION: from importlib import import_module.
+else:
+#ANNOTATION: if not,
+    def import_module(name, package=None):
+#ANNOTATION: define the function import_module with 3 arguments: name and package set to None.
+        """Import a module.
+
+        The 'package' argument is required when performing a relative import. It
+        specifies the package to use as the anchor point from which to resolve the
+        relative import to an absolute import.
+
+        """
+#ANNOTATION: docstring
+        if name.startswith('.'):
+#ANNOTATION: if name starts with an string '.',
+            if not package:
+#ANNOTATION: if package is false,
+                raise TypeError("relative imports require the 'package' argument")
+#ANNOTATION: raise an TypeError with an argument string "relative imports require the 'package' argument".
+            level = 0
+#ANNOTATION: level is an integer 0.
+            for character in name:
+#ANNOTATION: for every character in name,
+                if character != '.':
+#ANNOTATION: if character is not equal to a string '.',
+                    break
+#ANNOTATION: break from the loop execution.
+                level += 1
+#ANNOTATION: increment level by one.
+            name = _resolve_name(name[level:], package, level)
+#ANNOTATION: call the function _resolve_name with 3 arguments: name list elements from the level index to the end, package and level, 
+#ANNOTATION: substitute the result for name.
+        __import__(name)
+#ANNOTATION: call the function __import__ with an argument name.
+        return sys.modules[name]
+#ANNOTATION: return sys.modules dictionary value under the name key.

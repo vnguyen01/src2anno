@@ -1,0 +1,292 @@
+from __future__ import absolute_import  # Avoid importing `importlib` from this package.
+#ANNOTATION: from __future__ import absolute_import into default name space.
+
+import copy
+#ANNOTATION: import module copy.
+from importlib import import_module
+#ANNOTATION: from importlib import import_module into default name space.
+import os
+#ANNOTATION: import module os.
+import sys
+#ANNOTATION: import module sys.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.core.exceptions import ImproperlyConfigured
+#ANNOTATION: from django.core.exceptions import ImproperlyConfigured into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+
+
+def import_string(dotted_path):
+#ANNOTATION: define the function import_string with an argument dotted_path.
+    """
+    Import a dotted module path and return the attribute/class designated by the
+    last name in the path. Raise ImportError if the import failed.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try, 
+        module_path, class_name = dotted_path.rsplit('.', 1)
+#ANNOTATION: split dotted_path into two parts from the right at the '.' character, assign the result to module_path and class_name, respectively.
+    except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+        msg = "%s doesn't look like a module path" % dotted_path
+#ANNOTATION: msg is a string "%s doesn't look like a module path" formated with dotted_path.
+        six.reraise(ImportError, ImportError(msg), sys.exc_info()[2])
+#ANNOTATION: call the function six.reraise with 3 arguments: ImportError, instance of ImportError class created with an argument msg,
+#ANNOTATION: and third element of result of the function sys.exc_info.
+
+    module = import_module(module_path)
+#ANNOTATION: call the function import_module with an argument module_path, substitute the result for module.
+
+    try:
+#ANNOTATION: try,
+        return getattr(module, class_name)
+#ANNOTATION: get attribute class_name form the module object, return it.
+    except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+        msg = 'Module "%s" does not define a "%s" attribute/class' % (
+            dotted_path, class_name)
+#ANNOTATION: msg is a string 'Module "%s" does not define a "%s" attribute/class' formated with dotted_path and class_name, respectively.
+        six.reraise(ImportError, ImportError(msg), sys.exc_info()[2])
+#ANNOTATION: call the function six.reraise with 3 arguments: ImportError, instance of ImportError class created with an argument msg,
+#ANNOTATION: and third element of result of the function sys.exc_info.
+
+
+def import_by_path(dotted_path, error_prefix=''):
+#ANNOTATION: define the function import_by_path with 2 arguments dotted_path and error_prefix set to an empty string..
+    """
+    Import a dotted module path and return the attribute/class designated by the
+    last name in the path. Raise ImproperlyConfigured if something goes wrong.
+    """
+#ANNOTATION: docstring
+    warnings.warn(
+        'import_by_path() has been deprecated. Use import_string() instead.',
+        RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the function warnings.warn with 3 arguments: string 'import_by_path() has been deprecated. Use import_string() instead.',
+#ANNOTATION: RemovedInDjango19Warning and stacklevel as integer 2.
+    try:
+#ANNOTATION: try,
+        attr = import_string(dotted_path)
+#ANNOTATION: call the function import_string with an argument dotted_path, substitute the result for attr.
+    except ImportError as e:
+#ANNOTATION: if ImportError, renamed to e, exception is caught,
+        msg = '%sError importing module %s: "%s"' % (
+            error_prefix, dotted_path, e)
+#ANNOTATION: msg is a string '%sError importing module %s: "%s"', where '%s' is replaced with error_prefix, dotted_path and e, respectively.
+        six.reraise(ImproperlyConfigured, ImproperlyConfigured(msg),
+                    sys.exc_info()[2])
+#ANNOTATION: call the function six.reraise with 3 arguments: ImproperlyConfigured, instance of ImproperlyConfigured class created with msg,
+#ANNOTATION: and third element of the function sys.exc_info result.
+    return attr
+#ANNOTATION: return attr.
+
+
+def autodiscover_modules(*args, **kwargs):
+#ANNOTATION: define the function autodiscover_modules with 2 arguments unpacked list args and unpacked dictionary kwargs.
+    """
+    Auto-discover INSTALLED_APPS modules and fail silently when
+    not present. This forces an import on them to register any admin bits they
+    may want.
+
+    You may provide a register_to keyword parameter as a way to access a
+    registry. This register_to object must have a _registry instance variable
+    to access it.
+    """
+#ANNOTATION: docstring
+    from django.apps import apps
+#ANNOTATION: from django.apps import apps.
+
+    register_to = kwargs.get('register_to')
+#ANNOTATION: get value under the 'register_to' key of the kwargs dictionary, substitute it for register_to.
+    for app_config in apps.get_app_configs():
+#ANNOTATION: call the method apps.get_app_configs, for every app_config in the result,
+        # Attempt to import the app's module.
+        try:
+#ANNOTATION: try,
+            if register_to:
+#ANNOTATION: if register_to is true,
+                before_import_registry = copy.copy(register_to._registry)
+#ANNOTATION: call the method copy.copy with an argument register_to._registry, substitute the result for before_import_registry.
+
+            for module_to_search in args:
+#ANNOTATION: for every module_to_search in args,
+                import_module('%s.%s' % (app_config.name, module_to_search))
+#ANNOTATION: call the function import_module with an argument string '%s.%s', where '%s' is replaced with app_config.name and module_to_search.
+        except:
+#ANNOTATION:  is exception is caught,
+            # Reset the model registry to the state before the last import as
+            # this import will have to reoccur on the next request and this
+            # could raise NotRegistered and AlreadyRegistered exceptions
+            # (see #8245).
+            if register_to:
+#ANNOTATION: if register_to is true,
+                register_to._registry = before_import_registry
+#ANNOTATION: substitute before_import_registry for register_to._registry.
+
+            # Decide whether to bubble up this error. If the app just
+            # doesn't have an admin module, we can ignore the error
+            # attempting to import it, otherwise we want it to bubble up.
+            if module_has_submodule(app_config.module, module_to_search):
+#ANNOTATION: if call to the function module_has_submodule with 2 arguments: app_config.module and module_to_search evaluates to true,
+                raise
+#ANNOTATION: raise an exception,
+
+
+if sys.version_info[:2] >= (3, 3):
+#ANNOTATION: if first and second element of sys.version_info are both equal to integer 3,
+    if sys.version_info[:2] >= (3, 4):
+#ANNOTATION: if first and second element of sys.version_info are equal to integers 3 and 4, respectively,
+        from importlib.util import find_spec as importlib_find
+#ANNOTATION: from importlib.util import find_spec as importlib_find.
+    else:
+#ANNOTATION: if not,
+        from importlib import find_loader as importlib_find
+#ANNOTATION: from importlib import find_loader as importlib_find.
+
+    def module_has_submodule(package, module_name):
+#ANNOTATION: define the function module_has_submodule with 2 arguments: package and module_name.
+        """See if 'module' is in 'package'."""
+#ANNOTATION: docstring
+        try:
+#ANNOTATION: try,
+            package_name = package.__name__
+#ANNOTATION: substitute package.__name__ for package_name.
+            package_path = package.__path__
+#ANNOTATION: substitute package.__path__ for package_path.
+        except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+            # package isn't a package.
+            return False
+#ANNOTATION: return boolean False.
+
+        full_module_name = package_name + '.' + module_name
+#ANNOTATION: concatenate package_name, string '.' and module_name, substitute it for full_module_name.
+        return importlib_find(full_module_name, package_path) is not None
+#ANNOTATION: call the function importlib_find with 2 arguments: full_module_name and package_path, if the result is not None, return boolean True,
+#ANNOTATION: otherwise return boolean False.
+
+else:
+#ANNOTATION: if not,
+    import imp
+#ANNOTATION: import imp.
+
+    def module_has_submodule(package, module_name):
+#ANNOTATION: define the function module_has_submodule with 2 arguments: package and module_name.
+        """See if 'module' is in 'package'."""
+#ANNOTATION: docstring
+        name = ".".join([package.__name__, module_name])
+#ANNOTATION: join package.__name__ and module_name into a string separated with '.', substitute it for name.
+        try:
+#ANNOTATION: try,
+            # None indicates a cached miss; see mark_miss() in Python/import.c.
+            return sys.modules[name] is not None
+#ANNOTATION: if value under the name key of the sys.modules dictionary is not None, return boolean True, otherwise return boolean False.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            pass
+#ANNOTATION: do nothing.
+        try:
+#ANNOTATION: try,
+            package_path = package.__path__   # No __path__, then not a package.
+#ANNOTATION: substitute package.__path__ for package_path.
+        except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+            # Since the remainder of this function assumes that we're dealing with
+            # a package (module with a __path__), so if it's not, then bail here.
+            return False
+#ANNOTATION: return boolean False.
+        for finder in sys.meta_path:
+#ANNOTATION: for every finder in sys.meta_path,
+            if finder.find_module(name, package_path):
+#ANNOTATION: if call to the method finder.find_module with 2 arguments: name and package_path evaluates to true,
+                return True
+#ANNOTATION: return boolean True.
+        for entry in package_path:
+#ANNOTATION: for every entry in package_path,
+            try:
+#ANNOTATION: try,
+                # Try the cached finder.
+                finder = sys.path_importer_cache[entry]
+#ANNOTATION: substitute the value under the entry key of the sys.path_importer_cache dictionary for finder.
+                if finder is None:
+#ANNOTATION: if finder is None,
+                    # Implicit import machinery should be used.
+                    try:
+#ANNOTATION: try,
+                        file_, _, _ = imp.find_module(module_name, [entry])
+#ANNOTATION: call the method imp.find_module with 2 arguments: module_name and list containing element entry, assign the result to file_, _,
+#ANNOTATION: and _, respectively.
+                        if file_:
+#ANNOTATION: if file_ is true,
+                            file_.close()
+#ANNOTATION: close file_ file descriptor.
+                        return True
+#ANNOTATION: return boolean True.
+                    except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+                        continue
+#ANNOTATION: skip this loop iteration,
+                # Else see if the finder knows of a loader.
+                elif finder.find_module(name):
+#ANNOTATION: otherwise if call to the method finder.find_module with an argument name evaluates to true,
+                    return True
+#ANNOTATION: return boolean True.
+                else:
+#ANNOTATION: if not,
+                    continue
+#ANNOTATION: skip this loop iteration,
+            except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+                # No cached finder, so try and make one.
+                for hook in sys.path_hooks:
+#ANNOTATION: for every hook in sys.path_hooks,
+                    try:
+#ANNOTATION: try,
+                        finder = hook(entry)
+#ANNOTATION: call the function hook with an argument entry, substitute the result for finder.
+                        # XXX Could cache in sys.path_importer_cache
+                        if finder.find_module(name):
+#ANNOTATION: if call to the method finder.find_module with an argument name evaluates to true,
+                            return True
+#ANNOTATION: return boolean True.
+                        else:
+#ANNOTATION: if not,
+                            # Once a finder is found, stop the search.
+                            break
+#ANNOTATION: break from the loop execution,
+                    except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+                        # Continue the search for a finder.
+                        continue
+#ANNOTATION: skip this loop iteration,
+                else:
+#ANNOTATION: if not,
+                    # No finder found.
+                    # Try the implicit import machinery if searching a directory.
+                    if os.path.isdir(entry):
+#ANNOTATION: if entry is a directory,
+                        try:
+#ANNOTATION: try,
+                            file_, _, _ = imp.find_module(module_name, [entry])
+#ANNOTATION: call the method imp.find_module with 2 arguments: module_name and list containing element entry, assign the result to file_, _,
+#ANNOTATION: and _, respectively.
+                            if file_:
+#ANNOTATION: if file_ is true,
+                                file_.close()
+#ANNOTATION: close file_ file descriptor.
+                            return True
+#ANNOTATION: return boolean True.
+                        except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+                            pass
+#ANNOTATION: do nothing.
+                    # XXX Could insert None or NullImporter
+        else:
+#ANNOTATION: if not,
+            # Exhausted the search, so the module cannot be found.
+            return False
+#ANNOTATION: return boolean False.

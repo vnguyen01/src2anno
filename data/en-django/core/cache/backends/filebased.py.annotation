@@ -1,0 +1,276 @@
+"File-based cache backend"
+#ANNOTATION: docstring
+import errno
+#ANNOTATION: import module errno.
+import glob
+#ANNOTATION: import module glob.
+import hashlib
+#ANNOTATION: import module hashlib.
+import io
+#ANNOTATION: import module io.
+import os
+#ANNOTATION: import module os.
+import random
+#ANNOTATION: import module random.
+import tempfile
+#ANNOTATION: import module tempfile.
+import time
+#ANNOTATION: import module time.
+import zlib
+#ANNOTATION: import module zlib.
+from django.core.cache.backends.base import BaseCache, DEFAULT_TIMEOUT
+#ANNOTATION: from django.core.cache.backends.base import BaseCache and DEFAULT_TIMEOUT into default name space.
+from django.core.files.move import file_move_safe
+#ANNOTATION: from django.core.files.move import file_move_safe into default name space.
+from django.utils.encoding import force_bytes
+#ANNOTATION: from django.utils.encoding import force_bytes into default name space.
+try:
+#ANNOTATION: try,
+    from django.utils.six.moves import cPickle as pickle
+#ANNOTATION: from django.utils.six.moves import cPickle as pickle into default name space.
+except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+    import pickle
+#ANNOTATION: import pickle.
+
+
+class FileBasedCache(BaseCache):
+#ANNOTATION: derive the class FileBasedCache from BaseCache base class.
+    cache_suffix = '.djcache'
+#ANNOTATION: cache_suffix is a string '.djcache'.
+
+    def __init__(self, dir, params):
+#ANNOTATION: define the initialization method __init__ with arguments: self class instance, dir and params.
+        super(FileBasedCache, self).__init__(params)
+#ANNOTATION: call method __init__ with argument params from the base class of the FileBaseCache.
+        self._dir = os.path.abspath(dir)
+#ANNOTATION: get absolute directory path of dir, substitute it for self._dir.
+        self._createdir()
+#ANNOTATION: call the self._createdir method.
+
+    def add(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method add with 5 arguments, self class instance, key, value, timeout set to DEFAULT_TIMEOUT and version set to None.
+        if self.has_key(key, version):
+#ANNOTATION: evaluate method self.has_key with key and version as arguments, if the result is true,
+            return False
+#ANNOTATION: return boolean False.
+        self.set(key, value, timeout, version)
+#ANNOTATION: call the method self.set with key, value, timeout and version as arguments.
+        return True
+#ANNOTATION: return boolean True.
+
+    def get(self, key, default=None, version=None):
+#ANNOTATION: define the method get with 5 arguments, self class instance, key, default set to None and version set to None.
+        fname = self._key_to_file(key, version)
+#ANNOTATION: call the function self._key_to_file with key and version as arguments, substitute it for fname.
+        if os.path.exists(fname):
+#ANNOTATION: if fname file path exists,
+            try:
+#ANNOTATION: try,
+                with io.open(fname, 'rb') as f:
+#ANNOTATION: with return value of the function io.open with fname and string 'rb' as arguments, named as f,
+                    if not self._is_expired(f):
+#ANNOTATION: evaluate self._is_expired method with f as argument, if the result is false,
+                        return pickle.loads(zlib.decompress(f.read()))
+#ANNOTATION: call f.read function, use the result as the argument for zlib.decompress function call, call the pickle.loads function with the previous result as argument, return the result.
+            except IOError as e:
+#ANNOTATION: if IOError, renamed to e, exception is caught, 
+                if e.errno == errno.ENOENT:
+#ANNOTATION: if e.errno equals to errno.ENOENT,
+                    pass  # Cache file was removed after the exists check
+#ANNOTATION: do nothing.
+        return default
+#ANNOTATION: return default.
+
+    def set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method set with 5 arguments, self class instance, key, value, timeout set to DEFAULT_TIMEOUT and version set to None.
+        self._createdir()  # Cache dir can be deleted at any time.
+#ANNOTATION: call the self._createdir method.
+        fname = self._key_to_file(key, version)
+#ANNOTATION: call the function self._key_to_file with key and version as arguments, substitute it for fname.
+        self._cull()  # make some room if necessary
+#ANNOTATION: call the method self._cull.
+        fd, tmp_path = tempfile.mkstemp(dir=self._dir)
+#ANNOTATION: call the method tempfile.mkstemp with dir set to self._dir, substitute result for fd and tmp_path, respectively.
+        renamed = False
+#ANNOTATION: renamed is boolean False.
+        try:
+#ANNOTATION: try,
+            with io.open(fd, 'wb') as f:
+#ANNOTATION: with return value of the function io.open with fname and string 'rb' as arguments, named as f,
+                expiry = self.get_backend_timeout(timeout)
+#ANNOTATION: call the method self.get_backend_timeout with argument timeout, substitute it for expiry.
+                f.write(pickle.dumps(expiry, -1))
+#ANNOTATION: call the function pickle.dumps with expiry and integer -1 as arguments, use the result as the argument for the call to f.write function.
+                f.write(zlib.compress(pickle.dumps(value), -1))
+#ANNOTATION: call the function pickle.dumps with argument value, use the result and integer -1 as arguments for the call to the function zlib.compress, use the result as an argument for the call to the f.write method. 
+            file_move_safe(tmp_path, fname, allow_overwrite=True)
+#ANNOTATION: call the function file_move_safe with tmp_path, fname, allow_overwrite set to boolean True as arguments.
+            renamed = True
+#ANNOTATION: renamed is boolean True.
+        finally:
+#ANNOTATION: finally perform,
+            if not renamed:
+#ANNOTATION: if renamed is boolean False,
+                os.remove(tmp_path)
+#ANNOTATION: remove file tmp_path.
+
+    def delete(self, key, version=None):
+#ANNOTATION: define the method delete with self class instance, key and version defaulting to None as arguments.
+        self._delete(self._key_to_file(key, version))
+#ANNOTATION: call the function self._key_to_file with key and version as arguments, use the result as an argument for the call to the self._delete method.
+
+    def _delete(self, fname):
+#ANNOTATION: define the method _delete with self and fname as arguments.
+        if not fname.startswith(self._dir) or not os.path.exists(fname):
+#ANNOTATION: if fname doesnt start with self._dir and fname file path doesnt exists,
+            return
+#ANNOTATION: return nothing.
+        try:
+#ANNOTATION: try,
+            os.remove(fname)
+#ANNOTATION: call the function os.remove with argument fname.
+        except OSError as e:
+#ANNOTATION: if exception OSError, renamed to e, is caught,
+            # ENOENT can happen if the cache file is removed (by another
+            # process) after the os.path.exists check.
+            if e.errno != errno.ENOENT:
+#ANNOTATION: if e.errno does not equals to errno.ENOENT,
+                raise
+#ANNOTATION: raise an exception.
+
+    def has_key(self, key, version=None):
+#ANNOTATION: define the method has_key with self class instance, key and version defaulting to None as arguments.
+        fname = self._key_to_file(key, version)
+#ANNOTATION: call the function self._key_to_file with key and version as arguments, substitute it for fname.
+        if os.path.exists(fname):
+#ANNOTATION: if fname file path exists,
+            with io.open(fname, 'rb') as f:
+#ANNOTATION: with call to the io.open function with fname and string 'rb' as arguments, renamed to f,
+                return not self._is_expired(f)
+#ANNOTATION: call the method self._is_expired with argument f, invert the boolean result and return it.
+        return False
+#ANNOTATION: return boolean False.
+
+    def _cull(self):
+#ANNOTATION: define the method _cull with argument self.
+        """
+        Removes random cache entries if max_entries is reached at a ratio
+        of num_entries / cull_frequency. A value of 0 for CULL_FREQUENCY means
+        that the entire cache will be purged.
+        """
+#ANNOTATION: docstring
+        filelist = self._list_cache_files()
+#ANNOTATION: call the self._list_cache_files method, substitute the result for filelist.
+        num_entries = len(filelist)
+#ANNOTATION: num_entries is length of filelist.
+        if num_entries < self._max_entries:
+#ANNOTATION: if num_entries is lesser than self._max_entries,
+            return  # return early if no culling is required
+#ANNOTATION: return nothing.
+        if self._cull_frequency == 0:
+#ANNOTATION: if self._cull_frequency equals to integer 0.
+            return self.clear()  # Clear the cache when CULL_FREQUENCY = 0
+#ANNOTATION: evaluate self.clear method and return the result.
+        # Delete a random selection of entries
+        filelist = random.sample(filelist,
+                                 int(num_entries / self._cull_frequency))
+#ANNOTATION: divide num_entries by self._cull_frequency, convert the result to an integer, call the random.sample function with filelist and previous result as arguments, substitute the result for filelist.
+        for fname in filelist:
+#ANNOTATION: for every fname in filelist,
+            self._delete(fname)
+#ANNOTATION: call self._delete method with argument fname.
+
+    def _createdir(self):
+#ANNOTATION: define the method _createdir with argument self.
+        if not os.path.exists(self._dir):
+#ANNOTATION: if self._dir path doesnt exists,
+            try:
+#ANNOTATION: try,
+                os.makedirs(self._dir, 0o700)
+#ANNOTATION: call os.makedirs function with self._dir and hexadecimal 0o700 as arguments.
+            except OSError as e:
+#ANNOTATION: if OSError, renamed to e, exception is caught, 
+                if e.errno != errno.EEXIST:
+#ANNOTATION: if e.errno is not equal to errno.EEXIST,
+                    raise EnvironmentError(
+                        "Cache directory '%s' does not exist "
+                        "and could not be created'" % self._dir)
+#ANNOTATION: raise an EnvironmentError exception with string "Cache directory '%s' does not exist and could not be created" as argument,
+#ANNOTATION: substitute '%s' with self._dir converted to a string. 
+
+    def _key_to_file(self, key, version=None):
+#ANNOTATION: define the method key_to_file with self class instance, key and version defaulting to None as arguments.
+        """
+        Convert a key into a cache file path. Basically this is the
+        root cache path joined with the md5sum of the key and a suffix.
+        """
+#ANNOTATION: docstring
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute the result for key.
+        self.validate_key(key)
+#ANNOTATION: call the method self.validate_key with argument key.
+        return os.path.join(self._dir, ''.join(
+            [hashlib.md5(force_bytes(key)).hexdigest(), self.cache_suffix]))
+#ANNOTATION: join into a string: md5 hash sum of force_bytes(key) and self.cache_suffix, compose root file path out of self._dir and previous result, return it. 
+
+    def clear(self):
+#ANNOTATION: define the method clear with argument self.
+        """
+        Remove all the cache files.
+        """
+#ANNOTATION: docstring
+        if not os.path.exists(self._dir):
+#ANNOTATION: if self._dir file path does not exists,
+            return
+#ANNOTATION: return nothing.
+        for fname in self._list_cache_files():
+#ANNOTATION: if fname is contained in self._list_cache_files method return value,
+            self._delete(fname)
+#ANNOTATION: call the self._delete method with argument fname.
+
+    def _is_expired(self, f):
+#ANNOTATION: define the method _is_expired with self and f as arguments.
+        """
+        Takes an open cache file and determines if it has expired,
+        deletes the file if it is has passed its expiry time.
+        """
+#ANNOTATION: docstring
+        exp = pickle.load(f)
+#ANNOTATION: call the function pickle.load with argument f, substitute the result for exp.
+        if exp is not None and exp < time.time():
+#ANNOTATION: if exp is not None and exp is lesser than return value of the function time.time,
+            f.close()  # On Windows a file has to be closed before deleting
+#ANNOTATION: call close method on a file stream.
+            self._delete(f.name)
+#ANNOTATION: call the self._delete method with argument f.name.
+            return True
+#ANNOTATION: return boolean True.
+        return False
+#ANNOTATION: return boolean False.
+
+    def _list_cache_files(self):
+#ANNOTATION: define the method _list_cache_files with argument self.
+        """
+        Get a list of paths to all the cache files. These are all the files
+        in the root cache dir that end on the cache_suffix.
+        """
+#ANNOTATION: docstring
+        if not os.path.exists(self._dir):
+#ANNOTATION: if self._dir file path does not exists,
+            return []
+#ANNOTATION: return an empty list.
+        filelist = [os.path.join(self._dir, fname) for fname
+                    in glob.glob1(self._dir, '*%s' % self.cache_suffix)]
+#ANNOTATION: for every fname in return value of the glob.glob1 function called with 2 arguments: self._dir and ,
+#ANNOTATION: self.cache_suffix converted to a string, appended to the character '*', call os.path.join with self._dir and fname as arguments,
+#ANNOTATION: filelist is a list containing all the previous results.
+        return filelist
+#ANNOTATION: return filelist.
+
+
+# For backwards compatibility
+class CacheClass(FileBasedCache):
+#ANNOTATION: derive the class CacheClass from the base class FileBasedCache.
+    pass
+#ANNOTATION: do nothing.

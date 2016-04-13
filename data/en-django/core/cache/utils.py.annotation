@@ -1,0 +1,26 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import hashlib
+#ANNOTATION: import module hashlib.
+from django.utils.encoding import force_bytes
+#ANNOTATION: from django.utils.encoding import force_bytes into default name space.
+from django.utils.http import urlquote
+#ANNOTATION: from django.utils.http import urlquote into default name space.
+
+TEMPLATE_FRAGMENT_KEY_TEMPLATE = 'template.cache.%s.%s'
+#ANNOTATION: TEMPLATE_FRAGMENT_KEY_TEMPLATE is a string 'template.cache.%s.%s'. 
+
+
+def make_template_fragment_key(fragment_name, vary_on=None):
+#ANNOTATION: define the function make_template_fragment_key with fragment_name and vary_on defaulting to None as arguments. 
+    if vary_on is None:
+#ANNOTATION: if vary_on is None,
+        vary_on = ()
+#ANNOTATION: vary_on is an empty tuple.
+    key = ':'.join(urlquote(var) for var in vary_on)
+#ANNOTATION: call the function urlquote with argument var for every var in vary_on, join the results into a string separated by ':', substitute it for key.
+    args = hashlib.md5(force_bytes(key))
+#ANNOTATION: call the hashlib.md5 fuction with force_bytes(key) as argument. 
+    return TEMPLATE_FRAGMENT_KEY_TEMPLATE % (fragment_name, args.hexdigest())
+#ANNOTATION: substitute '%s' in TEMPLATE_FRAGMENT_KEY_TEMPLATE string with fragment_name and args.hexdigest(), respectively, return the result.

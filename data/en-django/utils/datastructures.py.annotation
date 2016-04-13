@@ -1,0 +1,902 @@
+import copy
+#ANNOTATION: import module copy.
+import warnings
+#ANNOTATION: import module warnings.
+from collections import OrderedDict
+#ANNOTATION: from collections import OrderedDict into default name space.
+
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+
+
+class MergeDict(object):
+#ANNOTATION: derive the class MergeDict from the object base class.
+    """
+    A simple class for creating new "virtual" dictionaries that actually look
+    up values in more than one dictionary, passed in the constructor.
+
+    If a key appears in more than one of the given dictionaries, only the
+    first occurrence will be used.
+    """
+#ANNOTATION: docstring
+    def __init__(self, *dicts):
+#ANNOTATION: define the method __init__ with 2 arguments: self and unpacked list dicts.
+        warnings.warn('`MergeDict` is deprecated, use `dict.update()` '
+                      'instead.', RemovedInDjango19Warning, 2)
+#ANNOTATION: call the function warnings.warn with 3 arguments: string '`MergeDict` is deprecated, use `dict.update()` instead.',
+#ANNOTATION: RemovedInDjango19Warning and integer 2.
+        self.dicts = dicts
+#ANNOTATION: substitute dicts for self.dicts.
+
+    def __bool__(self):
+#ANNOTATION: define the method __bool__ with an argument self.
+        return any(self.dicts)
+#ANNOTATION: if any element of self.dicts is true, return boolean True, otherwise return boolean False.
+
+    def __nonzero__(self):
+#ANNOTATION: define the method __nonzero__ with an argument self.
+        return type(self).__bool__(self)
+#ANNOTATION: get the type of self object, call its method __bool__ with an argument self, return the result.
+
+    def __getitem__(self, key):
+#ANNOTATION: define the method __getitem__ with 2 arguments: self and key.
+        for dict_ in self.dicts:
+#ANNOTATION: for every dict_ in self.dicts,
+            try:
+#ANNOTATION: try,
+                return dict_[key]
+#ANNOTATION: return value under key key of dict_ dictionary.
+            except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+        raise KeyError(key)
+#ANNOTATION: rise an KeyError exception with an argument key.
+
+    def __copy__(self):
+#ANNOTATION: define the method __copy__ with an argument self.
+        return self.__class__(*self.dicts)
+#ANNOTATION: call the method __copy__ with an argument unpacked list self.dicts, return the result.
+
+    def get(self, key, default=None):
+#ANNOTATION: define the method get with 3 arguments: self, key and default set to None.
+        try:
+#ANNOTATION: try,
+            return self[key]
+#ANNOTATION: return value under key key of self dictionary
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            return default
+#ANNOTATION: return default.
+
+    # This is used by MergeDicts of MultiValueDicts.
+    def getlist(self, key):
+#ANNOTATION: define the method getlist with 2 arguments: self and key.
+        for dict_ in self.dicts:
+#ANNOTATION: for every dict_ in self.dicts,
+            if key in dict_:
+#ANNOTATION: if key is contained in dict_,
+                return dict_.getlist(key)
+#ANNOTATION: call the method dict_.getlist with an argument key, return the result.
+        return []
+#ANNOTATION: return an empty list.
+
+    def _iteritems(self):
+#ANNOTATION: define the method _iteritems with an argument self.
+        seen = set()
+#ANNOTATION: seen is an empty set.
+        for dict_ in self.dicts:
+#ANNOTATION: for every dict_ in self.dicts,
+            for item in six.iteritems(dict_):
+#ANNOTATION: call the function six.iteritems with an argument dict_, for every item in the result,
+                k = item[0]
+#ANNOTATION: substitute first element of item for k.
+                if k in seen:
+#ANNOTATION: if k is contained in seen,
+                    continue
+#ANNOTATION: skip this loop iteration.
+                seen.add(k)
+#ANNOTATION: add k to seen.
+                yield item
+#ANNOTATION: yield item.
+
+    def _iterkeys(self):
+#ANNOTATION: define the method _iterkeys with an argument self.
+        for k, v in self._iteritems():
+#ANNOTATION: call the method self._iteritems, for every k and v in the result,
+            yield k
+#ANNOTATION: yield k.
+
+    def _itervalues(self):
+#ANNOTATION: define the method _itervalues with an argument self.
+        for k, v in self._iteritems():
+#ANNOTATION: call the method self._iteritems, for every k and v in the result,
+            yield v
+#ANNOTATION: yield v.
+
+    if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+        items = _iteritems
+#ANNOTATION: substitute _iteritems for items.
+        keys = _iterkeys
+#ANNOTATION: substitute _iterkeys for keys.
+        values = _itervalues
+#ANNOTATION: substitute _itervalues for values.
+    else:
+#ANNOTATION: if not,
+        iteritems = _iteritems
+#ANNOTATION: substitute _iteritems for iteritems.
+        iterkeys = _iterkeys
+#ANNOTATION: substitute _iterkeys for iterkeys.
+        itervalues = _itervalues
+#ANNOTATION: substitute _itervalues for itervalues.
+
+        def items(self):
+#ANNOTATION: define the method items with an argument self.
+            return list(self.iteritems())
+#ANNOTATION: call the method self.iteritems, return the list of results.
+
+        def keys(self):
+#ANNOTATION: define the method keys with an argument self.
+            return list(self.iterkeys())
+#ANNOTATION: call the method self.iterkeys, return the list of results.
+
+        def values(self):
+#ANNOTATION: define the method values with an argument self.
+            return list(self.itervalues())
+#ANNOTATION: call the method self.itervalues, return the list of results.
+
+    def has_key(self, key):
+#ANNOTATION: define the method has_key with 2 arguments: self and key.
+        for dict_ in self.dicts:
+#ANNOTATION: for every dict_ in self.dicts,
+            if key in dict_:
+#ANNOTATION: if key is contained in dict_,
+                return True
+#ANNOTATION: return boolean True.
+        return False
+#ANNOTATION: return boolean False.
+
+    __contains__ = has_key
+#ANNOTATION: substitute has_key for __contains__.
+
+    __iter__ = _iterkeys
+#ANNOTATION: substitute _iterkeys for __iter__.
+
+    def copy(self):
+#ANNOTATION: define the method copy with an argument self.
+        """Returns a copy of this object."""
+#ANNOTATION: docstring
+        return self.__copy__()
+#ANNOTATION: call the method self.__copy__, return the result. 
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        '''
+        Returns something like
+
+            "{'key1': 'val1', 'key2': 'val2', 'key3': 'val3'}"
+
+        instead of the generic "<object meta-data>" inherited from object.
+        '''
+#ANNOTATION: docstring
+        return str(dict(self.items()))
+#ANNOTATION: get dictionary self items, convert the result into a dictionary, convert the result into a string and return it. 
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        '''
+        Returns something like
+
+            MergeDict({'key1': 'val1', 'key2': 'val2'}, {'key3': 'val3'})
+
+        instead of generic "<object meta-data>" inherited from object.
+        '''
+#ANNOTATION: docstring
+        dictreprs = ', '.join(repr(d) for d in self.dicts)
+#ANNOTATION: join printable representation of d into a string separated with ', ', for every d in self.dicts, substitute the result for dictreprs.
+        return '%s(%s)' % (self.__class__.__name__, dictreprs)
+#ANNOTATION: return a string '%s(%s)' formated with self.__class__.__name__ and dictreprs.
+
+
+class SortedDict(dict):
+#ANNOTATION: derive the class SortedDict from the dict base class.
+    """
+    A dictionary that keeps its keys in the order in which they're inserted.
+    """
+#ANNOTATION: docstring
+    def __new__(cls, *args, **kwargs):
+#ANNOTATION: define the method __new__ with 3 arguments: cls, unpacked list args and unpacked dictionary kwargs.
+        instance = super(SortedDict, cls).__new__(cls, *args, **kwargs)
+#ANNOTATION: call the method __new__ from the base class of the class SortedDict, with 3 arguments: cls, unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+        instance.keyOrder = []
+#ANNOTATION: instance.keyOrder is an empty list.
+        return instance
+#ANNOTATION: return instance.
+
+    def __init__(self, data=None):
+#ANNOTATION: define the method __init__ with 2 arguments: self and data set to None.
+        warnings.warn(
+            "SortedDict is deprecated and will be removed in Django 1.9.",
+            RemovedInDjango19Warning, stacklevel=2
+        )
+#ANNOTATION: call the function warnings.warn with 3 arguments: string "SortedDict is deprecated and will be removed in Django 1.9.",
+#ANNOTATION: RemovedInDjango19Warning and stacklevel set to integer 2.
+        if data is None or isinstance(data, dict):
+#ANNOTATION: if data is None or data is an instance of dict type,
+            data = data or []
+#ANNOTATION: if data is true, substitute it for data, otherwise data is an empty list.
+            super(SortedDict, self).__init__(data)
+#ANNOTATION: call the method __init__ from the base class of the class SortedDict, called with an argument data. 
+            self.keyOrder = list(data) if data else []
+#ANNOTATION: if data is true, substitute list created from elements of data, substitute it for self.keyOrder, otherwise self.keyOrder is an empty list.
+        else:
+#ANNOTATION: if not,
+            super(SortedDict, self).__init__()
+#ANNOTATION: call the method __init__ from the base class of the class SortedDict.
+            super_set = super(SortedDict, self).__setitem__
+#ANNOTATION: substitute __setitem__ filed of the base class of the class SortedDict for super_set.
+            for key, value in data:
+#ANNOTATION: for every key and value in data,
+                # Take the ordering from first key
+                if key not in self:
+#ANNOTATION: if key is not contained in self,
+                    self.keyOrder.append(key)
+#ANNOTATION: append key to self.keyOrder.
+                # But override with last value in data (dict() does this)
+                super_set(key, value)
+#ANNOTATION: call the function super_set with 2 arguments: key and value.
+
+    def __deepcopy__(self, memo):
+#ANNOTATION: define the method __deepcopy__ with 2 arguments: self and memo.
+        return self.__class__([(key, copy.deepcopy(value, memo))
+                               for key, value in self.items()])
+#ANNOTATION: call the method self.__class__ with an argument list, with 2 elements: key and result of the function copy.deepcopy,
+#ANNOTATION: called with 2 arguments: value and memo, for every key and value in result for the method self.items, return the result.
+
+    def __copy__(self):
+#ANNOTATION: define the method __copy__ with an argument self.
+        # The Python's default copy implementation will alter the state
+        # of self. The reason for this seems complex but is likely related to
+        # subclassing dict.
+        return self.copy()
+#ANNOTATION: call the method self.copy, return the result.
+
+    def __setitem__(self, key, value):
+#ANNOTATION: define the method __setitem__ with 3 arguments: self, kay and value.
+        if key not in self:
+#ANNOTATION: if key is not contained in self,
+            self.keyOrder.append(key)
+#ANNOTATION: append key to self.keyOrder.
+        super(SortedDict, self).__setitem__(key, value)
+#ANNOTATION: call the method __setitem__ from the base class of the class SortedDict, with 2 arguments key and value.
+
+    def __delitem__(self, key):
+#ANNOTATION: define the method __delitem__ with 2 arguments: self and key.
+        super(SortedDict, self).__delitem__(key)
+#ANNOTATION: call the method __delitem__ from the base class of the class SortedDict, with an argument key.
+        self.keyOrder.remove(key)
+#ANNOTATION: remove key element from self.keyOrder dictionary.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        return iter(self.keyOrder)
+#ANNOTATION: return iterable self.keyOrder.
+
+    def __reversed__(self):
+#ANNOTATION: define the method __reversed__ with an argument self.
+        return reversed(self.keyOrder)
+#ANNOTATION: reverse order of elements of self.keyOrder, return the result.
+
+    def pop(self, k, *args):
+#ANNOTATION: define the method pop with 3 arguments: self, k and unpacked list args.
+        result = super(SortedDict, self).pop(k, *args)
+#ANNOTATION: call the method pop from the base class of the class SortedDict, with 2 arguments k and unpacked list args, 
+#ANNOTATION: substitute the result for result.
+        try:
+#ANNOTATION: try,
+            self.keyOrder.remove(k)
+#ANNOTATION: remove k element from self.keyOrder dictionary.
+        except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+            # Key wasn't in the dictionary in the first place. No problem.
+            pass
+#ANNOTATION: do nothing.
+        return result
+#ANNOTATION: return result.
+
+    def popitem(self):
+#ANNOTATION: define the method popitem with an argument self.
+        result = super(SortedDict, self).popitem()
+#ANNOTATION: call the method popitem from the base class of the class SortedDict, substitute the result for result.
+        self.keyOrder.remove(result[0])
+#ANNOTATION: remove first element of result from self.keyOrder dictionary.
+        return result
+#ANNOTATION: return result.
+
+    def _iteritems(self):
+#ANNOTATION: define the method _iteritems with an argument self.
+        for key in self.keyOrder:
+#ANNOTATION: for every key in self.keyOrder,
+            yield key, self[key]
+#ANNOTATION: yield key and value under key key of self dictionary.
+
+    def _iterkeys(self):
+#ANNOTATION: define the method _iterkeys with an argument self.
+        for key in self.keyOrder:
+#ANNOTATION: for every key in self.keyOrder,
+            yield key
+#ANNOTATION: yield key.
+
+    def _itervalues(self):
+#ANNOTATION: define the method _itervalues with an argument self.
+        for key in self.keyOrder:
+#ANNOTATION: for every key in self.keyOrder,
+            yield self[key]
+#ANNOTATION: yield value under key key of self dictionary.
+
+    if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+        items = _iteritems
+#ANNOTATION: substitute _iteritems for items.
+        keys = _iterkeys
+#ANNOTATION: substitute _iterkeys for keys.
+        values = _itervalues
+#ANNOTATION: substitute _itervalues for values.
+    else:
+#ANNOTATION: if not,
+        iteritems = _iteritems
+#ANNOTATION: substitute _iteritems for iteritems.
+        iterkeys = _iterkeys
+#ANNOTATION: substitute _iterkeys for iterkeys.
+        itervalues = _itervalues
+#ANNOTATION: substitute _itervalues for itervalues.
+
+        def items(self):
+#ANNOTATION: define the method items with an argument self.
+            return [(k, self[k]) for k in self.keyOrder]
+#ANNOTATION: put a tuple with 2 elements: k and value under k key of self dictionary into a list, for every k in self.keyOrder,
+#ANNOTATION: return resulting list.
+
+        def keys(self):
+#ANNOTATION: define the method keys with an argument self.
+            return self.keyOrder[:]
+#ANNOTATION: return hard copy of self.keyOrder elements.
+
+        def values(self):
+#ANNOTATION: define the method values with an argument self.
+            return [self[k] for k in self.keyOrder]
+#ANNOTATION: append value under k key of self dictionary to a list, for every k in self.keyOrder, return the result.
+
+    def update(self, dict_):
+#ANNOTATION: define the method update with 2 arguments: self and dict_.
+        for k, v in six.iteritems(dict_):
+#ANNOTATION: call the method six.iteritems with an argument dict_, for every k and v in the result,
+            self[k] = v
+#ANNOTATION: substitute v for value under the k key of self dictionary.
+
+    def setdefault(self, key, default):
+#ANNOTATION: define the method setdefault with 3 arguments: self, key and default.
+        if key not in self:
+#ANNOTATION: if key is not contained in self,
+            self.keyOrder.append(key)
+#ANNOTATION: append key to self.keyOrder dictionary.
+        return super(SortedDict, self).setdefault(key, default)
+#ANNOTATION: call the method setdefault from the base class of the class SortedDict, with 2 arguments key and default, return the result.
+
+    def copy(self):
+#ANNOTATION: define the method copy with an argument self.
+        """Returns a copy of this object."""
+#ANNOTATION: docstring
+        # This way of initializing the copy means it works for subclasses, too.
+        return self.__class__(self)
+#ANNOTATION: call the method self.__class__ with an argument self, return the result.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        """
+        Replaces the normal dict.__repr__ with a version that returns the keys
+        in their sorted order.
+        """
+#ANNOTATION: docstring
+        return '{%s}' % ', '.join('%r: %r' % (k, v) for k, v in six.iteritems(self))
+#ANNOTATION: for every k and v in result of the function six.iteritems,called with an argument self,
+#ANNOTATION: joining string '%r: %r' formated with k and v into a string, separated with ', ', use it to format a string '{%s}', return it.
+
+    def clear(self):
+#ANNOTATION: define the method clear with an argument self.
+        super(SortedDict, self).clear()
+#ANNOTATION: call the method clear from the base class of the class SortedDict.
+        self.keyOrder = []
+#ANNOTATION: self.keyOrder is an empty list.
+
+
+class OrderedSet(object):
+#ANNOTATION: derive the class OrderedSet from the object base class.
+    """
+    A set which keeps the ordering of the inserted items.
+    Currently backs onto OrderedDict.
+    """
+#ANNOTATION: docstring
+
+    def __init__(self, iterable=None):
+#ANNOTATION: define the method __init__ with 2 arguments: self and iterable set to None.
+        self.dict = OrderedDict(((x, None) for x in iterable) if iterable else [])
+#ANNOTATION: self.dict is an instance of OrderedDict class, created with arguments: tuples with 2 argument x and None, for every x in iterables,
+#ANNOTATION: if iterable is true, otherwise use an empty list as an argument.
+
+    def add(self, item):
+#ANNOTATION: define the method add with 2 arguments: self and item.
+        self.dict[item] = None
+#ANNOTATION: value under the item key of self.dict dictionary is None.
+
+    def remove(self, item):
+#ANNOTATION: define the method remove with 2 arguments: self and item.
+        del self.dict[item]
+#ANNOTATION: delete entry under item key of self.dict dictionary.
+
+    def discard(self, item):
+#ANNOTATION: define the method discard with 2 arguments: self and item.
+        try:
+#ANNOTATION: try,
+            self.remove(item)
+#ANNOTATION: remove item from self dictionary.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            pass
+#ANNOTATION: do nothing.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        return iter(self.dict.keys())
+#ANNOTATION: convert keys of dictionary self.dict into a iterable, return it.
+
+    def __contains__(self, item):
+#ANNOTATION: define the method __contains__ with 2 arguments: self and item.
+        return item in self.dict
+#ANNOTATION: if item is contained in self.dict, return boolean True, otherwise return boolean False. 
+
+    def __nonzero__(self):
+#ANNOTATION: define the method __nonzero__ with an argument self.
+        return bool(self.dict)
+#ANNOTATION: convert self.dict into boolean, return the result.
+
+
+class MultiValueDictKeyError(KeyError):
+#ANNOTATION: derive the class MultiValueDictKeyError from the KeyError base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+class MultiValueDict(dict):
+#ANNOTATION: derive the class MultiValueDict from the dict base class.
+    """
+    A subclass of dictionary customized to handle multiple values for the
+    same key.
+
+    >>> d = MultiValueDict({'name': ['Adrian', 'Simon'], 'position': ['Developer']})
+    >>> d['name']
+    'Simon'
+    >>> d.getlist('name')
+    ['Adrian', 'Simon']
+    >>> d.getlist('doesnotexist')
+    []
+    >>> d.getlist('doesnotexist', ['Adrian', 'Simon'])
+    ['Adrian', 'Simon']
+    >>> d.get('lastname', 'nonexistent')
+    'nonexistent'
+    >>> d.setlist('lastname', ['Holovaty', 'Willison'])
+
+    This class exists to solve the irritating problem raised by cgi.parse_qs,
+    which returns a list for every key, even though most Web forms submit
+    single name-value pairs.
+    """
+#ANNOTATION: docstring
+    def __init__(self, key_to_list_mapping=()):
+#ANNOTATION: define the method __init__ with 2 arguments: self and key_to_list_mapping set to an empty tuple.
+        super(MultiValueDict, self).__init__(key_to_list_mapping)
+#ANNOTATION: call the method __init__ from the base class of the class MultiValueDict, with an argument key_to_list_mapping.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return "<%s: %s>" % (self.__class__.__name__,
+                             super(MultiValueDict, self).__repr__())
+#ANNOTATION: return a string "<%s: %s>" formated with self.__class__.__name__,
+#ANNOTATION: and a result of the method __repr__ called from instance of base class of the MultiValueDict class.
+
+    def __getitem__(self, key):
+#ANNOTATION: define the method __getitem__ with 2 arguments: self and key.
+        """
+        Returns the last data value for this key, or [] if it's an empty list;
+        raises KeyError if not found.
+        """
+#ANNOTATION: docstring
+        try:
+#ANNOTATION: try,
+            list_ = super(MultiValueDict, self).__getitem__(key)
+#ANNOTATION: call the method __getitem__ from the base class of the class MultiValueDict, with an argument key, substitute the result for list_.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            raise MultiValueDictKeyError(repr(key))
+#ANNOTATION: raise an MultiValueDictKeyError exception with printable representation of key.
+        try:
+#ANNOTATION: try,
+            return list_[-1]
+#ANNOTATION: return last element of list_.
+        except IndexError:
+#ANNOTATION: if IndexError exception is caught,
+            return []
+#ANNOTATION: return an empty list.
+
+    def __setitem__(self, key, value):
+#ANNOTATION: define the method __setitem__ with 3 arguments: self, key and value.
+        super(MultiValueDict, self).__setitem__(key, [value])
+#ANNOTATION: call the method __setitem__ from the base class of the class MultiValueDict, with 2 arguments key and list containing element value.
+
+    def __copy__(self):
+#ANNOTATION: define the method __copy__ with an argument self.
+        return self.__class__([
+            (k, v[:])
+            for k, v in self.lists()
+        ])
+#ANNOTATION: call the method self.__class__ with an argument list, with elements: tuples with 2 elements: k and hard copy of list v,
+#ANNOTATION: for every k and v in result of method the self.lists.
+
+    def __deepcopy__(self, memo=None):
+#ANNOTATION: define the method __deepcopy__ with 2 arguments: self and memo set to None.
+        if memo is None:
+#ANNOTATION: if memo is None,
+            memo = {}
+#ANNOTATION: memo is an empty dictionary.
+        result = self.__class__()
+#ANNOTATION: call the method self.__class__, substitute the result for result.
+        memo[id(self)] = result
+#ANNOTATION: substitute result for value under the id of self key of memo dictionary.
+        for key, value in dict.items(self):
+#ANNOTATION: for every key and value in items of dictionary self, 
+            dict.__setitem__(result, copy.deepcopy(key, memo),
+                             copy.deepcopy(value, memo))
+#ANNOTATION: call the method dict.__setitem__ with 3 arguments: result, result of the function copy.deepcopy, called with 2 arguments: key,
+#ANNOTATION: and memo, and result of the function copy.deepcopy called with 2 arguments: value and memo.
+        return result
+#ANNOTATION: return result.
+
+    def __getstate__(self):
+#ANNOTATION: define the method __getstate__ with an argument self.
+        obj_dict = self.__dict__.copy()
+#ANNOTATION: call the method self.__dict__.copy, substitute the result for obj_dict.
+        obj_dict['_data'] = dict((k, self.getlist(k)) for k in self)
+#ANNOTATION: value under '_data' key of obj_dict is a dictionary created with tuples containing 2 elements: k and result of the function,
+#ANNOTATION: self.getlist with an argument k, for every k in self.
+        return obj_dict
+#ANNOTATION: return obj_dict.
+
+    def __setstate__(self, obj_dict):
+#ANNOTATION: define the method __setstate__ with 2 arguments: self and obj_dict.
+        data = obj_dict.pop('_data', {})
+#ANNOTATION: remove element under '_data' key of obj_dict dictionary, if it exists substitute it for data, if not data is an empty list.
+        for k, v in data.items():
+#ANNOTATION: call the method data.items, for every k and v in the result,
+            self.setlist(k, v)
+#ANNOTATION: call the method self.setlist with 2 arguments: k and v.
+        self.__dict__.update(obj_dict)
+#ANNOTATION: update self.__dict__ dictionary with obj_dict.
+
+    def get(self, key, default=None):
+#ANNOTATION: define the method get with 3 arguments: self, key and default set to None.
+        """
+        Returns the last data value for the passed key. If key doesn't exist
+        or value is an empty list, then default is returned.
+        """
+#ANNOTATION: docstring
+        try:
+#ANNOTATION: try,
+            val = self[key]
+#ANNOTATION: substitute value under the key key of self dictionary for val. 
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            return default
+#ANNOTATION: return default,
+        if val == []:
+#ANNOTATION: if val equals an empty list.
+            return default
+#ANNOTATION: return default.
+        return val
+#ANNOTATION: return val.
+
+    def getlist(self, key, default=None):
+#ANNOTATION: define the method getlist with 3 arguments: self, key and default set to None.
+        """
+        Returns the list of values for the passed key. If key doesn't exist,
+        then a default value is returned.
+        """
+#ANNOTATION: docstring
+        try:
+#ANNOTATION: try,
+            return super(MultiValueDict, self).__getitem__(key)
+#ANNOTATION: call the method __getitem__ from the base class of the class MultiValueDict, with an argument key, return the result..
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            if default is None:
+#ANNOTATION: if default is None,
+                return []
+#ANNOTATION: return an empty list.
+            return default
+#ANNOTATION: return default.
+
+    def setlist(self, key, list_):
+#ANNOTATION: define the method setlist with 3 arguments: self, key and list_.
+        super(MultiValueDict, self).__setitem__(key, list_)
+#ANNOTATION: call the method __setitem__ from the base class of the class MultiValueDict, with 2 arguments key and list_.
+
+    def setdefault(self, key, default=None):
+#ANNOTATION: define the method setdefault with 3 arguments: self, key and default set to None.
+        if key not in self:
+#ANNOTATION: if key is not contanied in self,
+            self[key] = default
+#ANNOTATION: substitute default for value under the key key of self dictionary.
+            # Do not return default here because __setitem__() may store
+            # another value -- QueryDict.__setitem__() does. Look it up.
+        return self[key]
+#ANNOTATION: return value under the key key of self dictionary.
+
+    def setlistdefault(self, key, default_list=None):
+#ANNOTATION: define the method setlistdefault with 3 arguments: self, key and default_list set to None.
+        if key not in self:
+#ANNOTATION: if key is not contained in self,
+            if default_list is None:
+#ANNOTATION: if default_list is None,
+                default_list = []
+#ANNOTATION: default_list is an empty list.
+            self.setlist(key, default_list)
+#ANNOTATION: call the method self.setlist with 2 arguments: key and default_list.
+            # Do not return default_list here because setlist() may store
+            # another value -- QueryDict.setlist() does. Look it up.
+        return self.getlist(key)
+#ANNOTATION: call the method self.getlist with an argument key, return the result. 
+
+    def appendlist(self, key, value):
+#ANNOTATION: define the method appendlist with 3 arguments: self, key and value.
+        """Appends an item to the internal list associated with key."""
+#ANNOTATION: docstring
+        self.setlistdefault(key).append(value)
+#ANNOTATION: call the method self.setlistdefault with an argument key, append value to the result.
+
+    def _iteritems(self):
+#ANNOTATION: define the method _iteritems with an argument self.
+        """
+        Yields (key, value) pairs, where value is the last item in the list
+        associated with the key.
+        """
+#ANNOTATION: docstring
+        for key in self:
+#ANNOTATION: for every key in self,
+            yield key, self[key]
+#ANNOTATION: yield key and value under the key key of self dictionary.
+
+    def _iterlists(self):
+#ANNOTATION: define the method _iterlists with an argument self.
+        """Yields (key, list) pairs."""
+#ANNOTATION: docstring
+        return six.iteritems(super(MultiValueDict, self))
+#ANNOTATION: call the function six.iteritems with an argument: instance of base class of the MultiValueDict class, return the result.
+
+    def _itervalues(self):
+#ANNOTATION: define the method _itervalues with an argument self.
+        """Yield the last value on every key list."""
+#ANNOTATION: docstring
+        for key in self:
+#ANNOTATION: for every key in self,
+            yield self[key]
+#ANNOTATION: yield value under key key of self dictionary.
+
+    if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+        items = _iteritems
+#ANNOTATION: substitute _iteritems for items.
+        lists = _iterlists
+#ANNOTATION: substitute _iterlists for lists.
+        values = _itervalues
+#ANNOTATION: substitute _itervalues for values.
+    else:
+#ANNOTATION: if not,
+        iteritems = _iteritems
+#ANNOTATION: substitute _iteritems for iteritems.
+        iterlists = _iterlists
+#ANNOTATION: substitute _iterlists for iterlists.
+        itervalues = _itervalues
+#ANNOTATION: substitute _itervalues for itervalues.
+
+        def items(self):
+#ANNOTATION: define the method items with an argument self.
+            return list(self.iteritems())
+#ANNOTATION: call the method self.iteritems, return list of results.
+
+        def lists(self):
+#ANNOTATION: define the method lists with an argument self.
+            return list(self.iterlists())
+#ANNOTATION: call the method self.iterlists, return list of results.
+
+        def values(self):
+#ANNOTATION: define the method values with an argument self.
+            return list(self.itervalues())
+#ANNOTATION: call the method self.itervalues, return list of results.
+
+    def copy(self):
+#ANNOTATION: define the method copy with an argument self.
+        """Returns a shallow copy of this object."""
+#ANNOTATION: docstring
+        return copy.copy(self)
+#ANNOTATION: call the method copy.copy with an argument self, return the result.
+
+    def update(self, *args, **kwargs):
+#ANNOTATION: define the method update with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+        """
+        update() extends rather than replaces existing key lists.
+        Also accepts keyword args.
+        """
+#ANNOTATION: docstring
+        if len(args) > 1:
+#ANNOTATION: if length of args is greater than integer 1,
+            raise TypeError("update expected at most 1 arguments, got %d" % len(args))
+#ANNOTATION: raise an TypeError with an argument string "update expected at most 1 arguments, got %d" formated with length of args.
+        if args:
+#ANNOTATION: if args is true,
+            other_dict = args[0]
+#ANNOTATION: substitute first args for other_dict.
+            if isinstance(other_dict, MultiValueDict):
+#ANNOTATION: if other_dict is an instance of MultiValueDict.
+                for key, value_list in other_dict.lists():
+#ANNOTATION: call the method other_dict.lists, for every key and value_list in result,
+                    self.setlistdefault(key).extend(value_list)
+#ANNOTATION: call the method self.setlistdefault with an argument key, extend the result with value_list.
+            else:
+#ANNOTATION: if not,
+                try:
+#ANNOTATION: trym
+                    for key, value in other_dict.items():
+#ANNOTATION: for every key and value in items of other_dict dictionary,
+                        self.setlistdefault(key).append(value)
+#ANNOTATION: call the method self.setlistdefault with an argument key, append value to the result.
+                except TypeError:
+#ANNOTATION: if TypeError exception is caught,
+                    raise ValueError("MultiValueDict.update() takes either a MultiValueDict or dictionary")
+#ANNOTATION: raise an ValueError with an argument string "MultiValueDict.update() takes either a MultiValueDict or dictionary".
+        for key, value in six.iteritems(kwargs):
+#ANNOTATION: call the function six.iteritems with an argument kwargs, for every key and value in the result, 
+            self.setlistdefault(key).append(value)
+#ANNOTATION: call the method self.setlistdefault with an argument key, append value to the result.
+
+    def dict(self):
+#ANNOTATION: define the method dict with an argument self.
+        """
+        Returns current object as a dict with singular values.
+        """
+#ANNOTATION: docstring
+        return dict((key, self[key]) for key in self)
+#ANNOTATION: return dictionary created with tuples with 2 elements: key and value under the key key of self dictionary, for every key in self.
+
+
+class ImmutableList(tuple):
+#ANNOTATION: derive the class ImmutableList from the tuple base class.
+    """
+    A tuple-like object that raises useful errors when it is asked to mutate.
+
+    Example::
+
+        >>> a = ImmutableList(range(5), warning="You cannot mutate this.")
+        >>> a[3] = '4'
+        Traceback (most recent call last):
+            ...
+        AttributeError: You cannot mutate this.
+    """
+#ANNOTATION: docstring
+
+    def __new__(cls, *args, **kwargs):
+#ANNOTATION: define the method __new__ with 3 arguments: cls, unpacked list args and unpacked dictionary kwargs.
+        if 'warning' in kwargs:
+#ANNOTATION: if 'warning' is contained in kwargs,
+            warning = kwargs['warning']
+#ANNOTATION: substitute value under 'warning' key of kwargs dictionary for warning.
+            del kwargs['warning']
+#ANNOTATION: delete element under 'warning' key of kwargs dictionary.
+        else:
+#ANNOTATION: if not,
+            warning = 'ImmutableList object is immutable.'
+#ANNOTATION: warning is a string 'ImmutableList object is immutable.'.
+        self = tuple.__new__(cls, *args, **kwargs)
+#ANNOTATION: call the method tuple.__new__ with 3 arguments: cls, unpacked list args and unpacked dictionary kwargs, substitute the result for self.
+        self.warning = warning
+#ANNOTATION: substitute warning for self.warning.
+        return self
+#ANNOTATION: return self.
+
+    def complain(self, *wargs, **kwargs):
+#ANNOTATION: define the method complain with 3 arguments: self, unpacked dictionary wargs and unpacked dictionary kwargs.
+        if isinstance(self.warning, Exception):
+#ANNOTATION: if self.warning is an instance of Exception class, 
+            raise self.warning
+#ANNOTATION: raise self.warning.
+        else:
+#ANNOTATION: if not,
+            raise AttributeError(self.warning)
+#ANNOTATION: raise an raise self.warning with an argument self.warning.
+
+    # All list mutation functions complain.
+    __delitem__ = complain
+#ANNOTATION: substitute complain for __delitem__.
+    __delslice__ = complain
+#ANNOTATION: substitute complain for __delslice__.
+    __iadd__ = complain
+#ANNOTATION: substitute complain for __iadd__.
+    __imul__ = complain
+#ANNOTATION: substitute complain for __imul__.
+    __setitem__ = complain
+#ANNOTATION: substitute complain for __setitem__.
+    __setslice__ = complain
+#ANNOTATION: substitute complain for __setslice__.
+    append = complain
+#ANNOTATION: substitute complain for append.
+    extend = complain
+#ANNOTATION: substitute complain for extend.
+    insert = complain
+#ANNOTATION: substitute complain for insert.
+    pop = complain
+#ANNOTATION: substitute complain for pop.
+    remove = complain
+#ANNOTATION: substitute complain for remove.
+    sort = complain
+#ANNOTATION: substitute complain for sort.
+    reverse = complain
+#ANNOTATION: substitute complain for reverse.
+
+
+class DictWrapper(dict):
+#ANNOTATION: derive the class DictWrapper from the dict base class.
+    """
+    Wraps accesses to a dictionary so that certain values (those starting with
+    the specified prefix) are passed through a function before being returned.
+    The prefix is removed before looking up the real value.
+
+    Used by the SQL construction code to ensure that values are correctly
+    quoted before being used.
+    """
+#ANNOTATION: docstring
+    def __init__(self, data, func, prefix):
+#ANNOTATION: define the method __init__ with 4 arguments: self, data, func and prefix.
+        super(DictWrapper, self).__init__(data)
+#ANNOTATION: call the method __init__ with an argument data, from the base class of the class DictWrapper.
+        self.func = func
+#ANNOTATION: substitute func for self.func.
+        self.prefix = prefix
+#ANNOTATION: substitute prefix for self.prefix.
+
+    def __getitem__(self, key):
+#ANNOTATION: define the method __getitem__ with 2 arguments: self and key.
+        """
+        Retrieves the real value after stripping the prefix string (if
+        present). If the prefix is present, pass the value through self.func
+        before returning, otherwise return the raw value.
+        """
+#ANNOTATION: docstring
+        if key.startswith(self.prefix):
+#ANNOTATION: if key starts with self.prefix.
+            use_func = True
+#ANNOTATION: use_func is boolean True.
+            key = key[len(self.prefix):]
+#ANNOTATION: key is a list with elements of list key from length of self.prefixes index to the end,
+        else:
+#ANNOTATION: if not,
+            use_func = False
+#ANNOTATION: use_func is boolean False.
+        value = super(DictWrapper, self).__getitem__(key)
+#ANNOTATION: call the method __getitem__ with an argument key from the base class of the class DictWrapper, substitute the result for value.
+        if use_func:
+#ANNOTATION: if use_func is true,
+            return self.func(value)
+#ANNOTATION: call the method self.func with an argument value. 
+        return value
+#ANNOTATION: return value.

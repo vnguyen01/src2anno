@@ -1,0 +1,162 @@
+# Python's datetime strftime doesn't handle dates before 1900.
+# These classes override date and datetime to support the formatting of a date
+# through its full "proleptic Gregorian" date range.
+#
+# Based on code submitted to comp.lang.python by Andrew Dalke
+#
+# >>> datetime_safe.date(1850, 8, 2).strftime("%Y/%m/%d was a %A")
+# '1850/08/02 was a Friday'
+
+from datetime import date as real_date, datetime as real_datetime
+#ANNOTATION: from datetime import date as real_date and datetime as real_datetime into default name space.
+import re
+#ANNOTATION: import module re.
+import time
+#ANNOTATION: import module time.
+
+
+class date(real_date):
+#ANNOTATION: derive the class date from the real_date base class.
+    def strftime(self, fmt):
+#ANNOTATION: define the method strftime with 2 arguments: self and fmt.
+        return strftime(self, fmt)
+#ANNOTATION: call the function strftime with 2 arguments: self and fmt, return the result.
+
+
+class datetime(real_datetime):
+#ANNOTATION: derive the class datetime from the real_datetime base class.
+    def strftime(self, fmt):
+#ANNOTATION: define the method strftime with 2 arguments: self and fmt.
+        return strftime(self, fmt)
+#ANNOTATION: call the function strftime with 2 arguments: self and fmt, return the result.
+
+    @classmethod
+#ANNOTATION: decorator classmethod,
+    def combine(cls, date, time):
+#ANNOTATION: define the method combine with 3 arguments: cls, date and time.
+        return cls(date.year, date.month, date.day,
+                   time.hour, time.minute, time.second,
+                   time.microsecond, time.tzinfo)
+#ANNOTATION: call the function cls with 8 arguments: date.year, date.month, date.day, time.hour, time.minute, time.second, time.microsecond,
+#ANNOTATION: and time.tzinfo, return the result.
+
+    def date(self):
+#ANNOTATION: define the method date with an argument self.
+        return date(self.year, self.month, self.day)
+#ANNOTATION: call the function data with 3 arguments: self.year, self.month and self.day, return the result.
+
+
+def new_date(d):
+#ANNOTATION: define the function new_date with an argument d.
+    "Generate a safe date from a datetime.date object."
+#ANNOTATION: docstring
+    return date(d.year, d.month, d.day)
+#ANNOTATION: call the function data with 3 arguments: d.year, d.month and d.day, return the result.
+
+
+def new_datetime(d):
+#ANNOTATION: define the function new_datetime with an argument d.
+    """
+    Generate a safe datetime from a datetime.date or datetime.datetime object.
+    """
+#ANNOTATION: docstring
+    kw = [d.year, d.month, d.day]
+#ANNOTATION: kw is a list with 3 elements: d.year, d.month and d.day.
+    if isinstance(d, real_datetime):
+#ANNOTATION: if d is an instance of real_datetime class,
+        kw.extend([d.hour, d.minute, d.second, d.microsecond, d.tzinfo])
+#ANNOTATION: extend list kw with a list with 5 elements: d.hour, d.minute, d.second, d.microsecond and d.tzinfo.
+    return datetime(*kw)
+#ANNOTATION: call the function datetime with an argument unpacked list kw, return the result. 
+
+# This library does not support strftime's "%s" or "%y" format strings.
+# Allowed if there's an even number of "%"s because they are escaped.
+_illegal_formatting = re.compile(r"((^|[^%])(%%)*%[sy])")
+#ANNOTATION: compile the regex from the raw string "((^|[^%])(%%)*%[sy])", substitute the result for _illegal_formatting.
+
+
+def _findall(text, substr):
+#ANNOTATION: define the function _findall with 2 arguments text and substr.
+    # Also finds overlaps
+    sites = []
+#ANNOTATION: sites is an empty list.
+    i = 0
+#ANNOTATION: i is integer 0.
+    while 1:
+#ANNOTATION: endless loop,
+        j = text.find(substr, i)
+#ANNOTATION: call the method text.find with 2 arguments: substr and i, substitute the result for j.
+        if j == -1:
+#ANNOTATION: if j equals to integer -1,
+            break
+#ANNOTATION: break from the loop execution.
+        sites.append(j)
+#ANNOTATION: append j to sites.
+        i = j + 1
+#ANNOTATION: add j and integer 1, substitute the result for i.
+    return sites
+#ANNOTATION: return sites.
+
+
+def strftime(dt, fmt):
+#ANNOTATION: define the function strftime with 2 arguments dt and fmt.
+    if dt.year >= 1900:
+#ANNOTATION: if dt.year is greater than or equal to integer 1900,
+        return super(type(dt), dt).strftime(fmt)
+#ANNOTATION: call the method strftime with an argument fmt, from the base class of the type of dt class.
+    illegal_formatting = _illegal_formatting.search(fmt)
+#ANNOTATION: call the method _illegal_formatting.search with an argument fmt, substitute the result for illegal_formatting.
+    if illegal_formatting:
+#ANNOTATION: if illegal_formatting is true,
+        raise TypeError("strftime of dates before 1900 does not handle" + illegal_formatting.group(0))
+#ANNOTATION: raise an TypeError exception with an argument: result of the method illegal_formatting.group called with an argument,
+#ANNOTATION: integer 0, appended to a string "strftime of dates before 1900 does not handle".
+
+    year = dt.year
+#ANNOTATION: substitute dt.year for year.
+    # For every non-leap year century, advance by
+    # 6 years to get into the 28-year repeat cycle
+    delta = 2000 - year
+#ANNOTATION: subtract year from integer 2000, substitute the result for delta.
+    off = 6 * (delta // 100 + delta // 400)
+#ANNOTATION: floor the division of delta by integer 100 and delta by integer 400, sum the two results, multiply integer 6 by it, substitute the result for off. 
+    year = year + off
+#ANNOTATION: sum year and off, substitute the result for year.
+
+    # Move to around the year 2000
+    year = year + ((2000 - year) // 28) * 28
+#ANNOTATION: subtract year from integer 2000, divide the result by integer 28, floor the result, multiply it with 28 and increment by year,
+#ANNOTATION: substitute the result for year.
+    timetuple = dt.timetuple()
+#ANNOTATION: call the method dt.timetuple, substitute the result for timetuple.
+    s1 = time.strftime(fmt, (year,) + timetuple[1:])
+#ANNOTATION: call the function time.strftime with 2 arguments: fmt and and timetuple without the first element,
+#ANNOTATION: added to a tuple with an element year, substitute the result for s1.
+    sites1 = _findall(s1, str(year))
+#ANNOTATION: call the function _findall with 2 arguments: s1 and year converted into a string, substitute the result for sites1.
+
+    s2 = time.strftime(fmt, (year + 28,) + timetuple[1:])
+#ANNOTATION: call the function time.strftime with 2 arguments: fmt and and timetuple without the first element,
+#ANNOTATION: added to a tuple with an element sum of year an integer 28, substitute the result for s2.
+    sites2 = _findall(s2, str(year + 28))
+#ANNOTATION: call the function _findall with 2 arguments: s2 and sum of year and integer 28, converted into a string, substitute the result for sites2.
+
+    sites = []
+#ANNOTATION: sites is an empty list.
+    for site in sites1:
+#ANNOTATION: if site is contained in sites1,
+        if site in sites2:
+#ANNOTATION: if site is contained in sites2,
+            sites.append(site)
+#ANNOTATION: append site to sites.
+
+    s = s1
+#ANNOTATION: substitute s1 for s.
+    syear = "%04d" % (dt.year,)
+#ANNOTATION: syear is a string "%04d" formated with dt.year.
+    for site in sites:
+#ANNOTATION: for every site in sites,
+        s = s[:site] + syear + s[site + 4:]
+#ANNOTATION: concatenate first site elements of s, syear and elements of s from the site incremented by integer 4 index, substitute the result for s. 
+    return s
+#ANNOTATION: return s.

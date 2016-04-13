@@ -1,0 +1,232 @@
+"""
+Interfaces for serializing Django objects.
+
+Usage::
+
+    from django.core import serializers
+    json = serializers.serialize("json", some_queryset)
+    objects = list(serializers.deserialize("json", json))
+
+To add your own serializers, use the SERIALIZATION_MODULES setting::
+
+    SERIALIZATION_MODULES = {
+        "csv": "path.to.csv.serializer",
+        "txt": "path.to.txt.serializer",
+    }
+
+"""
+#ANNOTATION: docstring
+
+import importlib
+#ANNOTATION: import module importlib.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.core.serializers.base import SerializerDoesNotExist
+#ANNOTATION: from django.core.serializers.base import SerializerDoesNotExist into default name space.
+
+# Built-in serializers
+BUILTIN_SERIALIZERS = {
+    "xml": "django.core.serializers.xml_serializer",
+    "python": "django.core.serializers.python",
+    "json": "django.core.serializers.json",
+    "yaml": "django.core.serializers.pyyaml",
+}
+#ANNOTATION: BUILTIN_SERIALIZERS is a dictionary containing 4 inital entries: "django.core.serializers.xml_serializer" for "xml",
+#ANNOTATION: "django.core.serializers.python" for "python", "django.core.serializers.json" for "json", 
+#ANNOTATION: and "django.core.serializers.pyyaml" for "yaml".
+
+_serializers = {}
+#ANNOTATION: _serializers is an empty dictionary.
+
+
+class BadSerializer(object):
+#ANNOTATION: derive the class BadSerializer from the object base class.
+    """
+    Stub serializer to hold exception raised during registration
+
+    This allows the serializer registration to cache serializers and if there
+    is an error raised in the process of creating a serializer it will be
+    raised and passed along to the caller when the serializer is used.
+    """
+#ANNOTATION: docstring
+    internal_use_only = False
+#ANNOTATION: internal_use_only is boolean False.
+
+    def __init__(self, exception):
+#ANNOTATION: define the __init__method with arguments self and exception.
+        self.exception = exception
+#ANNOTATION: substitute exception for self.exception.
+
+    def __call__(self, *args, **kwargs):
+#ANNOTATION: define the __call__method with arguments self, unpacked list args and unpacked dictionary kwargs.
+        raise self.exception
+#ANNOTATION: raise an self.exception exception.
+
+
+def register_serializer(format, serializer_module, serializers=None):
+#ANNOTATION: define the function register_serializer with 3 arguments: format, serializer_module and serializers set to None.
+    """Register a new serializer.
+
+    ``serializer_module`` should be the fully qualified module name
+    for the serializer.
+
+    If ``serializers`` is provided, the registration will be added
+    to the provided dictionary.
+
+    If ``serializers`` is not provided, the registration will be made
+    directly into the global register of serializers. Adding serializers
+    directly is not a thread-safe operation.
+    """
+#ANNOTATION: docstring
+    if serializers is None and not _serializers:
+#ANNOTATION: if serializers is None and _serializers is false,
+        _load_serializers()
+#ANNOTATION: call the function _load_serializers.
+
+    try:
+#ANNOTATION: try,
+        module = importlib.import_module(serializer_module)
+#ANNOTATION: call the function importlib.import_module with an argument serializer_module, substitute it for module.
+    except ImportError as exc:
+#ANNOTATION: if ImportError, renamed to exc, exception is caught,
+        bad_serializer = BadSerializer(exc)
+#ANNOTATION: ba_serializer is a instance of BadSerializer class, created with an argument exc.
+
+        module = type('BadSerializerModule', (object,), {
+            'Deserializer': bad_serializer,
+            'Serializer': bad_serializer,
+        })
+#ANNOTATION: create a instance of a class BadSerializerModule from the object base class, with elements Deserializer set to bad_serializer and Serializer set to bad_serializer.
+
+    if serializers is None:
+#ANNOTATION: if serializers is None,
+        _serializers[format] = module
+#ANNOTATION: substitute module for the value under the format key of the _serializers dictionary.
+    else:
+#ANNOTATION: if not,
+        serializers[format] = module
+#ANNOTATION: substitute module for the value under the format key of the serializers dictionary.
+
+
+def unregister_serializer(format):
+#ANNOTATION: define the function unregister_serializer with an argument format.
+    "Unregister a given serializer. This is not a thread-safe operation."
+#ANNOTATION: docstring
+    if not _serializers:
+#ANNOTATION:  if _serializers is false,
+        _load_serializers()
+#ANNOTATION: call the function _load_serializers.
+    if format not in _serializers:
+#ANNOTATION: if format is not contained in _serializers,
+        raise SerializerDoesNotExist(format)
+#ANNOTATION: raise a SerializerDoesNotExist exception with an argument format.
+    del _serializers[format]
+#ANNOTATION: delete the _serializers dictionary entry at the format key.
+
+
+def get_serializer(format):
+#ANNOTATION: define the function get_serializer with an argument format.
+    if not _serializers:
+#ANNOTATION: if _serializers is false,
+        _load_serializers()
+#ANNOTATION: call the function _load_serializers.
+    if format not in _serializers:
+#ANNOTATION: if format is not contained in _serializers,
+        raise SerializerDoesNotExist(format)
+#ANNOTATION: raise a SerializerDoesNotExist exception with an argument format.
+    return _serializers[format].Serializer
+#ANNOTATION: get the value under the format key of the _serializers dictionary, return the Serializer filed of the result.
+
+
+def get_serializer_formats():
+#ANNOTATION: define the function get_serializer_formats.
+    if not _serializers:
+#ANNOTATION: if _serializers is false,
+        _load_serializers()
+#ANNOTATION: call the function _load_serializers.
+    return list(_serializers)
+#ANNOTATION: convert _serializers into a list, return it.
+
+
+def get_public_serializer_formats():
+#ANNOTATION: define the function get_public_serializer_formats.
+    if not _serializers:
+#ANNOTATION: f _serializers is false,
+        _load_serializers()
+#ANNOTATION: call the function _load_serializers.
+    return [k for k, v in six.iteritems(_serializers) if not v.Serializer.internal_use_only]
+#ANNOTATION: append k into a list for every k and v in return value of the six.iteritems function with an argument _serializers, 
+#ANNOTATION: only if v.Serializer.internal_use_only is false, return the resulting list.   
+
+
+def get_deserializer(format):
+#ANNOTATION: define the function get_deserializer with an argument format.
+    if not _serializers:
+#ANNOTATION: f _serializers is false,
+        _load_serializers()
+#ANNOTATION: call the function _load_serializers.
+    if format not in _serializers:
+#ANNOTATION: if format is not contained in _serializers,
+        raise SerializerDoesNotExist(format)
+#ANNOTATION: raise a SerializerDoesNotExist exception with an argument format.
+    return _serializers[format].Deserializer
+#ANNOTATION: get the value under the format key of the _serializers dictionary, return the Deserializer filed of the result.
+
+
+def serialize(format, queryset, **options):
+#ANNOTATION: define the function serializer with 3 arguments: format, queryset and unpacked dictionary options.
+    """
+    Serialize a queryset (or any iterator that returns database objects) using
+    a certain serializer.
+    """
+#ANNOTATION: docstring
+    s = get_serializer(format)()
+#ANNOTATION: call the get_serializer function with an argument format, call the return value object and substitute it for s.
+    s.serialize(queryset, **options)
+#ANNOTATION: call the s.serialize method with arguments queryset and unpacked dictionary options.
+    return s.getvalue()
+#ANNOTATION: evaluate the method s.getvalue, return the result.
+
+
+def deserialize(format, stream_or_string, **options):
+#ANNOTATION: define the function deserialize with 3 arguments: format, stream_or_string and unpacked dictionary options.
+    """
+    Deserialize a stream or a string. Returns an iterator that yields ``(obj,
+    m2m_relation_dict)``, where ``obj`` is an instantiated -- but *unsaved* --
+    object, and ``m2m_relation_dict`` is a dictionary of ``{m2m_field_name :
+    list_of_related_objects}``.
+    """
+#ANNOTATION: docstring
+    d = get_deserializer(format)
+#ANNOTATION: call the get_deserializer function with an argument format, substitute the result for d.
+    return d(stream_or_string, **options)
+#ANNOTATION: call the object d with arguments stream_or_string and unpacked dictionary options, return the result.
+
+
+def _load_serializers():
+#ANNOTATION: define the function _load_serializers.
+    """
+    Register built-in and settings-defined serializers. This is done lazily so
+    that user code has a chance to (e.g.) set up custom settings without
+    needing to be careful of import order.
+    """
+#ANNOTATION: docstring
+    global _serializers
+#ANNOTATION: use the global variable _serializers.
+    serializers = {}
+#ANNOTATION: serializers is an empty dictionary.
+    for format in BUILTIN_SERIALIZERS:
+#ANNOTATION: for every format in BUILTIN_SERIALIZERS,
+        register_serializer(format, BUILTIN_SERIALIZERS[format], serializers)
+#ANNOTATION: call the function register_serializer with 3 arguments: format, value under the format key of the BUILTIN_SERIALIZERS dictionary and serializers.
+    if hasattr(settings, "SERIALIZATION_MODULES"):
+#ANNOTATION: if setting has an "SERIALIZATION_MODULES" attribute,
+        for format in settings.SERIALIZATION_MODULES:
+#ANNOTATION: for every format in settings.SERIALIZATION_MODULES,
+            register_serializer(format, settings.SERIALIZATION_MODULES[format], serializers)
+#ANNOTATION: call the function register_serializer with 3 arguments: format, value under the format key of the settings.SERIALIZATION_MODULES dictionary and serializers.
+    _serializers = serializers
+#ANNOTATION: substitute serializers for _serializers.

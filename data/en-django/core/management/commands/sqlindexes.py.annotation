@@ -1,0 +1,41 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.core.management.base import AppCommand
+#ANNOTATION: from django.core.management.base import AppCommand into default name space.
+from django.core.management.sql import sql_indexes
+#ANNOTATION: from django.core.management.sql import sql_indexes into default name space.
+from django.db import connections, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import connections and DEFAULT_DB_ALIAS into default name space.
+
+
+class Command(AppCommand):
+#ANNOTATION: derive the class Command from the base class AppCommand.
+    help = "Prints the CREATE INDEX SQL statements for the given model module name(s)."
+#ANNOTATION: help is a string "Prints the CREATE INDEX SQL statements for the given model module name(s).".
+
+    output_transaction = True
+#ANNOTATION: output_transaction is boolean True.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with self class instance and parser as the arguments.
+        super(Command, self).add_arguments(parser)
+#ANNOTATION: call the add_arguments method with parser as argument form the base class of the class Command.
+        parser.add_argument('--database', default=DEFAULT_DB_ALIAS,
+            help='Nominates a database to print the SQL for. Defaults to the '
+                 '"default" database.')
+#ANNOTATION: call parse.add_argument method, with string '--database', default set to DEFAULT_DB_ALIAS,
+#ANNOTATION: and help as a string 'Nominates a database to print the SQL for. Defaults to the "default" database.', as arguments.
+
+    def handle_app_config(self, app_config, **options):
+#ANNOTATION: define the method handle_app_config with self class instance, app_config and dictionary options as arguments.
+        if app_config.models_module is None:
+#ANNOTATION: if app_config.models_module is None,
+            return
+#ANNOTATION: return nothing.
+        connection = connections[options['database']]
+#ANNOTATION: get the value under the 'database' key of options dictionary, use it as a index to get connections list element, store it in connection.
+        statements = sql_indexes(app_config, self.style, connection)
+#ANNOTATION: call the function sql_indexes with app_config, self.style and connection as arguments, store the result in statements.
+        return '\n'.join(statements)
+#ANNOTATION: join statements in a string separated by newline, return the result.

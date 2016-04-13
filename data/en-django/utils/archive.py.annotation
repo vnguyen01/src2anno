@@ -1,0 +1,350 @@
+"""
+Based on "python-archive" -- http://pypi.python.org/pypi/python-archive/
+
+Copyright (c) 2010 Gary Wilson Jr. <gary.wilson@gmail.com> and contributors.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+"""
+#ANNOTATION: docstring
+import os
+#ANNOTATION: import module os.
+import shutil
+#ANNOTATION: import module shutil.
+import tarfile
+#ANNOTATION: import module tarfile.
+import zipfile
+#ANNOTATION: import module zipfile.
+
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+class ArchiveException(Exception):
+#ANNOTATION: derive the class ArchiveException from the Exception base class.
+    """
+    Base exception class for all archive errors.
+    """
+#ANNOTATION: docstring
+
+
+class UnrecognizedArchiveFormat(ArchiveException):
+#ANNOTATION: derive the class UnrecognizedArchiveFormat from the ArchiveException base class.
+    """
+    Error raised when passed file is not a recognized archive format.
+    """
+#ANNOTATION: docstring
+
+
+def extract(path, to_path=''):
+#ANNOTATION: define the function extract with 2 arguments path and to_path set to empty string.
+    """
+    Unpack the tar or zip file at the specified path to the directory
+    specified by to_path.
+    """
+#ANNOTATION: docstring
+    with Archive(path) as archive:
+#ANNOTATION: instantiate Archive class with an argument path, with it renamed to archive, perform,
+        archive.extract(to_path)
+#ANNOTATION: call the method archive.extract with an argument to_path.
+
+
+class Archive(object):
+#ANNOTATION: derive the class Archive from the object base class.
+    """
+    The external API class that encapsulates an archive implementation.
+    """
+#ANNOTATION: docstring
+    def __init__(self, file):
+#ANNOTATION: define the method __init__ with 2 arguments self and file.
+        self._archive = self._archive_cls(file)(file)
+#ANNOTATION: call the method self._archive_cls with an argument file, call the result with an argument file, substitute the result for self._archive.
+
+    @staticmethod
+#ANNOTATION: static method,
+    def _archive_cls(file):
+#ANNOTATION: define the method _archive_cls with an argument file.
+        cls = None
+#ANNOTATION: cls is None.
+        if isinstance(file, six.string_types):
+#ANNOTATION: if file is an instance of six.string_types.
+            filename = file
+#ANNOTATION: substitute file for filename.
+        else:
+#ANNOTATION: if not,
+            try:
+#ANNOTATION: try,
+                filename = file.name
+#ANNOTATION: substitute file.name for filename.
+            except AttributeError:
+#ANNOTATION: if AttributeError exception is caught.
+                raise UnrecognizedArchiveFormat(
+                    "File object not a recognized archive format.")
+#ANNOTATION: raise an UnrecognizedArchiveFormat exception with an argument string "File object not a recognized archive format.".
+        base, tail_ext = os.path.splitext(filename.lower())
+#ANNOTATION: convert filename to lowercase, use the result as an argument for the call to the function os.path.splitext,
+#ANNOTATION: substitute the result for base and tail_ext.
+        cls = extension_map.get(tail_ext)
+#ANNOTATION: get the value under the tail_ext key of the extension_map dictionary, substitute it for cls.
+        if not cls:
+#ANNOTATION: if cls is false,
+            base, ext = os.path.splitext(base)
+#ANNOTATION: call the method os.path.splitext with an argument base, substitute the result for base and ext, respectively.
+            cls = extension_map.get(ext)
+#ANNOTATION: get the value under the ext key of the extension_map dictionary, substitute it for cls.
+        if not cls:
+#ANNOTATION: if cls is false,
+            raise UnrecognizedArchiveFormat(
+                "Path not a recognized archive format: %s" % filename)
+#ANNOTATION: raise an UnrecognizedArchiveFormat exception with an argument string "Path not a recognized archive format: %s", 
+#ANNOTATION: where '%s' is replaced with filename.
+        return cls
+#ANNOTATION: return cls.
+
+    def __enter__(self):
+#ANNOTATION: define the method __enter__ with an argument self.
+        return self
+#ANNOTATION: return self.
+
+    def __exit__(self, exc_type, exc_value, traceback):
+#ANNOTATION: define the method __exit__ with 4 arguments: self, exc_type, exc_value and traceback.
+        self.close()
+#ANNOTATION: call the method self.close.
+
+    def extract(self, to_path=''):
+#ANNOTATION: define the method extract with 2 arguments: self and to_path set to an empty string.
+        self._archive.extract(to_path)
+#ANNOTATION: call the method self._archive.extract with an argument to_path.
+
+    def list(self):
+#ANNOTATION: define the method list with an argument self.
+        self._archive.list()
+#ANNOTATION: call the method self._archive.list.
+
+    def close(self):
+#ANNOTATION: define the method close with an argument self.
+        self._archive.close()
+#ANNOTATION: call the method self._archive.close.
+
+
+class BaseArchive(object):
+#ANNOTATION: derive the class BaseArchive from the object base class.
+    """
+    Base Archive class.  Implementations should inherit this class.
+    """
+#ANNOTATION: docstring
+    def split_leading_dir(self, path):
+#ANNOTATION: define the method split_leading_dir with 2 arguments self and path.
+        path = str(path)
+#ANNOTATION: convert path to a string, substitute the result for path.
+        path = path.lstrip('/').lstrip('\\')
+#ANNOTATION: strip path of all leading '/' and '\\' characters, substitute the result for path.
+        if '/' in path and (('\\' in path and path.find('/') < path.find('\\'))
+                            or '\\' not in path):
+#ANNOTATION: if '/' is contained in path, and only if '\\' is contained in path and index of the first occurrence of '/' in path is lesser than,
+#ANNOTATION: index of the first occurrence of '\\' in path, or alternatively if '\\' is not contained in path,
+            return path.split('/', 1)
+#ANNOTATION: split path in two parts by '/' character, return the result.
+        elif '\\' in path:
+#ANNOTATION: otherwise if '\\' is contained in path,
+            return path.split('\\', 1)
+#ANNOTATION: split path in two parts by '\\' string, return the result.
+        else:
+#ANNOTATION: if not,
+            return path, ''
+#ANNOTATION: return path an an empty string.
+
+    def has_leading_dir(self, paths):
+#ANNOTATION: define the method has_leading_dir with 2 arguments self and paths.
+        """
+        Returns true if all the paths have the same leading path name
+        (i.e., everything is in one subdirectory in an archive)
+        """
+#ANNOTATION: docstring
+        common_prefix = None
+#ANNOTATION: common_prefix is None.
+        for path in paths:
+#ANNOTATION: for every path in paths,
+            prefix, rest = self.split_leading_dir(path)
+#ANNOTATION: call the method self.split_leading_dir with an argument path, assign the result to prefix and rest, respectively.
+            if not prefix:
+#ANNOTATION: if prefix is false,
+                return False
+#ANNOTATION: return boolean False.
+            elif common_prefix is None:
+#ANNOTATION: otherwise if common_prefix is None,
+                common_prefix = prefix
+#ANNOTATION: substitute prefix for common_prefix.
+            elif prefix != common_prefix:
+#ANNOTATION: otherwise if prefix is not equal to common_prefix,
+                return False
+#ANNOTATION: return boolean False.
+        return True
+#ANNOTATION: return boolean True.
+
+    def extract(self):
+#ANNOTATION: define the method list with an argument self.
+        raise NotImplementedError('subclasses of BaseArchive must provide an extract() method')
+#ANNOTATION: raise an NotImplementedError exception with an argument string 'subclasses of BaseArchive must provide an extract() method'. 
+
+    def list(self):
+#ANNOTATION: define the method list with an argument self.
+        raise NotImplementedError('subclasses of BaseArchive must provide a list() method')
+#ANNOTATION: raise an NotImplementedError exception with an argument string 'subclasses of BaseArchive must provide a list() method'.
+
+
+class TarArchive(BaseArchive):
+#ANNOTATION: derive the class TarArchive from the BaseArchive base class.
+
+    def __init__(self, file):
+#ANNOTATION: define the method __init__ with 2 arguments self and file.
+        self._archive = tarfile.open(file)
+#ANNOTATION: call the method tarfile.open with an argument file, substitute the result for self._archive.
+
+    def list(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments self and unpacked list args and unpacked dictionary kwargs.
+        self._archive.list(*args, **kwargs)
+#ANNOTATION: define the method list with 3 arguments: self and unpacked list args and unpacked dictionary kwargs.
+
+    def extract(self, to_path):
+#ANNOTATION: define the method extract with 2 arguments self and to_path.
+        # note: python<=2.5 doesn't seem to know about pax headers, filter them
+        members = [member for member in self._archive.getmembers()
+                   if member.name != 'pax_global_header']
+#ANNOTATION: members is a list with elements member for every member in the result of the function self._archive.getmembers,
+#ANNOTATION: only if member.name is not equal to string 'pax_global_header'.
+        leading = self.has_leading_dir(x.name for x in members)
+#ANNOTATION: call the method self.has_leading_dir with an argument list, with elements x.name for every x in members, substitute the result for leading.
+        for member in members:
+#ANNOTATION: for every member in members,
+            name = member.name
+#ANNOTATION: substitute member.name for name.
+            if leading:
+#ANNOTATION: if leading is true,
+                name = self.split_leading_dir(name)[1]
+#ANNOTATION: call the method self.split_leading_dir with an argument name, substitute the first element of result for name. 
+            filename = os.path.join(to_path, name)
+#ANNOTATION: join to_path and name into a valid system path, substitute the result for filename.
+            if member.isdir():
+#ANNOTATION: if member is a directory,
+                if filename and not os.path.exists(filename):
+#ANNOTATION: if filename is true and filename path doesnt exist,
+                    os.makedirs(filename)
+#ANNOTATION: create directories from the elements in filename.
+            else:
+#ANNOTATION: if not,
+                try:
+#ANNOTATION: try,
+                    extracted = self._archive.extractfile(member)
+#ANNOTATION: call the method self._archive.extractfile with an argument member, substitute the result for extracted.
+                except (KeyError, AttributeError) as exc:
+#ANNOTATION: if KeyError or AttributeError, renamed to exc, exceptions are caught,
+                    # Some corrupt tar files seem to produce this
+                    # (specifically bad symlinks)
+                    print("In the tar file %s the member %s is invalid: %s" %
+                          (name, member.name, exc))
+#ANNOTATION: print a string "In the tar file %s the member %s is invalid: %s", where '%s' is substituted with: name, member.name and exc, respectively.
+                else:
+#ANNOTATION: if not,
+                    dirname = os.path.dirname(filename)
+#ANNOTATION: get the directory name of filename, substitute it for dirname.
+                    if dirname and not os.path.exists(dirname):
+#ANNOTATION: if dirname is true and dirname directory doesnt exists,
+                        os.makedirs(dirname)
+#ANNOTATION: create directories from the elements in filename.
+                    with open(filename, 'wb') as outfile:
+#ANNOTATION: open filename file in write mode, with the file descriptor renamed to outfile, perform,
+                        shutil.copyfileobj(extracted, outfile)
+#ANNOTATION: call the method shutil.copyfileobj with 2 arguments: extracted and outfile.
+                finally:
+#ANNOTATION: finally,
+                    if extracted:
+#ANNOTATION: if extracted is true,
+                        extracted.close()
+#ANNOTATION: call the method extracted.close.
+
+    def close(self):
+#ANNOTATION: define the method close with an argument self.
+        self._archive.close()
+#ANNOTATION: call the method self._archive.close.
+
+
+class ZipArchive(BaseArchive):
+#ANNOTATION: derive the class ZipArchive from the BaseArchive base class.
+
+    def __init__(self, file):
+#ANNOTATION: define the method __init__ with 2 arguments self and file.
+        self._archive = zipfile.ZipFile(file)
+#ANNOTATION: call the method zipfile.ZipFile with an argument self, substitute the result for self._archive.
+
+    def list(self, *args, **kwargs):
+#ANNOTATION: define the method list with 3 arguments: self and unpacked list args and unpacked dictionary kwargs.
+        self._archive.printdir(*args, **kwargs)
+#ANNOTATION: call the method self._archive.printdir with 2 arguments: unpacked list args and unpacked dictionary kwargs.
+
+    def extract(self, to_path):
+#ANNOTATION: define the method extract with 2 arguments self and to_path.
+        namelist = self._archive.namelist()
+#ANNOTATION: call the method self._archive.namelist, substitute the result for namelist.
+        leading = self.has_leading_dir(namelist)
+#ANNOTATION: call the method self.has_leading_dir with an argument namelist, substitute the result for leading.
+        for name in namelist:
+#ANNOTATION: for every name in namelist,
+            data = self._archive.read(name)
+#ANNOTATION: call the method self._archive.read with an argument name, substitute the result for data.
+            if leading:
+#ANNOTATION: if leading is true,
+                name = self.split_leading_dir(name)[1]
+#ANNOTATION: call the method self.split_leading_dir with an argument name, substitute the second element of the result for name.
+            filename = os.path.join(to_path, name)
+#ANNOTATION: join to_path and name into a file path, substitute the result for filename.
+            dirname = os.path.dirname(filename)
+#ANNOTATION: get the directory name of filename, substitute the result for dirname.
+            if dirname and not os.path.exists(dirname):
+#ANNOTATION: if dirname is true and dirname path doesnt exists,
+                os.makedirs(dirname)
+#ANNOTATION: create directories from the elements in filename.
+            if filename.endswith(('/', '\\')):
+#ANNOTATION: if filename ends with '/' or with '\\',
+                # A directory
+                if not os.path.exists(filename):
+#ANNOTATION: if filename path doesnt exists,
+                    os.makedirs(filename)
+#ANNOTATION: create directories from the elements in filename.
+            else:
+#ANNOTATION: if not,
+                with open(filename, 'wb') as outfile:
+#ANNOTATION: open filename file in write mode, with the file descriptor renamed to outfile, perform,
+                    outfile.write(data)
+#ANNOTATION: write data bytes to outfile.
+
+    def close(self):
+#ANNOTATION: define the method close with an argument self.
+        self._archive.close()
+#ANNOTATION: call the method self._archive.close.
+
+extension_map = {
+    '.tar': TarArchive,
+    '.tar.bz2': TarArchive,
+    '.tar.gz': TarArchive,
+    '.tgz': TarArchive,
+    '.tz2': TarArchive,
+    '.zip': ZipArchive,
+}
+#ANNOTATION: extension_map is a dictioanry with 6 initial elntries: TarArchive for '.tar', TarArchive for '.tar.bz2', TarArchive for '.tar.gz',
+#ANNOTATION: TarArchive for '.tgz', TarArchive for '.tz2', ZipArchive for '.zip'.

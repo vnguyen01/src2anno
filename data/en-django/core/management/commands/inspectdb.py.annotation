@@ -1,0 +1,426 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from collections import OrderedDict
+#ANNOTATION: from collections import OrderedDict into default name space.
+import keyword
+#ANNOTATION: import module keyword.
+import re
+#ANNOTATION: import module re.
+
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+from django.db import connections, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import connections and DEFAULT_DB_ALIAS into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand base class.
+    help = "Introspects the database tables in the given database and outputs a Django model module."
+#ANNOTATION: help is an string "Introspects the database tables in the given database and outputs a Django model module.".
+
+    requires_system_checks = False
+#ANNOTATION: requires_system_checks is boolean False.
+
+    db_module = 'django.db'
+#ANNOTATION: db_module is a string 'django.db'.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with arguments self and parser.
+        parser.add_argument('--database', action='store', dest='database',
+            default=DEFAULT_DB_ALIAS, help='Nominates a database to '
+            'introspect. Defaults to using the "default" database.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--database', action set to string 'store', dest as a string 'database',
+#ANNOTATION: default set to DEFAULT_DB_ALIAS and help as a string 'Nominates a database to introspect. Defaults to using the "default" database.'. 
+
+    def handle(self, **options):
+#ANNOTATION: define the method handle with 2 arguments: self and unpacked dictionary options.
+        try:
+#ANNOTATION: try,
+            for line in self.handle_inspection(options):
+#ANNOTATION: for every line in return value of the method self.handle_inspection called with an argument options,
+                self.stdout.write("%s\n" % line)
+#ANNOTATION: append new line to line, write it to self.stdout stream.
+        except NotImplementedError:
+#ANNOTATION: if NotImplementedError exception is caught,
+            raise CommandError("Database inspection isn't supported for the currently selected database backend.")
+#ANNOTATION: raise an CommandError exception with an argument "Database inspection isn't supported for the currently selected database backend.".
+
+    def handle_inspection(self, options):
+#ANNOTATION: define the method handle_inspection with 2 argument: self and options. 
+        connection = connections[options['database']]
+#ANNOTATION: get value under the 'database' key of the options dictionary, use it as a key to get the value from the connections dictionary, 
+#ANNOTATION: substitute the result for connection.
+        # 'table_name_filter' is a stealth option
+        table_name_filter = options.get('table_name_filter')
+#ANNOTATION: get the value under the 'table_name_filter' key of the options dictionary, substitute it for table_name_filter.
+
+        table2model = lambda table_name: re.sub(r'[^a-zA-Z0-9]', '', table_name.title())
+#ANNOTATION: table2model is a lambda function with an argument table_name, return value is the return value of the re.sub method,
+#ANNOTATION: called with 3 arguments: raw string '[^a-zA-Z0-9]', empty string and result of the method table_name.title.
+        strip_prefix = lambda s: s[1:] if s.startswith("u'") else s
+#ANNOTATION: strip_prefix is a lambda function with an argument s, return value is s without the first element if s starts with string 'u'',
+#ANNOTATION: otherwise returns s.
+
+        with connection.cursor() as cursor:
+#ANNOTATION: call the method connection.cursor, with the result as cursor,
+            yield "# This is an auto-generated Django model module."
+#ANNOTATION: yield string "# This is an auto-generated Django model module." as the result.
+            yield "# You'll have to do the following manually to clean this up:"
+#ANNOTATION: yield string "# You'll have to do the following manually to clean this up:" as the result.
+            yield "#   * Rearrange models' order"
+#ANNOTATION: yield string "#   * Rearrange models' order" as the result.
+            yield "#   * Make sure each model has one field with primary_key=True"
+#ANNOTATION: yield string "#   * Make sure each model has one field with primary_key=True" as the result.
+            yield "#   * Remove `managed = False` lines if you wish to allow Django to create, modify, and delete the table"
+#ANNOTATION: yield string "#   * Remove `managed = False` lines if you wish to allow Django to create, modify, and delete the table" as the result.
+            yield "# Feel free to rename the models, but don't rename db_table values or field names."
+#ANNOTATION: yield string "# Feel free to rename the models, but don't rename db_table values or field names." as the result.
+            yield "#"
+#ANNOTATION: yield string "#" as the result.
+            yield "# Also note: You'll have to insert the output of 'django-admin.py sqlcustom [app_label]'"
+#ANNOTATION: yield string "# Also note: You'll have to insert the output of 'django-admin.py sqlcustom [app_label]'" as the result.
+            yield "# into your database."
+#ANNOTATION: yield string "# into your database." as the result.
+            yield "from __future__ import unicode_literals"
+#ANNOTATION: yield string "from __future__ import unicode_literals" as the result.
+            yield ''
+#ANNOTATION: yield and empty string as the result.
+            yield 'from %s import models' % self.db_module
+#ANNOTATION: yield string 'from %s import models' % self.db_module as the result, where "%s" is replaced with self.db_module.
+            known_models = []
+#ANNOTATION: known_models is an empty list.
+            for table_name in connection.introspection.table_names(cursor):
+#ANNOTATION: for every table_name in return value of the method connection.introspection.table_names called with an argument cursor,
+                if table_name_filter is not None and callable(table_name_filter):
+#ANNOTATION: if table_name_filter is not None and table_name_filter is callable object,
+                    if not table_name_filter(table_name):
+#ANNOTATION: call the function table_name_filter with an argument table_name, if it evaluates to true, 
+                        continue
+#ANNOTATION: skip this loop iteration,
+                yield ''
+#ANNOTATION: yield and empty string as the result.
+                yield ''
+#ANNOTATION: yield and empty string as the result.
+                yield 'class %s(models.Model):' % table2model(table_name)
+#ANNOTATION: yield string 'from %s import models' % self.db_module as the result, where "%s" is replaced with result of the call to the function,
+#ANNOTATION: table2model with an argument table_name.
+                known_models.append(table2model(table_name))
+#ANNOTATION: call the function table2model with an argument table_name, append the result to known_models.
+                try:
+#ANNOTATION: try,
+                    relations = connection.introspection.get_relations(cursor, table_name)
+#ANNOTATION: call the method connection.introspection.get_relations with 2 arguments cursor, table_name and substitute the result for relations.
+                except NotImplementedError:
+#ANNOTATION: if NotImplementedError exception is caught,
+                    relations = {}
+#ANNOTATION: relations is an empty dictionary.
+                try:
+#ANNOTATION: try,
+                    indexes = connection.introspection.get_indexes(cursor, table_name)
+#ANNOTATION: call the method connection.introspection.get_relations with 2 arguments cursor, table_name and substitute the result for indexes.
+                except NotImplementedError:
+#ANNOTATION: if NotImplementedError exception is caught,
+                    indexes = {}
+#ANNOTATION: indexes is an empty dictionary.
+                used_column_names = []  # Holds column names used in the table so far
+#ANNOTATION: used_column_names is an empty list.
+                for i, row in enumerate(connection.introspection.get_table_description(cursor, table_name)):
+#ANNOTATION: for every i and row in enumerated result of the method connection.introspection.get_table_description called with arguments: cursor and table_name,
+                    comment_notes = []  # Holds Field notes, to be displayed in a Python comment.
+#ANNOTATION: comment_notes is an empty list.
+                    extra_params = OrderedDict()  # Holds Field parameters such as 'db_column'.
+#ANNOTATION: extra_params is an instance of the class OrderedDict.
+                    column_name = row[0]
+#ANNOTATION: substitute first element of row for column_name.
+                    is_relation = i in relations
+#ANNOTATION: if i is contained in relations, is_relation is boolean True, otherwise is_relation is boolean False.
+
+                    att_name, params, notes = self.normalize_col_name(
+                        column_name, used_column_names, is_relation)
+#ANNOTATION: call the method self.normalize_col_name with 3 arguments column_name, used_column_names, is_relation, assign the result to att_name, #ANNOTATION: params and notes, respectively.
+                    extra_params.update(params)
+#ANNOTATION: add params to extra_params dictionary.
+                    comment_notes.extend(notes)
+#ANNOTATION: extend comment_notes list with notes.
+
+                    used_column_names.append(att_name)
+#ANNOTATION: append att_name to used_column_names list.
+
+                    # Add primary_key and unique, if necessary.
+                    if column_name in indexes:
+#ANNOTATION: if column_name is contained in indexes,
+                        if indexes[column_name]['primary_key']:
+#ANNOTATION: if value under the 'primary_key' key of the dictionary contained under the column_name key of the dictionary indexes is true, 
+                            extra_params['primary_key'] = True
+#ANNOTATION: value under the 'primary_key' key of the extra_params dictionary is boolean True, 
+                        elif indexes[column_name]['unique']:
+#ANNOTATION: otherwise if, if value under the 'unique' key of the dictionary contained under the column_name key of the dictionary indexes is true,
+                            extra_params['unique'] = True
+#ANNOTATION: value under the 'unique' key of the extra_params dictionary is boolean True,
+
+                    if is_relation:
+#ANNOTATION: if is_relation is true,
+                        rel_to = "self" if relations[i][1] == table_name else table2model(relations[i][1])
+#ANNOTATION: if second element of the i-th row of relations equals table_name, rel_to is string 'self', 
+#ANNOTATION: otherwise call the method table2model with second element of the i-th row of relations and substitute it for rel_to.
+                        if rel_to in known_models:
+#ANNOTATION: if rel_to is contained in known_models,
+                            field_type = 'ForeignKey(%s' % rel_to
+#ANNOTATION: append rel_to to string 'ForeignKey(, substitute the result for field_type.
+                        else:
+#ANNOTATION: if not,
+                            field_type = "ForeignKey('%s'" % rel_to
+#ANNOTATION: append rel_to to string 'ForeignKey(, append character "'" to it, substitute the result for field_type.
+                    else:
+#ANNOTATION: if not,
+                        # Calling `get_field_type` to get the field type string and any
+                        # additional parameters and notes.
+                        field_type, field_params, field_notes = self.get_field_type(connection, table_name, row)
+#ANNOTATION: call the method self.get_field_type with 3 arguments connection, table_name and row, assign the result to field_type, field_params,
+#ANNOTATION: field_notes, respectively.
+                        extra_params.update(field_params)
+#ANNOTATION: add field_params to extra_params dictionary.
+                        comment_notes.extend(field_notes)
+#ANNOTATION: extend comment_notes list with field_notes.
+
+                        field_type += '('
+#ANNOTATION: append '(' to field_type.
+
+                    # Don't output 'id = meta.AutoField(primary_key=True)', because
+                    # that's assumed if it doesn't exist.
+                    if att_name == 'id' and extra_params == {'primary_key': True}:
+#ANNOTATION: if att_name equals string 'id' and extra_params equals a dictionary with 1 entry: boolean True for 'primary_key',
+                        if field_type == 'AutoField(':
+#ANNOTATION: if field_type equals a string 'AutoField(',
+                            continue
+#ANNOTATION: skip this loop iteration.
+                        elif field_type == 'IntegerField(' and not connection.features.can_introspect_autofield:
+#ANNOTATION: otherwise if field_type equals a string 'IntegerField(' and connection.features.can_introspect_autofield is false,
+                            comment_notes.append('AutoField?')
+#ANNOTATION: append string 'AutoField?' to comment_notes. 
+
+                    # Add 'null' and 'blank', if the 'null_ok' flag was present in the
+                    # table description.
+                    if row[6]:  # If it's NULL...
+#ANNOTATION: if seventh element of row is true,
+                        if field_type == 'BooleanField(':
+#ANNOTATION: if field_type equals a string 'BooleanField(',
+                            field_type = 'NullBooleanField('
+#ANNOTATION: field_type is a string 'NullBooleanField('
+                        else:
+#ANNOTATION: if not,
+                            extra_params['blank'] = True
+#ANNOTATION: value under the 'blank' key of the extra_params dictionary is boolean True. 
+                            if field_type not in ('TextField(', 'CharField('):
+#ANNOTATION: if field_type is not equal to string 'TextField(' or string 'CharField(',
+                                extra_params['null'] = True
+#ANNOTATION: value under the 'null' key of the extra_params dictionary is boolean True. 
+
+                    field_desc = '%s = %s%s' % (
+                        att_name,
+                        # Custom fields will have a dotted path
+                        '' if '.' in field_type else 'models.',
+                        field_type,
+                    )
+#ANNOTATION: field_desc is a string '%s = %s%s', where '%s' is replaced with: att_name, an empty string if '.' is contained in field_type,
+#ANNOTATION: or with string 'models.' if it is not and field_type.
+                    if extra_params:
+#ANNOTATION: if extra_params is true,
+                        if not field_desc.endswith('('):
+#ANNOTATION: if field_desc doesnt end with '(',
+                            field_desc += ', '
+#ANNOTATION: append string ', ' to field_desc.
+                        field_desc += ', '.join([
+                            '%s=%s' % (k, strip_prefix(repr(v)))
+                            for k, v in extra_params.items()])
+#ANNOTATION: in string '%s=%s' replace '%s' with k and return value of the function strip_prefix with an argument printable representation of v,
+#ANNOTATION: for every k and v in return value of the extra_params.items method, join all results into a string separated by a string ', ',
+#ANNOTATION: substitute it for field_desc.
+                    field_desc += ')'
+#ANNOTATION: append string ')' to field_desc.
+                    if comment_notes:
+#ANNOTATION: if comment_notes is true,
+                        field_desc += '  # ' + ' '.join(comment_notes)
+#ANNOTATION: join elements of comment_notes into a string, separated by whitespaces, append it to the string ' #', append the result to field_desc.
+                    yield '    %s' % field_desc
+#ANNOTATION: yield string '    %s', where '%s' is replaced with field_desc.
+                for meta_line in self.get_meta(table_name):
+#ANNOTATION: for meta_line in return value of the method self.get_meta called with an argument table_name.
+                    yield meta_line
+#ANNOTATION: yield meta_line as the result.
+
+    def normalize_col_name(self, col_name, used_column_names, is_relation):
+#ANNOTATION: define the method normalize_col_name with 4 arguments: self, col_name, used_column_names and is_relation.
+        """
+        Modify the column name to make it Python-compatible as a field name
+        """
+#ANNOTATION: docstring
+        field_params = {}
+#ANNOTATION: field_params is an empty dictionary.
+        field_notes = []
+#ANNOTATION: field_notes is an empty list.
+
+        new_name = col_name.lower()
+#ANNOTATION: convert col_name to lowercase, substitute the result for new_name.
+        if new_name != col_name:
+#ANNOTATION: if new_name is not equal to col_name,
+            field_notes.append('Field name made lowercase.')
+#ANNOTATION: append string 'Field name made lowercase.' to field_notes.
+
+        if is_relation:
+#ANNOTATION: if is_relation,
+            if new_name.endswith('_id'):
+#ANNOTATION: if new_name ends with string '_id',
+                new_name = new_name[:-3]
+#ANNOTATION: substitute new_name, without the last 3 elements for new_name.
+            else:
+#ANNOTATION: if not,
+                field_params['db_column'] = col_name
+#ANNOTATION: substitute col_name for value under the 'db_column' key of the field_params dictionary.
+
+        new_name, num_repl = re.subn(r'\W', '_', new_name)
+#ANNOTATION: cal the method re.subn with 3 arguments: raw string '\W', string '_' and new_name.
+        if num_repl > 0:
+#ANNOTATION: if num_repl is greater than integer 0,
+            field_notes.append('Field renamed to remove unsuitable characters.')
+#ANNOTATION: append string 'Field renamed to remove unsuitable characters.' to field_notes.
+
+        if new_name.find('__') >= 0:
+#ANNOTATION: call the method new_name.find, with an argument string '__', if it evaluates to greater or equal than integer 0,
+            while new_name.find('__') >= 0:
+#ANNOTATION: while the result of the method new_name.find, called with an argument string '__' is greater or equals integer 0, 
+                new_name = new_name.replace('__', '_')
+#ANNOTATION: replace all the occurrences of '__' with '_' in new_name.
+            if col_name.lower().find('__') >= 0:
+#ANNOTATION: convert col_name to lowercase, on the result call the method find with an argument string '__', if the result is greater of equal to integer 0,
+                # Only add the comment if the double underscore was in the original name
+                field_notes.append("Field renamed because it contained more than one '_' in a row.")
+#ANNOTATION: append string "Field renamed because it contained more than one '_' in a row." to field_notes.
+
+        if new_name.startswith('_'):
+#ANNOTATION: if new_name starts with a string '_',
+            new_name = 'field%s' % new_name
+#ANNOTATION: convert new_name to a string and append it to string 'field', substitute the result for new_name.
+            field_notes.append("Field renamed because it started with '_'.")
+#ANNOTATION: append string "Field renamed because it started with '_'." to field_notes.
+
+        if new_name.endswith('_'):
+#ANNOTATION: if new_name ends with a string '_',
+            new_name = '%sfield' % new_name
+#ANNOTATION: convert new_name to a string and append string 'field' to it, substitute the result for new_name.
+            field_notes.append("Field renamed because it ended with '_'.")
+#ANNOTATION: append string "Field renamed because it ended with '_'." to field_notes.
+
+        if keyword.iskeyword(new_name):
+#ANNOTATION: call the method keyword.iskeyword with an argument new_name, if it evaluates to true, 
+            new_name += '_field'
+#ANNOTATION: append string '_field' to new_name.
+            field_notes.append('Field renamed because it was a Python reserved word.')
+#ANNOTATION: append string "Field renamed because it was a Python reserved word." to field_notes.
+
+        if new_name[0].isdigit():
+#ANNOTATION: if first element of new_name is digit,
+            new_name = 'number_%s' % new_name
+#ANNOTATION: convert new_name to a string and append it to string 'number_', substitute the result for new_name.
+            field_notes.append("Field renamed because it wasn't a valid Python identifier.")
+#ANNOTATION: append string "Field renamed because it wasn't a valid Python identifier." to field_notes.
+
+        if new_name in used_column_names:
+#ANNOTATION: if new_name is contained in used_column_names,
+            num = 0
+#ANNOTATION: num is an integer 0.
+            while '%s_%d' % (new_name, num) in used_column_names:
+#ANNOTATION: in string '%s_%d', replace '%s' with new_name and '%d' with num, while the result is contained in used_column_names,
+                num += 1
+#ANNOTATION: increment num by one.
+            new_name = '%s_%d' % (new_name, num)
+#ANNOTATION: in string '%s_%d', replace '%s' with new_name and '%d' with num, substitute the result for new_name.
+            field_notes.append('Field renamed because of name conflict.')
+#ANNOTATION: append string "Field renamed because of name conflict." to field_notes.
+
+        if col_name != new_name and field_notes:
+#ANNOTATION: if col_name is not equal to new_name and field_notes is true, 
+            field_params['db_column'] = col_name
+#ANNOTATION: substitute col_name for value under the 'db_column' key of the field_params dictionary.
+
+        return new_name, field_params, field_notes
+#ANNOTATION: return new_name, field_params and field_notes.
+
+    def get_field_type(self, connection, table_name, row):
+#ANNOTATION: define the method get_field_type with 4 arguments: self, connection, table_name and row.
+        """
+        Given the database connection, the table name, and the cursor row
+        description, this routine will return the given field type name, as
+        well as any additional keyword parameters and notes for the field.
+        """
+#ANNOTATION: docstring
+        field_params = OrderedDict()
+#ANNOTATION: field_params is an instance of a class OrderedDict.
+        field_notes = []
+#ANNOTATION: field_notes is an empty list.
+
+        try:
+#ANNOTATION: try,
+            field_type = connection.introspection.get_field_type(row[1], row)
+#ANNOTATION: call the method connection.introspection.get_field_type with 2 arguments: second element of row and row, substitute the result for field_type.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            field_type = 'TextField'
+#ANNOTATION: field_type is a string 'TextField'.
+            field_notes.append('This field type is a guess.')
+#ANNOTATION: append a string 'This field type is a guess.' to field_notes.
+
+        # This is a hook for data_types_reverse to return a tuple of
+        # (field_type, field_params_dict).
+        if type(field_type) is tuple:
+#ANNOTATION: if field_type is a tuple, 
+            field_type, new_params = field_type
+#ANNOTATION: substitute field_type for field_type and new_params, respectively.
+            field_params.update(new_params)
+#ANNOTATION: call the method field_params.update with an argument new_params.1
+
+        # Add max_length for all CharFields.
+        if field_type == 'CharField' and row[3]:
+#ANNOTATION: if field_type equals a string CharField' and fourth element of row is true,
+            field_params['max_length'] = int(row[3])
+#ANNOTATION: convert fourth element of row to an integer, substitute it for value under the 'max_digits' key of the field_params.
+
+        if field_type == 'DecimalField':
+#ANNOTATION: if field_type equals a string 'DecimalField',
+            if row[4] is None or row[5] is None:
+#ANNOTATION: if fifth and sixth elements of row are None,
+                field_notes.append(
+                    'max_digits and decimal_places have been guessed, as this '
+                    'database handles decimal fields as float')
+#ANNOTATION: append string 'max_digits and decimal_places have been guessed, as this database handles decimal fields as float' to field_notes.
+                field_params['max_digits'] = row[4] if row[4] is not None else 10
+#ANNOTATION: if fifth element of row is not None, substitute it for value under the 'max_digits' key of the field_params,
+#ANNOTATION: otherwise, value under the 'max_digits' key of the field_params is integer 10.
+                field_params['decimal_places'] = row[5] if row[5] is not None else 5
+#ANNOTATION: if sixth element of row is not None, substitute it for value under the 'decimal_places' key of the field_params, 
+#ANNOTATION: otherwise, value under the 'decimal_places' key of the field_params is integer 5.
+            else:
+#ANNOTATION: if not
+                field_params['max_digits'] = row[4]
+#ANNOTATION: substitute fifth element of row for value under the 'max_digits' key of the field_params.
+                field_params['decimal_places'] = row[5]
+#ANNOTATION: substitute sixth element of row for value under the 'decimal_places' key of the field_params.
+
+        return field_type, field_params, field_notes
+#ANNOTATION: return field_type, field_params and field_notes.
+
+    def get_meta(self, table_name):
+#ANNOTATION: define the method get_meta with arguments self and table_name.
+        """
+        Return a sequence comprising the lines of code necessary
+        to construct the inner Meta class for the model corresponding
+        to the given database table name.
+        """
+#ANNOTATION: docstring
+        return ["",
+                "    class Meta:",
+                "        managed = False",
+                "        db_table = '%s'" % table_name]
+#ANNOTATION: return the list, containing 4 elements: an empty string, string "    class Meta:", string "        managed = False",
+#ANNOTATION: and "        db_table = '%s'", where '%s' is replaced with table_name.

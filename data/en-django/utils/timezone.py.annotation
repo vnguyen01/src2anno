@@ -1,0 +1,562 @@
+"""
+Timezone-related classes and functions.
+
+This module uses pytz when it's available and fallbacks when it isn't.
+"""
+#ANNOTATION: docstring
+
+from datetime import datetime, timedelta, tzinfo
+#ANNOTATION: from datetime import datetime,  timedelta and tzinfo into default name space.
+from threading import local
+#ANNOTATION: from threading import local into default name space.
+import sys
+#ANNOTATION: import module sys.
+import time as _time
+#ANNOTATION: import module time as _time.
+
+try:
+#ANNOTATION: try,
+    import pytz
+#ANNOTATION: import pytz.
+except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+    pytz = None
+#ANNOTATION: pytz is None.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+__all__ = [
+    'utc', 'get_fixed_timezone',
+    'get_default_timezone', 'get_default_timezone_name',
+    'get_current_timezone', 'get_current_timezone_name',
+    'activate', 'deactivate', 'override',
+    'localtime', 'now',
+    'is_aware', 'is_naive', 'make_aware', 'make_naive',
+]
+#ANNOTATION: __all__ is a list with 15 elements: strings 'utc', 'get_fixed_timezone', 'get_default_timezone', 'get_default_timezone_name',
+#ANNOTATION: 'get_current_timezone', 'get_current_timezone_name', 'activate', 'deactivate', 'override', 'localtime', 'now', 'is_aware',
+#ANNOTATION: 'is_naive', 'make_aware' and 'make_naive'.
+
+
+# UTC and local time zones
+
+ZERO = timedelta(0)
+#ANNOTATION: call the function timedelta with an argument integer 0, substitute the result for ZERO.
+
+
+class UTC(tzinfo):
+#ANNOTATION: derive the class UTC from the tzinfo base class.
+    """
+    UTC implementation taken from Python's docs.
+
+    Used only when pytz isn't available.
+    """
+#ANNOTATION: docstring
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return "<UTC>"
+#ANNOTATION: return a string "<UTC>".
+
+    def utcoffset(self, dt):
+#ANNOTATION: define the method utcoffset with 2 arguments self and dt.
+        return ZERO
+#ANNOTATION: return ZERO.
+
+    def tzname(self, dt):
+#ANNOTATION: define the method tzname with 2 arguments self and dt.
+        return "UTC"
+#ANNOTATION: return a string "UTC".
+
+    def dst(self, dt):
+#ANNOTATION: define the method dst with 2 arguments self and dt.
+        return ZERO
+#ANNOTATION: return ZERO.
+
+
+class FixedOffset(tzinfo):
+#ANNOTATION: derive the class FixedOffset from the tzinfo base class.
+    """
+    Fixed offset in minutes east from UTC. Taken from Python's docs.
+
+    Kept as close as possible to the reference version. __init__ was changed
+    to make its arguments optional, according to Python's requirement that
+    tzinfo subclasses can be instantiated without arguments.
+    """
+#ANNOTATION: docstring
+
+    def __init__(self, offset=None, name=None):
+#ANNOTATION: define the method __init__ with 3 arguments: self, offset set to None, name set to None.
+        if offset is not None:
+#ANNOTATION: if offset is not None,
+            self.__offset = timedelta(minutes=offset)
+#ANNOTATION: call the function timedelta with an argument minutes set to offset, substitute the result for self.__offset. 
+        if name is not None:
+#ANNOTATION: if name is not None,
+            self.__name = name
+#ANNOTATION: substitute name for self.__name.
+
+    def utcoffset(self, dt):
+#ANNOTATION: define the method utcoffset with 2 arguments: self and dt.
+        return self.__offset
+#ANNOTATION: return self.__offset.
+
+    def tzname(self, dt):
+#ANNOTATION: define the method tzname with 2 arguments: self and dt.
+        return self.__name
+#ANNOTATION: return self.__name.
+
+    def dst(self, dt):
+#ANNOTATION: define the method dst with 2 arguments: self and dt.
+        return ZERO
+#ANNOTATION: return ZERO.
+
+
+class ReferenceLocalTimezone(tzinfo):
+#ANNOTATION: derive the class ReferenceLocalTimezone from the tzinfo base class.
+    """
+    Local time. Taken from Python's docs.
+
+    Used only when pytz isn't available, and most likely inaccurate. If you're
+    having trouble with this class, don't waste your time, just install pytz.
+
+    Kept as close as possible to the reference version. __init__ was added to
+    delay the computation of STDOFFSET, DSTOFFSET and DSTDIFF which is
+    performed at import time in the example.
+
+    Subclasses contain further improvements.
+    """
+#ANNOTATION: docstring
+
+    def __init__(self):
+#ANNOTATION: define the method __init__ with an argument self.
+        self.STDOFFSET = timedelta(seconds=-_time.timezone)
+#ANNOTATION: call the function timedelta with an argument seconds set to negative _time.timezone, substitute the result for self.STDOFFSET.
+        if _time.daylight:
+#ANNOTATION: if _time.daylight is true,
+            self.DSTOFFSET = timedelta(seconds=-_time.altzone)
+#ANNOTATION: call the function timedelta with an argument seconds set to negative _time.altzone, substitute the result for self.DSTOFFSET.
+        else:
+#ANNOTATION: if not,
+            self.DSTOFFSET = self.STDOFFSET
+#ANNOTATION: substitute self.STDOFFSET for self.DSTOFFSET.
+        self.DSTDIFF = self.DSTOFFSET - self.STDOFFSET
+#ANNOTATION: subtract self.STDOFFSET with self.DSTOFFSET, substitute the result for self.DSTDIFF.
+        tzinfo.__init__(self)
+#ANNOTATION: call the method tzinfo.__init__ with an argument self.
+
+    def utcoffset(self, dt):
+#ANNOTATION: define the method utcoffset with 2 arguments: self and dt.
+        if self._isdst(dt):
+#ANNOTATION: call the method self._isdst with an argument dt, if it evaluates to true,
+            return self.DSTOFFSET
+#ANNOTATION: return self.DSTOFFSET.
+        else:
+#ANNOTATION: if not,
+            return self.STDOFFSET
+#ANNOTATION: return self.STDOFFSET.
+
+    def dst(self, dt):
+#ANNOTATION: define the method utcoffset with 2 arguments: self and dt.
+        if self._isdst(dt):
+#ANNOTATION: call the method self._isdst with an argument dt, if it evaluates to true,
+            return self.DSTDIFF
+#ANNOTATION: return self.DSTDIFF.
+        else:
+#ANNOTATION: if not,
+            return ZERO
+#ANNOTATION: return ZERO.
+
+    def tzname(self, dt):
+#ANNOTATION: define the method tzname with 2 arguments: self and dt.
+        return _time.tzname[self._isdst(dt)]
+#ANNOTATION: call the method self._isdst with an argument dt, use it as an key to get the value from the _time.tzname dictionary, return it.
+
+    def _isdst(self, dt):
+#ANNOTATION: define the method _isdst with 2 arguments: self and dt.
+        tt = (dt.year, dt.month, dt.day,
+              dt.hour, dt.minute, dt.second,
+              dt.weekday(), 0, 0)
+#ANNOTATION: tt is a tuple with 9 elements: dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, result of the method dt.weekday,
+#ANNOTATION: ingeter 0 and integer 0.
+        stamp = _time.mktime(tt)
+#ANNOTATION: call the method _time.mktime with an argument tt, substitute the result for stamp. 
+        tt = _time.localtime(stamp)
+#ANNOTATION: call the method _time.localtime with an argument stamp, substitute the result for tt.
+        return tt.tm_isdst > 0
+#ANNOTATION: if tt.tm_isdst is greater than integer 0, return the result.
+
+
+class LocalTimezone(ReferenceLocalTimezone):
+#ANNOTATION: derive the class LocalTimezone from the ReferenceLocalTimezone base class.
+    """
+    Slightly improved local time implementation focusing on correctness.
+
+    It still crashes on dates before 1970 or after 2038, but at least the
+    error message is helpful.
+    """
+#ANNOTATION: docstring
+
+    def tzname(self, dt):
+#ANNOTATION: define the method tzname with 2 arguments: self and dt.
+        is_dst = False if dt is None else self._isdst(dt)
+#ANNOTATION: if dt is None, is_dst is boolean False, otherwise call the method _isdst with an argument dt, substitute the result for is_dst.
+        return _time.tzname[is_dst]
+#ANNOTATION: return the value under the is_dst key of the _time.tzname dictionary.
+
+    def _isdst(self, dt):
+#ANNOTATION: define the method _isdst with 2 arguments: self and dt.
+        try:
+#ANNOTATION: try,
+            return super(LocalTimezone, self)._isdst(dt)
+#ANNOTATION: call the method _isdst with an argument dt from the base class of the class LocalTimezone, return the result.
+        except (OverflowError, ValueError) as exc:
+#ANNOTATION: if OverflowError or ValueError, renamed to exc, exceptions are caught,
+            exc_type = type(exc)
+#ANNOTATION: get the type of the exc object, substitute it for exc_type.
+            exc_value = exc_type(
+                "Unsupported value: %r. You should install pytz." % dt)
+#ANNOTATION: call the function exc_type with an argument string "Unsupported value: %r. You should install pytz.", replace '%s' with dt,
+#ANNOTATION: substitute the result for exc_value.
+            exc_value.__cause__ = exc
+#ANNOTATION: substitute exc for exc_value.__cause__.
+            six.reraise(exc_type, exc_value, sys.exc_info()[2])
+#ANNOTATION: call the function six.reraise with 3 arguments: exc_type, exc_value and third element of the result of the method sys.exc_info.
+
+utc = pytz.utc if pytz else UTC()
+#ANNOTATION: if pytz is true, substitute pytz.utc for utc, otherwise substitute result of the function UTC for utc.
+"""UTC time zone as a tzinfo instance."""
+#ANNOTATION: docstring
+
+
+def get_fixed_timezone(offset):
+#ANNOTATION: define the function get_fixed_timezone with an argument offset.
+    """
+    Returns a tzinfo instance with a fixed offset from UTC.
+    """
+#ANNOTATION: docstring
+    if isinstance(offset, timedelta):
+#ANNOTATION: if offset is an instance of timedelta class,
+        offset = offset.seconds // 60
+#ANNOTATION: substitute offset.seconds for offset.
+    sign = '-' if offset < 0 else '+'
+#ANNOTATION: if offset is smaller than integer 0, sign is '-', otherwise sign is '+'.
+    hhmm = '%02d%02d' % divmod(abs(offset), 60)
+#ANNOTATION: divide absolute offset by module 60, use the result to format string '%02d%02d', substitute it for hhmm.
+    name = sign + hhmm
+#ANNOTATION: sum sign and hhmm, substitute the result for name.
+    return FixedOffset(offset, name)
+#ANNOTATION: return an instance of FixedOffset class, created with 2 arguments: offset and name.
+
+# In order to avoid accessing the settings at compile time,
+# wrap the expression in a function and cache the result.
+_localtime = None
+#ANNOTATION: _localtime is None.
+
+
+def get_default_timezone():
+#ANNOTATION: define the function get_default_timezone.
+    """
+    Returns the default time zone as a tzinfo instance.
+
+    This is the time zone defined by settings.TIME_ZONE.
+    """
+#ANNOTATION: docstring
+    global _localtime
+#ANNOTATION: use global variable _localtime.
+    if _localtime is None:
+#ANNOTATION: if _localtime is None,
+        if isinstance(settings.TIME_ZONE, six.string_types) and pytz is not None:
+#ANNOTATION: if settings.TIME_ZONE is an instance of six.string_types and pytz is not None,
+            _localtime = pytz.timezone(settings.TIME_ZONE)
+#ANNOTATION: call the method pytz.timezone with an argument settings.TIME_ZONE, substitute the result for _localtime.
+        else:
+#ANNOTATION: if not,
+            # This relies on os.environ['TZ'] being set to settings.TIME_ZONE.
+            _localtime = LocalTimezone()
+#ANNOTATION: _localtime is an instance of LocalTimezone class.
+    return _localtime
+#ANNOTATION: return _localtime.
+
+
+# This function exists for consistency with get_current_timezone_name
+def get_default_timezone_name():
+#ANNOTATION: define the function get_default_timezone_name.
+    """
+    Returns the name of the default time zone.
+    """
+#ANNOTATION: docstring
+    return _get_timezone_name(get_default_timezone())
+#ANNOTATION: call the function get_default_timezone, use the result as an argument for the call to the function _get_timezone_name, return the result.
+
+_active = local()
+#ANNOTATION: call the method local, substitute the result for _active.
+
+
+def get_current_timezone():
+#ANNOTATION: define the function get_current_timezone.
+    """
+    Returns the currently active time zone as a tzinfo instance.
+    """
+#ANNOTATION: docstring
+    return getattr(_active, "value", get_default_timezone())
+#ANNOTATION: get 'value' attribute of the _active object, if it exists return it, if not, call the function get_default_timezone and return the result.
+
+
+def get_current_timezone_name():
+#ANNOTATION: define the function get_current_timezone_name.
+    """
+    Returns the name of the currently active time zone.
+    """
+#ANNOTATION: docstring
+    return _get_timezone_name(get_current_timezone())
+#ANNOTATION: call the function get_current_timezone, use the result as an argument for the call to the function _get_timezone_name, return the result.
+
+
+def _get_timezone_name(timezone):
+#ANNOTATION: define the function _get_timezone_name with an argument timezone.
+    """
+    Returns the name of ``timezone``.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        # for pytz timezones
+        return timezone.zone
+#ANNOTATION: return timezone.zone.
+    except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+        # for regular tzinfo objects
+        return timezone.tzname(None)
+#ANNOTATION: call the method timezone.tzname with an argument None, return the result.
+
+# Timezone selection functions.
+
+# These functions don't change os.environ['TZ'] and call time.tzset()
+# because it isn't thread safe.
+
+
+def activate(timezone):
+#ANNOTATION: define the function activate with an argument timezone.
+    """
+    Sets the time zone for the current thread.
+
+    The ``timezone`` argument must be an instance of a tzinfo subclass or a
+    time zone name. If it is a time zone name, pytz is required.
+    """
+#ANNOTATION: docstring
+    if isinstance(timezone, tzinfo):
+#ANNOTATION: if timezone is an instance of tzinfo,
+        _active.value = timezone
+#ANNOTATION: substitute timezone for _active.value.
+    elif isinstance(timezone, six.string_types) and pytz is not None:
+#ANNOTATION: otherwise if timezone is an instance of six.string_types and pytz is not None,
+        _active.value = pytz.timezone(timezone)
+#ANNOTATION: call the method pytz.timezone with an argument timezone, substitute the result for _active.value.
+    else:
+#ANNOTATION: if not,
+        raise ValueError("Invalid timezone: %r" % timezone)
+#ANNOTATION: raise an ValueError with an argument string "Invalid timezone: %r", substitute '%r' with timezone.
+
+
+def deactivate():
+#ANNOTATION: define the function deactivate.
+    """
+    Unsets the time zone for the current thread.
+
+    Django will then use the time zone defined by settings.TIME_ZONE.
+    """
+#ANNOTATION: docstring
+    if hasattr(_active, "value"):
+#ANNOTATION: if active has an attribute 'value',
+        del _active.value
+#ANNOTATION: delete _active.value.
+
+
+class override(object):
+#ANNOTATION: derive the class override from the object base class.
+    """
+    Temporarily set the time zone for the current thread.
+
+    This is a context manager that uses ``~django.utils.timezone.activate()``
+    to set the timezone on entry, and restores the previously active timezone
+    on exit.
+
+    The ``timezone`` argument must be an instance of a ``tzinfo`` subclass, a
+    time zone name, or ``None``. If is it a time zone name, pytz is required.
+    If it is ``None``, Django enables the default time zone.
+    """
+#ANNOTATION: docstring
+    def __init__(self, timezone):
+#ANNOTATION: define the method __init__ with 2 arguments: self and timezone.
+        self.timezone = timezone
+#ANNOTATION: substitute timezone for self.timezone.
+        self.old_timezone = getattr(_active, 'value', None)
+#ANNOTATION: get 'value' attribute of the _active object
+
+    def __enter__(self):
+#ANNOTATION: define the method __enter__ with an argument self.
+        if self.timezone is None:
+#ANNOTATION: if self.timezone is None,
+            deactivate()
+#ANNOTATION: call the method deactivate.
+        else:
+#ANNOTATION: if not,
+            activate(self.timezone)
+#ANNOTATION: call the method activate with an argument self.timezone.
+
+    def __exit__(self, exc_type, exc_value, traceback):
+#ANNOTATION: define the method __exit__ with 4 arguments self, exc_type, exc_value and traceback.
+        if self.old_timezone is None:
+#ANNOTATION: if self.old_timezone is None,
+            deactivate()
+#ANNOTATION: call the method deactivate.
+        else:
+#ANNOTATION: if not,
+            _active.value = self.old_timezone
+#ANNOTATION: substitute self.old_timezone for _active.value.
+
+
+# Templates
+
+def template_localtime(value, use_tz=None):
+#ANNOTATION: define the function template_localtime with 2 arguments: value and use_tz set to None.
+    """
+    Checks if value is a datetime and converts it to local time if necessary.
+
+    If use_tz is provided and is not None, that will force the value to
+    be converted (or not), overriding the value of settings.USE_TZ.
+
+    This function is designed for use by the template engine.
+    """
+#ANNOTATION: docstring
+    should_convert = (isinstance(value, datetime)
+        and (settings.USE_TZ if use_tz is None else use_tz)
+        and not is_naive(value)
+        and getattr(value, 'convert_to_local_time', True))
+#ANNOTATION: if value is an instance of datetime and settings.USE_TZ if use_tz is None else use_tz and call to the function is_naive,
+#ANNOTATION: with an argument value evaluates to false, and if 'convert_to_local_time' attribute of value object doesnt exists,
+#ANNOTATION: or is it does is boolean True, should_convert is boolean True, otherwise is boolean False.
+    return localtime(value) if should_convert else value
+#ANNOTATION: if should_convert is true, call the function localtime with an argument value and return the result, otherwise return value. 
+
+
+# Utilities
+
+def localtime(value, timezone=None):
+#ANNOTATION: define the function localtime with 2 arguments: value and timezone set to None.
+    """
+    Converts an aware datetime.datetime to local time.
+
+    Local time is defined by the current time zone, unless another time zone
+    is specified.
+    """
+#ANNOTATION: docstring
+    if timezone is None:
+#ANNOTATION: if timezone is None,
+        timezone = get_current_timezone()
+#ANNOTATION: call the function get_current_timezone, substitute the result for timezone.
+    # If `value` is naive, astimezone() will raise a ValueError,
+    # so we don't need to perform a redundant check.
+    value = value.astimezone(timezone)
+#ANNOTATION: call the method value.astimezone with an argument timezone, substitute the result for value.
+    if hasattr(timezone, 'normalize'):
+#ANNOTATION: if timezone has an attribute 'normalize',
+        # This method is available for pytz time zones.
+        value = timezone.normalize(value)
+#ANNOTATION: call the method timezone.normalize with an argument value, substitute the result for value.
+    return value
+#ANNOTATION: return value.
+
+
+def now():
+#ANNOTATION: define the function now.
+    """
+    Returns an aware or naive datetime.datetime, depending on settings.USE_TZ.
+    """
+#ANNOTATION: docstring
+    if settings.USE_TZ:
+#ANNOTATION: if settings.USE_TZ is true,
+        # timeit shows that datetime.now(tz=utc) is 24% slower
+        return datetime.utcnow().replace(tzinfo=utc)
+#ANNOTATION: call the method datetime.utcnow, on the result call the method replace with an argument tzinfo set to utc, return the result.
+    else:
+#ANNOTATION: if not,
+        return datetime.now()
+#ANNOTATION: call the method datetime.now, return the result.
+
+
+# By design, these four functions don't perform any checks on their arguments.
+# The caller should ensure that they don't receive an invalid value like None.
+
+def is_aware(value):
+#ANNOTATION: define the function is_aware with an argument value.
+    """
+    Determines if a given datetime.datetime is aware.
+
+    The logic is described in Python's docs:
+    http://docs.python.org/library/datetime.html#datetime.tzinfo
+    """
+#ANNOTATION: docstring
+    return value.tzinfo is not None and value.tzinfo.utcoffset(value) is not None
+#ANNOTATION: if value.tzinfo is not None and call to the method value.tzinfo.utcoffset called with an argument value evaluates to not None, 
+#ANNOTATION: return boolean True, otherwise return boolean False.
+
+
+def is_naive(value):
+#ANNOTATION: define the function is_naive with an argument value.
+    """
+    Determines if a given datetime.datetime is naive.
+
+    The logic is described in Python's docs:
+    http://docs.python.org/library/datetime.html#datetime.tzinfo
+    """
+#ANNOTATION: docstring
+    return value.tzinfo is None or value.tzinfo.utcoffset(value) is None
+#ANNOTATION: if value.tzinfo is None and call to the method value.tzinfo.utcoffset called with an argument value evaluates to None,
+#ANNOTATION: return boolean True, otherwise return boolean False.
+
+def make_aware(value, timezone):
+#ANNOTATION: define the function make_aware with 2 arguments: value and timezone.
+    """
+    Makes a naive datetime.datetime in a given time zone aware.
+    """
+#ANNOTATION: docstring
+    if hasattr(timezone, 'localize'):
+#ANNOTATION: if timezone has an attribute 'localize',
+        # This method is available for pytz time zones.
+        return timezone.localize(value, is_dst=None)
+#ANNOTATION: call the method timezone.localize with 2 arguments: value and is_dst as None, return the result.
+    else:
+#ANNOTATION: if not,
+        # Check that we won't overwrite the timezone of an aware datetime.
+        if is_aware(value):
+#ANNOTATION: call the function is_aware with an argument value, if it evaluates to true,
+            raise ValueError(
+                "make_aware expects a naive datetime, got %s" % value)
+#ANNOTATION: raise an ValueError exception with an argument string "make_aware expects a naive datetime, got %s", where '%s' is replaced with value.
+        # This may be wrong around DST changes!
+        return value.replace(tzinfo=timezone)
+#ANNOTATION: call the method value.replace with an argument tzinfo as timezone, return the result.
+
+
+def make_naive(value, timezone):
+#ANNOTATION: define the function make_naive with 2 arguments: value and timezone.
+    """
+    Makes an aware datetime.datetime naive in a given time zone.
+    """
+#ANNOTATION: docstring
+    # If `value` is naive, astimezone() will raise a ValueError,
+    # so we don't need to perform a redundant check.
+    value = value.astimezone(timezone)
+#ANNOTATION: call the method value.astimezone with an argument timezone, substitute the result for value.
+    if hasattr(timezone, 'normalize'):
+#ANNOTATION: if timezone has an attribute 'normalize', 
+        # This method is available for pytz time zones.
+        value = timezone.normalize(value)
+#ANNOTATION: call the method timezone.normalize with an argument value, substitute the result for value.
+    return value.replace(tzinfo=None)
+#ANNOTATION: call the method value.replace with an arugment tzinfo set to None, return the result.

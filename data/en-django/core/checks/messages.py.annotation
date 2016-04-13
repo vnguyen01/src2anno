@@ -1,0 +1,141 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.utils.encoding import python_2_unicode_compatible, force_str
+#ANNOTATION: from django.utils.encoding import python_2_unicode_compatible and force_st into default name space.
+
+
+# Levels
+DEBUG = 10
+#ANNOTATION: DEBUG is integer 10.
+INFO = 20
+#ANNOTATION: INFO is integer 20.
+WARNING = 30
+#ANNOTATION: WARNING is integer 30.
+ERROR = 40
+#ANNOTATION: ERROR is integer 40.
+CRITICAL = 50
+#ANNOTATION: CRITICAL is integer 50.
+
+
+@python_2_unicode_compatible
+#ANNOTATION: decorator python_2_unicode_compatible.
+class CheckMessage(object):
+#ANNOTATION: derive class CheckMessage from object base class.
+
+    def __init__(self, level, msg, hint=None, obj=None, id=None):
+#ANNOTATION: define initialization method __init__ with self class instance, level, msg, hint defaulting to None, obj defaulting to None and if defaulting to None as arguments.
+        assert isinstance(level, int), "The first argument should be level."
+#ANNOTATION: if level is not an integer raise an error with message string "The first argument should be level.".
+        self.level = level
+#ANNOTATION: substitute level for self.level.
+        self.msg = msg
+#ANNOTATION: substitute msg for self.msg.
+        self.hint = hint
+#ANNOTATION: substitute hint for self.hint.
+        self.obj = obj
+#ANNOTATION: substitute obj for self.obj.
+        self.id = id
+#ANNOTATION: substitute id for self.id.
+
+    def __eq__(self, other):
+#ANNOTATION: define private method __eq__ with self class instance and other as arguments.
+        return all(getattr(self, attr) == getattr(other, attr)
+                   for attr in ['level', 'msg', 'hint', 'obj', 'id'])
+#ANNOTATION: if for all attr in list of attributes 'level', 'msg', 'hint', 'obj' and 'id', self and other have the same attribute attr,
+#ANNOTATION: return boolean True, otherwise return boolean False. 
+
+    def __ne__(self, other):
+#ANNOTATION: define private method __ne__ with self class instance and other as arguments.
+        return not (self == other)
+#ANNOTATION: if self equals to other return boolean False, otherwise return True.
+
+    def __str__(self):
+#ANNOTATION: define private method __str__ with argument self.
+        from django.db import models
+#ANNOTATION: from django.db import models into default name space.
+
+        if self.obj is None:
+#ANNOTATION: if self.obj is None,
+            obj = "?"
+#ANNOTATION: obj is a string "?".
+        elif isinstance(self.obj, models.base.ModelBase):
+#ANNOTATION: otherwise if self.object is an instance of the models.base.ModelBase class,
+            # We need to hardcode ModelBase and Field cases because its __str__
+            # method doesn't return "applabel.modellabel" and cannot be changed.
+            model = self.obj
+#ANNOTATION: substitute self.obj for model.
+            app = model._meta.app_label
+#ANNOTATION: substitute model._meta.app_label for app.
+            obj = '%s.%s' % (app, model._meta.object_name)
+#ANNOTATION: convert app and model._meta.object_name to strings, join them with separating '.' character, substitute it for obj.
+        else:
+#ANNOTATION: if not,
+            obj = force_str(self.obj)
+#ANNOTATION: call the function force_str with argument self.obj, substitute the result for obj.
+        id = "(%s) " % self.id if self.id else ""
+#ANNOTATION: if self.id exists, convert self.id to a string, surround it with round brackets, substitute id for it, otherwise id is an empty string.
+        hint = "\n\tHINT: %s" % self.hint if self.hint else ''
+#ANNOTATION: if self.hint exists, replace '%s' in a string "\n\tHINT: %s" with value of self.hint, substitute it for hint, otherwise hint is an empty string.
+        return "%s: %s%s%s" % (obj, id, self.msg, hint)
+#ANNOTATION: replace all '%s' from string "%s: %s%s%s" with values of obj, id, self.msg and hint, respectively, return the result.
+
+    def __repr__(self):
+#ANNOTATION: define private method __repr__ with argument self.
+        return "<%s: level=%r, msg=%r, hint=%r, obj=%r, id=%r>" % \
+            (self.__class__.__name__, self.level, self.msg, self.hint, self.obj, self.id)
+#ANNOTATION: in the string "<%s: level=%r, msg=%r, hint=%r, obj=%r, id=%r>", replace '%s' with the name of the type of this class instance, 
+#ANNOTATION: replace all the '%r' with self.level, self.msg, self.hint. self.obj and self.id, respectively, return the result.
+
+    def is_serious(self):
+#ANNOTATION: define the method is_serious with argument self.
+        return self.level >= ERROR
+#ANNOTATION: return boolean True if self.level is greater than or equals to ERROR, otherwise return boolean False.
+
+    def is_silenced(self):
+#ANNOTATION: define the method is_silence with argument self.
+        from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+        return self.id in settings.SILENCED_SYSTEM_CHECKS
+#ANNOTATION: if self.id is contained in settings.SILENCED_SYSTEM_CHECKS return boolean True, False otherwise.
+
+
+class Debug(CheckMessage):
+#ANNOTATION: derive the class Debug from base class CheckMessage.
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define initialization method __init__ with self class instance, unpacked list args, unpacked dictionary kwargs as arguments.
+        return super(Debug, self).__init__(DEBUG, *args, **kwargs)
+#ANNOTATION: call the __init__ method with 3 arguments: DEBUG, unpacked list args and unpacked dictionary kwargs from the base class of Debug.
+
+
+class Info(CheckMessage):
+#ANNOTATION: derive the class Info from base class CheckMessage.
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define initialization method __init__ with self class instance, unpacked list args, unpacked dictionary kwargs as arguments.
+        return super(Info, self).__init__(INFO, *args, **kwargs)
+#ANNOTATION: call the __init__ method with 3 arguments: INFO, unpacked list args and unpacked dictionary kwargs from the base class of Info.
+
+
+class Warning(CheckMessage):
+#ANNOTATION: derive the class Warning from base class CheckMessage.
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define initialization method __init__ with self class instance, unpacked list args, unpacked dictionary kwargs as arguments.
+        return super(Warning, self).__init__(WARNING, *args, **kwargs)
+#ANNOTATION: call the __init__ method with 3 arguments: WARNING, unpacked list args and unpacked dictionary kwargs from the base class of Warning.
+
+
+class Error(CheckMessage):
+#ANNOTATION: derive the class Error from base class CheckMessage.
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define initialization method __init__ with self class instance, unpacked list args, unpacked dictionary kwargs as arguments.
+        return super(Error, self).__init__(ERROR, *args, **kwargs)
+#ANNOTATION: call the __init__ method with 3 arguments: ERROR, unpacked list args and unpacked dictionary kwargs from the base class of Error.
+
+
+class Critical(CheckMessage):
+#ANNOTATION: derive the class Critical from base class CheckMessage.
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define initialization method __init__ with self class instance, unpacked list args, unpacked dictionary kwargs as arguments.
+        return super(Critical, self).__init__(CRITICAL, *args, **kwargs)
+#ANNOTATION: call the __init__ method with 3 arguments: CRITICAL, unpacked list args and unpacked dictionary kwargs from the base class of Critical.

@@ -1,0 +1,22 @@
+from __future__ import absolute_import
+#ANNOTATION: from __future__ import absolute_import into default name space.
+
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+
+warnings.warn("django.utils.unittest will be removed in Django 1.9.",
+    RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the function warnings.warn with 3 arguments: string "django.utils.unittest will be removed in Django 1.9.",
+#ANNOTATION: RemovedInDjango19Warning and stacklevel as integer 2.
+
+try:
+#ANNOTATION: try,
+    from unittest2 import *
+#ANNOTATION: from unittest2 import everything.
+except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+    from unittest import *
+#ANNOTATION: from unittest import import everything.

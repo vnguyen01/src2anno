@@ -1,0 +1,286 @@
+"""
+termcolors.py
+"""
+#ANNOTATION: docstring
+
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+color_names = ('black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white')
+#ANNOTATION: color_names is a tuple with 8 elements: strings 'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan' and 'white'.
+foreground = dict((color_names[x], '3%s' % x) for x in range(8))
+#ANNOTATION: foreground is a dictionary created with elements: x appended to a string '3' for value under the key x of color_names dictionary,
+#ANNOTATION: for every x in sequence of integers from 0 to 7. 
+background = dict((color_names[x], '4%s' % x) for x in range(8))
+#ANNOTATION: background is a dictionary created with elements: x appended to a string '4' for value under the key x of color_names dictionary,
+#ANNOTATION: for every x in sequence of integers from 0 to 7.
+
+RESET = '0'
+#ANNOTATION: RESET is a string '0'. 
+opt_dict = {'bold': '1', 'underscore': '4', 'blink': '5', 'reverse': '7', 'conceal': '8'}
+#ANNOTATION: opt_dict is an dictionary with 5 elements: '1' for 'bold', '4' for 'underscore', '5' for 'blink', '7' for 'reverse',
+#ANNOTATION: and '8' for 'conceal'.
+
+
+def colorize(text='', opts=(), **kwargs):
+#ANNOTATION: define the method colorize with 3 arguments: text set to an empty string, opts set to an empty tuple and unpacked dictionary kwargs.
+    """
+    Returns your text, enclosed in ANSI graphics codes.
+
+    Depends on the keyword arguments 'fg' and 'bg', and the contents of
+    the opts tuple/list.
+
+    Returns the RESET code if no parameters are given.
+
+    Valid colors:
+        'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'
+
+    Valid options:
+        'bold'
+        'underscore'
+        'blink'
+        'reverse'
+        'conceal'
+        'noreset' - string will not be auto-terminated with the RESET code
+
+    Examples:
+        colorize('hello', fg='red', bg='blue', opts=('blink',))
+        colorize()
+        colorize('goodbye', opts=('underscore',))
+        print(colorize('first line', fg='red', opts=('noreset',)))
+        print('this should be red too')
+        print(colorize('and so should this'))
+        print('this should not be red')
+    """
+#ANNOTATION: docstring
+    code_list = []
+#ANNOTATION: code_list is an empty list.
+    if text == '' and len(opts) == 1 and opts[0] == 'reset':
+#ANNOTATION: if text is an empty string and length of opts equals integer 1 and first element of opts equals string 'reset',
+        return '\x1b[%sm' % RESET
+#ANNOTATION: format string '\x1b[%sm' with RESET, return the result.
+    for k, v in six.iteritems(kwargs):
+#ANNOTATION: call the function six.iteritems with an argument kwargs, for every k and v in the result,
+        if k == 'fg':
+#ANNOTATION: if k equals a string 'fg',
+            code_list.append(foreground[v])
+#ANNOTATION: append value under the key v of foreground dictionary to code_list.
+        elif k == 'bg':
+#ANNOTATION: otherwise if k equals a string 'bg',
+            code_list.append(background[v])
+#ANNOTATION: append value under the key v of background dictionary to code_list.
+    for o in opts:
+#ANNOTATION: for every o in opts,
+        if o in opt_dict:
+#ANNOTATION: if o is contained in opt_dict,
+            code_list.append(opt_dict[o])
+#ANNOTATION: append value under the 0 key of the opt_dict dictionary to code_list.
+    if 'noreset' not in opts:
+#ANNOTATION: if string 'noreset' is not contained in opts,
+        text = '%s\x1b[%sm' % (text or '', RESET)
+#ANNOTATION: if text is true format with it and RESET a string '%s\x1b[%sm', if not format it with an empty string and RESET, substitute the result for text.
+    return '%s%s' % (('\x1b[%sm' % ';'.join(code_list)), text or '')
+#ANNOTATION: join elements of code_list in a string, separated by ';', format string '\x1b[%sm' with it, append text to the result if exists,
+#ANNOTATION: return the string.
+
+
+def make_style(opts=(), **kwargs):
+#ANNOTATION: define the function make_style with 2 arguments: opts set to an empty tuple and unpacked dictionary kwargs.
+    """
+    Returns a function with default parameters for colorize()
+
+    Example:
+        bold_red = make_style(opts=('bold',), fg='red')
+        print(bold_red('hello'))
+        KEYWORD = make_style(fg='yellow')
+        COMMENT = make_style(fg='blue', opts=('bold',))
+    """
+#ANNOTATION: docstring
+    return lambda text: colorize(text, opts, **kwargs)
+#ANNOTATION: return lambda function with text as argument and return value being result of the function colorize, called with 3 arguments: text,
+#ANNOTATION: opts and unpacked dictionary kwargs.
+
+NOCOLOR_PALETTE = 'nocolor'
+#ANNOTATION: NOCOLOR_PALETTE is a string 'nocolor'.
+DARK_PALETTE = 'dark'
+#ANNOTATION: DARK_PALETTE is a string 'dark'.
+LIGHT_PALETTE = 'light'
+#ANNOTATION: LIGHT_PALETTE is a string 'light'.
+
+PALETTES = {
+    NOCOLOR_PALETTE: {
+        'ERROR': {},
+        'WARNING': {},
+        'NOTICE': {},
+        'SQL_FIELD': {},
+        'SQL_COLTYPE': {},
+        'SQL_KEYWORD': {},
+        'SQL_TABLE': {},
+        'HTTP_INFO': {},
+        'HTTP_SUCCESS': {},
+        'HTTP_REDIRECT': {},
+        'HTTP_NOT_MODIFIED': {},
+        'HTTP_BAD_REQUEST': {},
+        'HTTP_NOT_FOUND': {},
+        'HTTP_SERVER_ERROR': {},
+        'MIGRATE_HEADING': {},
+        'MIGRATE_LABEL': {},
+        'MIGRATE_SUCCESS': {},
+        'MIGRATE_FAILURE': {},
+    },
+    DARK_PALETTE: {
+        'ERROR': {'fg': 'red', 'opts': ('bold',)},
+        'WARNING': {'fg': 'yellow', 'opts': ('bold',)},
+        'NOTICE': {'fg': 'red'},
+        'SQL_FIELD': {'fg': 'green', 'opts': ('bold',)},
+        'SQL_COLTYPE': {'fg': 'green'},
+        'SQL_KEYWORD': {'fg': 'yellow'},
+        'SQL_TABLE': {'opts': ('bold',)},
+        'HTTP_INFO': {'opts': ('bold',)},
+        'HTTP_SUCCESS': {},
+        'HTTP_REDIRECT': {'fg': 'green'},
+        'HTTP_NOT_MODIFIED': {'fg': 'cyan'},
+        'HTTP_BAD_REQUEST': {'fg': 'red', 'opts': ('bold',)},
+        'HTTP_NOT_FOUND': {'fg': 'yellow'},
+        'HTTP_SERVER_ERROR': {'fg': 'magenta', 'opts': ('bold',)},
+        'MIGRATE_HEADING': {'fg': 'cyan', 'opts': ('bold',)},
+        'MIGRATE_LABEL': {'opts': ('bold',)},
+        'MIGRATE_SUCCESS': {'fg': 'green', 'opts': ('bold',)},
+        'MIGRATE_FAILURE': {'fg': 'red', 'opts': ('bold',)},
+    },
+    LIGHT_PALETTE: {
+        'ERROR': {'fg': 'red', 'opts': ('bold',)},
+        'WARNING': {'fg': 'yellow', 'opts': ('bold',)},
+        'NOTICE': {'fg': 'red'},
+        'SQL_FIELD': {'fg': 'green', 'opts': ('bold',)},
+        'SQL_COLTYPE': {'fg': 'green'},
+        'SQL_KEYWORD': {'fg': 'blue'},
+        'SQL_TABLE': {'opts': ('bold',)},
+        'HTTP_INFO': {'opts': ('bold',)},
+        'HTTP_SUCCESS': {},
+        'HTTP_REDIRECT': {'fg': 'green', 'opts': ('bold',)},
+        'HTTP_NOT_MODIFIED': {'fg': 'green'},
+        'HTTP_BAD_REQUEST': {'fg': 'red', 'opts': ('bold',)},
+        'HTTP_NOT_FOUND': {'fg': 'red'},
+        'HTTP_SERVER_ERROR': {'fg': 'magenta', 'opts': ('bold',)},
+        'MIGRATE_HEADING': {'fg': 'cyan', 'opts': ('bold',)},
+        'MIGRATE_LABEL': {'opts': ('bold',)},
+        'MIGRATE_SUCCESS': {'fg': 'green', 'opts': ('bold',)},
+        'MIGRATE_FAILURE': {'fg': 'red', 'opts': ('bold',)},
+    }
+}
+#ANNOTATION: PALETTES is a dictionary containing 3 elements, a dictionary with 18 pairs of dictionary value and string keys for NOCOLOR_PALETTE,
+#ANNOTATION: a dictionary with 18 pairs of dictionary value and string keys for DARK_PALETTE,
+#ANNOTATION: and a dictionary with 18 pairs of dictionary value and string keys for LIGHT_PALETTE.  
+DEFAULT_PALETTE = DARK_PALETTE
+#ANNOTATION: substitute DARK_PALETTE for DEFAULT_PALETTE.
+
+
+def parse_color_setting(config_string):
+#ANNOTATION: define the function parse_color_setting with an argument config_string.
+    """Parse a DJANGO_COLORS environment variable to produce the system palette
+
+    The general form of a pallete definition is:
+
+        "palette;role=fg;role=fg/bg;role=fg,option,option;role=fg/bg,option,option"
+
+    where:
+        palette is a named palette; one of 'light', 'dark', or 'nocolor'.
+        role is a named style used by Django
+        fg is a background color.
+        bg is a background color.
+        option is a display options.
+
+    Specifying a named palette is the same as manually specifying the individual
+    definitions for each role. Any individual definitions following the pallete
+    definition will augment the base palette definition.
+
+    Valid roles:
+        'error', 'notice', 'sql_field', 'sql_coltype', 'sql_keyword', 'sql_table',
+        'http_info', 'http_success', 'http_redirect', 'http_bad_request',
+        'http_not_found', 'http_server_error'
+
+    Valid colors:
+        'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'
+
+    Valid options:
+        'bold', 'underscore', 'blink', 'reverse', 'conceal'
+
+    """
+#ANNOTATION: docstring
+    if not config_string:
+#ANNOTATION: if config_string is false,
+        return PALETTES[DEFAULT_PALETTE]
+#ANNOTATION: return value under the DEFAULT_PALETTE key of the PALETTES dictionary.
+
+    # Split the color configuration into parts
+    parts = config_string.lower().split(';')
+#ANNOTATION: convert config_string to lowercase and split it by ';' character, substitute the result for parts.
+    palette = PALETTES[NOCOLOR_PALETTE].copy()
+#ANNOTATION: get value under the config_string key of the PALETTES dictionary, call the copy method on the result and substitute it for palette.
+    for part in parts:
+#ANNOTATION: for every part in parts,
+        if part in PALETTES:
+#ANNOTATION: if part is contained in PALETTES,
+            # A default palette has been specified
+            palette.update(PALETTES[part])
+#ANNOTATION: get the value under the part key of the PALETTES dictionary, update with it palette dictionary.
+        elif '=' in part:
+#ANNOTATION: otherwise if '=' is contained in part,
+            # Process a palette defining string
+            definition = {}
+#ANNOTATION: definition is an empty dictionary,
+
+            # Break the definition into the role,
+            # plus the list of specific instructions.
+            # The role must be in upper case
+            role, instructions = part.split('=')
+#ANNOTATION: split part by '=' character, substitute the result for role and instructions, respectively.
+            role = role.upper()
+#ANNOTATION: convert role to uppercase.
+
+            styles = instructions.split(',')
+#ANNOTATION: split instructions by ',' character, substitute the result for styles.
+            styles.reverse()
+#ANNOTATION: reverse the order of elements of styles.
+
+            # The first instruction can contain a slash
+            # to break apart fg/bg.
+            colors = styles.pop().split('/')
+#ANNOTATION: remove first element from styles, split it by the '/' character, substitute the result for colors.
+            colors.reverse()
+#ANNOTATION: reverse the order of colors elements,
+            fg = colors.pop()
+#ANNOTATION: remove the first element from colors, substitute it for fg.
+            if fg in color_names:
+#ANNOTATION: if fg is contained in color_names,
+                definition['fg'] = fg
+#ANNOTATION: substitute fg for value under the 'fg' key of definition dictionary.
+            if colors and colors[-1] in color_names:
+#ANNOTATION: if colors is true and last element of colors is contained in color_names,
+                definition['bg'] = colors[-1]
+#ANNOTATION: substitute last element of colors for value under the 'bg' key of definition dictionary.
+
+            # All remaining instructions are options
+            opts = tuple(s for s in styles if s in opt_dict.keys())
+#ANNOTATION: opts is a tuple created out of elements s, for every s in styles is s is in the keys of the opt_dict dictionary.
+            if opts:
+#ANNOTATION: if opts is true,
+                definition['opts'] = opts
+#ANNOTATION: substitute opts for value under the 'opts' key of definition dictionary.
+
+            # The nocolor palette has all available roles.
+            # Use that palette as the basis for determining
+            # if the role is valid.
+            if role in PALETTES[NOCOLOR_PALETTE] and definition:
+#ANNOTATION: if role is contained in value under the NOCOLOR_PALETTE key of the PALETTES dictionary and definition is true,
+                palette[role] = definition
+#ANNOTATION: substitute definition for value under the role key of palette dictionary.
+
+    # If there are no colors specified, return the empty palette.
+    if palette == PALETTES[NOCOLOR_PALETTE]:
+#ANNOTATION: if palette equals value under the NOCOLOR_PALETTE key of the PALETTES dictionary,
+        return None
+#ANNOTATION: return None.
+    return palette
+#ANNOTATION: return palette.

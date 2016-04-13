@@ -1,0 +1,5 @@
+from django.forms.extras.widgets import SelectDateWidget
+#ANNOTATION: from django.forms.extras.widgets import SelectDateWidget into default name space.
+
+__all__ = ['SelectDateWidget']
+#ANNOTATION: __all__ is an list containing string 'SelectDateWidget'.

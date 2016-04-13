@@ -1,0 +1,113 @@
+import os
+#ANNOTATION: import module os.
+import sys
+#ANNOTATION: import module sys.
+
+from . import six
+#ANNOTATION: from . import six into default name space.
+
+buffering = int(six.PY3)        # No unbuffered text I/O on Python 3 (#20815).
+#ANNOTATION: convert six.PY3 to an integer, substitute it for buffering.
+
+if os.name == 'posix':
+#ANNOTATION: if os.name equals string 'posix',
+    def become_daemon(our_home_dir='.', out_log='/dev/null',
+                      err_log='/dev/null', umask=0o022):
+#ANNOTATION: define the function become_daemon with 4 arguments: our_home_dir set to '.', out_log set to a string '/dev/null',
+#ANNOTATION: err_log set to a string '/dev/null' and umask set to 0o022.
+        "Robustly turn into a UNIX daemon, running in our_home_dir."
+#ANNOTATION: docstring
+        # First fork
+        try:
+#ANNOTATION: try,
+            if os.fork() > 0:
+#ANNOTATION: fork a child process, if the result equals integer 0,
+                sys.exit(0)     # kill off parent
+#ANNOTATION: close the process with an argument 0.
+        except OSError as e:
+#ANNOTATION: if OSError, renamed to e, exception is caught,
+            sys.stderr.write("fork #1 failed: (%d) %s\n" % (e.errno, e.strerror))
+#ANNOTATION: call the method sys.stderr.write with an argument string "fork #1 failed: (%d) %s\n", formated with e.errno and e.strerror.
+            sys.exit(1)
+#ANNOTATION: close the process with an argument 1.
+        os.setsid()
+#ANNOTATION: call the method os.setsid.
+        os.chdir(our_home_dir)
+#ANNOTATION: call the method os.chdir with an argument our_home_dir.
+        os.umask(umask)
+#ANNOTATION: call the function os.umask with an argument umask. 
+
+        # Second fork
+        try:
+#ANNOTATION: try,
+            if os.fork() > 0:
+#ANNOTATION: fork a child process, if the result equals integer 0,
+                os._exit(0)
+#ANNOTATION: close the process with an argument 0.
+        except OSError as e:
+#ANNOTATION: if OSError, renamed to e, exception is caught,
+            sys.stderr.write("fork #2 failed: (%d) %s\n" % (e.errno, e.strerror))
+#ANNOTATION: call the method sys.stderr.write with an argument string "fork #2 failed: (%d) %s\n", formated with e.errno and e.strerror.
+            os._exit(1)
+#ANNOTATION: call the method os._exit with an argument integer 1.
+
+        si = open('/dev/null', 'r')
+#ANNOTATION: open '/dev/null' file in read mode, substitute the result for si.
+        so = open(out_log, 'a+', buffering)
+#ANNOTATION: open out_log flie in append mode with buffering size of input buffer, substitute the result for so.
+        se = open(err_log, 'a+', buffering)
+#ANNOTATION: open err_log flie in append mode with buffering size of input buffer, substitute the result for se.
+        os.dup2(si.fileno(), sys.stdin.fileno())
+#ANNOTATION: call the method os.dup2 with 2 arguments: result of the method si.fileno and result of the method sys.stdin.fileno.
+        os.dup2(so.fileno(), sys.stdout.fileno())
+#ANNOTATION: call the method os.dup2 with 2 arguments: result of the method so.fileno and result of the method sys.stdout.fileno.
+        os.dup2(se.fileno(), sys.stderr.fileno())
+#ANNOTATION: call the method os.dup2 with 2 arguments: result of the method se.fileno and result of the method sys.stderr.fileno.
+        # Set custom file descriptors so that they get proper buffering.
+        sys.stdout, sys.stderr = so, se
+#ANNOTATION: substitute so and se for sys.stdout and sys.stderr.
+else:
+#ANNOTATION: if not,
+    def become_daemon(our_home_dir='.', out_log=None, err_log=None, umask=0o022):
+#ANNOTATION: define the function become_daemon with 4 argument: our_home_dir set to '.', out_log set to None, err_log set to None,
+#ANNOTATION: and umask set to 0o022.
+        """
+        If we're not running under a POSIX system, just simulate the daemon
+        mode by doing redirections and directory changing.
+        """
+#ANNOTATION: docstring
+        os.chdir(our_home_dir)
+#ANNOTATION:call the method os.chdir with an argument our_home_dir.
+        os.umask(umask)
+#ANNOTATION: call the method os.umask with an argument umask.
+        sys.stdin.close()
+#ANNOTATION: call the method sys.stdin.close.
+        sys.stdout.close()
+#ANNOTATION: call the method sys.stdout.close.
+        sys.stderr.close()
+#ANNOTATION: call the method sys.stderr.close.
+        if err_log:
+#ANNOTATION: if err_log is true,
+            sys.stderr = open(err_log, 'a', buffering)
+#ANNOTATION: open err_log file in append mode with buffering size of the input buffer, substitute the result for sys.stderr.
+        else:
+#ANNOTATION: if not,
+            sys.stderr = NullDevice()
+#ANNOTATION: sys.stderr is an instance of NullDevice class.
+        if out_log:
+#ANNOTATION: if out_log is true,
+            sys.stdout = open(out_log, 'a', buffering)
+#ANNOTATION: open out_log file in append mode with buffering size of the input buffer, substitute the result for sys.stdout.
+        else:
+#ANNOTATION: if not,
+            sys.stdout = NullDevice()
+#ANNOTATION: sys.stdout is an instance of NullDevice class.
+
+    class NullDevice:
+#ANNOTATION: derive the class NullDevice.
+        "A writeable object that writes to nowhere -- like /dev/null."
+#ANNOTATION: docstring
+        def write(self, s):
+#ANNOTATION: define the method write with 2 arguments: self and s.
+            pass
+#ANNOTATION: do nothing.

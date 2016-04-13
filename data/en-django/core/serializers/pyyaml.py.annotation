@@ -1,0 +1,125 @@
+"""
+YAML serializer.
+
+Requires PyYaml (http://pyyaml.org/), but that's checked for in __init__.
+"""
+#ANNOTATION: docstring
+
+import decimal
+#ANNOTATION: import module decimal.
+import yaml
+#ANNOTATION: import module yaml.
+import sys
+#ANNOTATION: import module sys.
+from io import StringIO
+#ANNOTATION: from io import StringIO into default name space.
+
+from django.db import models
+#ANNOTATION: from django.db import models into default name space.
+from django.core.serializers.base import DeserializationError
+#ANNOTATION: from django.core.serializers.base import DeserializationError into default name space.
+from django.core.serializers.python import Serializer as PythonSerializer
+#ANNOTATION: from django.core.serializers.python import Serializer as PythonSerializer into default name space.
+from django.core.serializers.python import Deserializer as PythonDeserializer
+#ANNOTATION: from django.core.serializers.python import Deserializer as PythonDeserializer into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+# Use the C (faster) implementation if possible
+try:
+#ANNOTATION: try,
+    from yaml import CSafeLoader as SafeLoader
+#ANNOTATION: from yaml import CSafeLoader as SafeLoader into default name space.
+    from yaml import CSafeDumper as SafeDumper
+#ANNOTATION: yaml import CSafeDumper as SafeDumper into default name space.
+except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+    from yaml import SafeLoader, SafeDumper
+#ANNOTATION: from yaml import SafeLoader, SafeDumper into default name space.
+
+
+class DjangoSafeDumper(SafeDumper):
+#ANNOTATION: derive the class DjangoSafeDumper from the SafeDumper base class.
+    def represent_decimal(self, data):
+#ANNOTATION: define the method represent_decimal with arguments self and data.
+        return self.represent_scalar('tag:yaml.org,2002:str', str(data))
+#ANNOTATION: call the method self.represent_scalar with 2 arguments: string 'tag:yaml.org,2002:str' and data converted into a string, return the result.
+
+DjangoSafeDumper.add_representer(decimal.Decimal, DjangoSafeDumper.represent_decimal)
+#ANNOTATION: call the method DjangoSafeDumper.add_representer with arguments decimal.Decimal and DjangoSafeDumper.represent_decimal.
+
+
+class Serializer(PythonSerializer):
+#ANNOTATION: derive the class Serializer from the PythonSerializer base class.
+    """
+    Convert a queryset to YAML.
+    """
+#ANNOTATION: docstring
+
+    internal_use_only = False
+#ANNOTATION: internal_use_only is a boolean False.
+
+    def handle_field(self, obj, field):
+#ANNOTATION: define the method handle_field with arguments self, obj and field.
+        # A nasty special case: base YAML doesn't support serialization of time
+        # types (as opposed to dates or datetimes, which it does support). Since
+        # we want to use the "safe" serializer for better interoperability, we
+        # need to do something with those pesky times. Converting 'em to strings
+        # isn't perfect, but it's better than a "!!python/time" type which would
+        # halt deserialization under any other language.
+        if isinstance(field, models.TimeField) and getattr(obj, field.name) is not None:
+#ANNOTATION: if field is an instance of models.TimeField and filed.name attribute of obj is not None,
+            self._current[field.name] = str(getattr(obj, field.name))
+#ANNOTATION: get field.name attribute of obj, convert it to a string, substitute it for the value under the filed.name key of self._current dictionary.
+        else:
+#ANNOTATION: if not, 
+            super(Serializer, self).handle_field(obj, field)
+#ANNOTATION: call the handle_filed method of the base class of the Serializer class, with arguments obj and field.
+
+    def end_serialization(self):
+#ANNOTATION: define the method end_serialization with an argument self.
+        yaml.dump(self.objects, self.stream, Dumper=DjangoSafeDumper, **self.options)
+#ANNOTATION: call the function yaml.dump with 4 arguments: self.objects, self.stream, Dumper=DjangoSafeDumper and unpacked dictionary self.options.
+
+    def getvalue(self):
+#ANNOTATION: define the method getvalue with an argument self.
+        # Grand-parent super
+        return super(PythonSerializer, self).getvalue()
+#ANNOTATION: call the getvalue method of the base class of the PythonSerializer class, return the result.
+
+
+def Deserializer(stream_or_string, **options):
+#ANNOTATION: define the function Deserializer with 2 arguments: stream_or_string and unpacked dictionary options.
+    """
+    Deserialize a stream or string of YAML data.
+    """
+#ANNOTATION: docstring
+    if isinstance(stream_or_string, bytes):
+#ANNOTATION: if stream_or_string is an instance of bytes,
+        stream_or_string = stream_or_string.decode('utf-8')
+#ANNOTATION: call the method stream_or_string.decode with string 'utf-8' as argument, substitute the result for stream_or_string.
+    if isinstance(stream_or_string, six.string_types):
+#ANNOTATION: if stream_or_string is an instance of the six.string_types,
+        stream = StringIO(stream_or_string)
+#ANNOTATION: call the function StringIO with an argument stream_or_string, substitute the result for stream.
+    else:
+#ANNOTATION: if not,
+        stream = stream_or_string
+#ANNOTATION: substitute stream_or_string for stream.
+    try:
+#ANNOTATION: try,
+        for obj in PythonDeserializer(yaml.load(stream, Loader=SafeLoader), **options):
+#ANNOTATION: for every obj in return value of the PythonDeserializer created with 2 arguments: return value of the function yaml.load, 
+#ANNOTATION: with 2 arguments: stream and Loader set to SafeLoader, and unpacked dictionary options,
+            yield obj
+#ANNOTATION: yield one element of the itterable obj.
+    except GeneratorExit:
+#ANNOTATION: if exception GeneratorExit is caught,
+        raise
+#ANNOTATION: raise an exception.
+    except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+        # Map to deserializer error
+        six.reraise(DeserializationError, DeserializationError(e), sys.exc_info()[2])
+#ANNOTATION: call the function six.reraise with 3 arguments: DeserializationError, return value of the DeserializationError called with an argument e,
+#ANNOTATION: and third element of the return value ot the function sys.exc_info.

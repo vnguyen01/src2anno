@@ -1,0 +1,15 @@
+"""
+Dummy email backend that does nothing.
+"""
+#ANNOTATION: docstring
+
+from django.core.mail.backends.base import BaseEmailBackend
+#ANNOTATION: from django.core.mail.backends.base import BaseEmailBackend into default name space.
+
+
+class EmailBackend(BaseEmailBackend):
+#ANNOTATION: derive the class EmailBackend from the BaseEmailBackend base class.
+    def send_messages(self, email_messages):
+#ANNOTATION: define the method send_messages with arguments self and email_messages.
+        return len(list(email_messages))
+#ANNOTATION: create list out of email_messages, return the length of the list.

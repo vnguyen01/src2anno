@@ -1,0 +1,34 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.core.management.base import BaseCommand
+#ANNOTATION: from django.core.management.base import BaseCommand into default name space.
+from django.core.management.sql import sql_flush
+#ANNOTATION: from django.core.management.sql import sql_flush into default name space.
+from django.db import connections, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import connections and DEFAULT_DB_ALIAS into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the base class BaseCommand.
+    help = "Returns a list of the SQL statements required to return all tables in the database to the state they were in just after they were installed."
+#ANNOTATION: help is a string, containing "Returns a list of the SQL statements required to return all tables in the database to the state they were in just after they were installed.". 
+
+    output_transaction = True
+#ANNOTATION: output_transaction is boolean True.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define method add_arguments with self class instance and parser as the arguments.
+        super(Command, self).add_arguments(parser)
+#ANNOTATION: call the parent class of Command class add_arguments method and parser as the arguments.
+        parser.add_argument('--database', default=DEFAULT_DB_ALIAS,
+            help='Nominates a database to print the SQL for. Defaults to the '
+                 '"default" database.')
+#ANNOTATION: call the add_argument method on parser object, use string '--database', default set to DEFAULT_DB_ALIAS and help set to string,
+#ANNOTATION: 'Nominates a database to print the SQL for. Defaults to the "default" database.' as the arguments.
+
+    def handle(self, **options):
+#ANNOTATION: define the method handle with self class instance and dictionary options as the arguments.
+        return '\n'.join(sql_flush(self.style, connections[options['database']], only_django=True))
+#ANNOTATION: call the sql_flush function with self.style, connections under the key with the value of options dictionary under the 'database' key,
+#ANNOTATION: and only_django set to True as the arguments, join the result in a string separated by new lines, return it. 

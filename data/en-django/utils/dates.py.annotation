@@ -1,0 +1,126 @@
+"Commonly-used date structures"
+#ANNOTATION: docstring
+
+from django.utils.translation import ugettext_lazy as _, pgettext_lazy
+#ANNOTATION: from django.utils.translation import ugettext_lazy as _ and pgettext_lazy into default name space.
+
+WEEKDAYS = {
+    0: _('Monday'), 1: _('Tuesday'), 2: _('Wednesday'), 3: _('Thursday'), 4: _('Friday'),
+    5: _('Saturday'), 6: _('Sunday')
+}
+#ANNOTATION: WEEKDAYS is an dictionary with 7 entries: result of the call to the function _ with an argument string 'Monday' for 0,
+#ANNOTATION: result of the call to the function _ with an argument string 'Tuesday' for 1, 
+#ANNOTATION: result of the call to the function _ with an argument string 'Wednesday' for 2, 
+#ANNOTATION: result of the call to the function _ with an argument string 'Thursday' for 3, 
+#ANNOTATION: result of the call to the function _ with an argument string 'Friday' for 4, 
+#ANNOTATION: result of the call to the function _ with an argument string 'Saturday' for 5, 
+#ANNOTATION: and result of the call to the function _ with an argument string 'Sunday' for 6. 
+
+WEEKDAYS_ABBR = {
+    0: _('Mon'), 1: _('Tue'), 2: _('Wed'), 3: _('Thu'), 4: _('Fri'),
+    5: _('Sat'), 6: _('Sun')
+}
+#ANNOTATION: WEEKDAYS_ABBR is an dictionary with 7 entries: result of the call to the function _ with an argument string 'Mon' for 0,
+#ANNOTATION: result of the call to the function _ with an argument string 'Tue' for 1, 
+#ANNOTATION: result of the call to the function _ with an argument string 'Wed' for 2, 
+#ANNOTATION: result of the call to the function _ with an argument string 'Thu' for 3, 
+#ANNOTATION: result of the call to the function _ with an argument string 'Fri' for 4, 
+#ANNOTATION: result of the call to the function _ with an argument string 'Sat' for 5, 
+#ANNOTATION: and result of the call to the function _ with an argument string 'Sun' for 6. 
+WEEKDAYS_REV = {
+    'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4,
+    'saturday': 5, 'sunday': 6
+}
+#ANNOTATION: WEEKDAYS_REV is an dictionary with 7 entries: 0 for 'monday', 1 for 'tuesday', 2 for 'wednesday', 3 for 'thursday', 4 for 'friday',  #ANNOTATION: 5 for 'saturday' and 6 for 'sunday'.
+MONTHS = {
+    1: _('January'), 2: _('February'), 3: _('March'), 4: _('April'), 5: _('May'), 6: _('June'),
+    7: _('July'), 8: _('August'), 9: _('September'), 10: _('October'), 11: _('November'),
+    12: _('December')
+}
+#ANNOTATION: MONTHS is an dictionary with 12 entries: result of the call to the function _ with an argument string 'January' for 1,
+#ANNOTATION: result of the call to the function _ with an argument string 'February' for 2, 
+#ANNOTATION: result of the call to the function _ with an argument string 'March' for 3, 
+#ANNOTATION: result of the call to the function _ with an argument string 'April' for 4, 
+#ANNOTATION: result of the call to the function _ with an argument string 'May' for 5, 
+#ANNOTATION: result of the call to the function _ with an argument string 'June' for 6,
+#ANNOTATION: result of the call to the function _ with an argument string 'July' for 7,
+#ANNOTATION: result of the call to the function _ with an argument string 'August' for 8,
+#ANNOTATION: result of the call to the function _ with an argument string 'September' for 9,
+#ANNOTATION: result of the call to the function _ with an argument string 'October' for 10,
+#ANNOTATION: result of the call to the function _ with an argument string 'November' for 11,
+#ANNOTATION: and result of the call to the function _ with an argument string 'December' for 12.
+MONTHS_3 = {
+    1: _('jan'), 2: _('feb'), 3: _('mar'), 4: _('apr'), 5: _('may'), 6: _('jun'),
+    7: _('jul'), 8: _('aug'), 9: _('sep'), 10: _('oct'), 11: _('nov'), 12: _('dec')
+}
+#ANNOTATION: MONTHS_3 is an dictionary with 12 entries: result of the call to the function _ with an argument string 'jan' for 1,
+#ANNOTATION: result of the call to the function _ with an argument string 'feb' for 2, 
+#ANNOTATION: result of the call to the function _ with an argument string 'mar' for 3, 
+#ANNOTATION: result of the call to the function _ with an argument string 'apr' for 4, 
+#ANNOTATION: result of the call to the function _ with an argument string 'may' for 5, 
+#ANNOTATION: result of the call to the function _ with an argument string 'jun' for 6, 
+#ANNOTATION: result of the call to the function _ with an argument string 'jul' for 7,
+#ANNOTATION: result of the call to the function _ with an argument string 'aug' for 8,
+#ANNOTATION: result of the call to the function _ with an argument string 'sep' for 9,
+#ANNOTATION: result of the call to the function _ with an argument string 'oct' for 10,
+#ANNOTATION: result of the call to the function _ with an argument string 'nov' for 11,
+#ANNOTATION: result of the call to the function _ with an argument string 'dec' for 12.
+MONTHS_3_REV = {
+    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
+    'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+}
+#ANNOTATION: MONTHS_3_REV is an dictionary with 12 entries: 1 for 'jan', 2 for 'feb', 3 for 'mar', 4 for 'apr', 5 for 'may', 6 for 'jun',
+#ANNOTATION: 7 for 'jul', 8 for 'aug', 9 for 'sep', 10 for 'oct', 11 for 'nov' and 12 for 'dec'.
+MONTHS_AP = {  # month names in Associated Press style
+    1: pgettext_lazy('abbrev. month', 'Jan.'),
+    2: pgettext_lazy('abbrev. month', 'Feb.'),
+    3: pgettext_lazy('abbrev. month', 'March'),
+    4: pgettext_lazy('abbrev. month', 'April'),
+    5: pgettext_lazy('abbrev. month', 'May'),
+    6: pgettext_lazy('abbrev. month', 'June'),
+    7: pgettext_lazy('abbrev. month', 'July'),
+    8: pgettext_lazy('abbrev. month', 'Aug.'),
+    9: pgettext_lazy('abbrev. month', 'Sept.'),
+    10: pgettext_lazy('abbrev. month', 'Oct.'),
+    11: pgettext_lazy('abbrev. month', 'Nov.'),
+    12: pgettext_lazy('abbrev. month', 'Dec.')
+}
+#ANNOTATION: MONTHS_AP is an dictionary with 12 entries: result of the function pgettext_lazy with 2 arguments: 'abbrev. month' and 'Jan.' for 1,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'abbrev. month' and 'Feb.' for 2,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'abbrev. month' and 'March' for 3,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'abbrev. month' and 'April' for 4,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'abbrev. month' and 'May' for 5,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'abbrev. month' and 'June' for 6,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'abbrev. month' and 'July' for 7,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'abbrev. month' and 'Aug.' for 8,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'abbrev. month' and 'Sept.' for 9,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'abbrev. month' and 'Oct.' for 10,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'abbrev. month' and 'Nov.' for 11,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'abbrev. month' and 'Dec.' for 12,
+
+MONTHS_ALT = {  # required for long date representation by some locales
+    1: pgettext_lazy('alt. month', 'January'),
+    2: pgettext_lazy('alt. month', 'February'),
+    3: pgettext_lazy('alt. month', 'March'),
+    4: pgettext_lazy('alt. month', 'April'),
+    5: pgettext_lazy('alt. month', 'May'),
+    6: pgettext_lazy('alt. month', 'June'),
+    7: pgettext_lazy('alt. month', 'July'),
+    8: pgettext_lazy('alt. month', 'August'),
+    9: pgettext_lazy('alt. month', 'September'),
+    10: pgettext_lazy('alt. month', 'October'),
+    11: pgettext_lazy('alt. month', 'November'),
+    12: pgettext_lazy('alt. month', 'December')
+}
+#ANNOTATION: MONTHS_ALT is an dictionary with 12 entries: result of the function pgettext_lazy with 2 arguments: 'alt. month' and 'January' for 1,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'alt. month' and 'February' for 2,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'alt. month' and 'March' for 3,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'alt. month' and 'April' for 4,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'alt. month' and 'May' for 5,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'alt. month' and 'June' for 6,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'alt. month' and 'July' for 7,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'alt. month' and 'August' for 8,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'alt. month' and 'September.' for 9,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'alt. month' and 'October' for 10,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'alt. month' and 'November' for 11,
+#ANNOTATION: result of the function pgettext_lazy with 2 arguments: strings 'alt. month' and 'December' for 12,

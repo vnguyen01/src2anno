@@ -1,0 +1,1069 @@
+"""
+This module converts requested URLs to callback view functions.
+
+RegexURLResolver is the main class here. Its resolve() method takes a URL (as
+a string) and returns a tuple in this format:
+
+    (view_function, function_args, function_kwargs)
+"""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import functools
+#ANNOTATION: import module functools.
+from importlib import import_module
+#ANNOTATION: from importlib import import_module into default name space.
+import re
+#ANNOTATION: import module re.
+from threading import local
+#ANNOTATION: from threading import local into default name space.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.http import Http404
+#ANNOTATION: from django.http import Http404 into default name space.
+from django.core.exceptions import ImproperlyConfigured, ViewDoesNotExist
+#ANNOTATION: from django.core.exceptions import ImproperlyConfigured and ViewDoesNotExist into default name space.
+from django.utils.datastructures import MultiValueDict
+#ANNOTATION: from django.utils.datastructures import MultiValueDict into default name space.
+from django.utils.deprecation import RemovedInDjango20Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango20Warning into default name space.
+from django.utils.encoding import force_str, force_text, iri_to_uri
+#ANNOTATION: from django.utils.encoding import force_str, force_text and iri_to_uri into default name space.
+from django.utils.functional import lazy
+#ANNOTATION: from django.utils.functional import lazy into default name space.
+from django.utils.http import urlquote
+#ANNOTATION: from django.utils.http import urlquote into default name space.
+from django.utils.module_loading import module_has_submodule
+#ANNOTATION: from django.utils.module_loading import module_has_submodule into default name space.
+from django.utils.regex_helper import normalize
+#ANNOTATION: from django.utils.regex_helper import normalize into default name space.
+from django.utils import six, lru_cache
+#ANNOTATION: from django.utils import six and lru_cache into default name space.
+from django.utils.translation import get_language
+#ANNOTATION: from django.utils.translation import get_language into default name space.
+
+
+# SCRIPT_NAME prefixes for each thread are stored here. If there's no entry for
+# the current thread (which is the only one we ever access), it is assumed to
+# be empty.
+_prefixes = local()
+#ANNOTATION: call the function local, substitute the result for _prefixes.
+
+# Overridden URLconfs for each thread are stored here.
+_urlconfs = local()
+#ANNOTATION: call the function local, substitute the result _urlconf.
+
+
+class ResolverMatch(object):
+#ANNOTATION: derive the class ResolverMatch with object as base class.
+    def __init__(self, func, args, kwargs, url_name=None, app_name=None, namespaces=None):
+#ANNOTATION: define the __init__ method with 7 arguments: self, func, args, kwargs, url_name set to None, app_name set to None and namespaces set to None.
+        self.func = func
+#ANNOTATION: substitute func for self.func.
+        self.args = args
+#ANNOTATION: substitute args for self.args.
+        self.kwargs = kwargs
+#ANNOTATION: substitute kwargs for self.kwargs.
+        self.url_name = url_name
+#ANNOTATION: substitute url_name for self.url_name.
+        self.app_name = app_name
+#ANNOTATION: substitute app_name for self.app_name.
+
+        if namespaces:
+#ANNOTATION: if namespaces is true,
+            self.namespaces = [x for x in namespaces if x]
+#ANNOTATION: append x to self.namespaces list for every x in namespaces, only if x is true.
+        else:
+#ANNOTATION: if not,
+            self.namespaces = []
+#ANNOTATION: self.namespaces is an empty list.
+        self.namespace = ':'.join(self.namespaces)
+#ANNOTATION: join self.namespaces into a string separated with character ':', substitute it for self.namespace.
+
+        if not hasattr(func, '__name__'):
+#ANNOTATION: if func doesnt have a attribute '__name__',
+            # A class-based view
+            self._func_path = '.'.join([func.__class__.__module__, func.__class__.__name__])
+#ANNOTATION: join func.__class__.__module__ and func.__class__.__name__ into a string, separated by character '.', substitute it for self._func_path.
+        else:
+#ANNOTATION: if not,
+            # A function-based view
+            self._func_path = '.'.join([func.__module__, func.__name__])
+#ANNOTATION: join func.__module__ and func.__name__ into a string, separated by character '.', substitute it for self._func_path.
+
+        view_path = url_name or self._func_path
+#ANNOTATION: if url_name exists substitute it for view_path, if not substitute .self._func_path for view_path.
+        self.view_name = ':'.join(self.namespaces + [view_path])
+#ANNOTATION: append list containing view_path to self.namespaces list, join all the elements into a string separated by character ':', 
+#ANNOTATION: substitute it for self.view_name.
+
+    def __getitem__(self, index):
+#ANNOTATION: define the method __getitem__ with arguments self and index.
+        return (self.func, self.args, self.kwargs)[index]
+#ANNOTATION: return the element at the index index of the tuple containing 3 elements: self.func, self.args and self.kwargs.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return "ResolverMatch(func=%s, args=%s, kwargs=%s, url_name=%s, app_name=%s, namespaces=%s)" % (
+            self._func_path, self.args, self.kwargs, self.url_name, self.app_name, self.namespaces)
+#ANNOTATION: in the string "ResolverMatch(func=%s, args=%s, kwargs=%s, url_name=%s, app_name=%s, namespaces=%s)", replace all the occurrences of:
+#ANNOTATION: string '%s' with self._func_path, self.args, self.kwargs, self.url_name, self.app_name and self.namespaces, respectively.
+
+
+class Resolver404(Http404):
+#ANNOTATION: derive the class Resolver404 with Http404 as base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+class NoReverseMatch(Exception):
+#ANNOTATION: derive the class NoReverseMatch with Exception as base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+@lru_cache.lru_cache(maxsize=None)
+#ANNOTATION: method lru_cache.lru_cache with an argument maxsize set to None, as a decorator,
+def get_callable(lookup_view, can_fail=False):
+#ANNOTATION: define the function get_callable with arguments lookup_view and can_fail set to boolean False.
+    """
+    Return a callable corresponding to lookup_view. This function is used
+    by both resolve() and reverse(), so can_fail allows the caller to choose
+    between returning the input as is and raising an exception when the input
+    string can't be interpreted as an import path.
+
+    If lookup_view is already a callable, return it.
+    If lookup_view is a string import path that can be resolved to a callable,
+      import that callable and return it.
+    If lookup_view is some other kind of string and can_fail is True, the string
+      is returned as is. If can_fail is False, an exception is raised (either
+      ImportError or ViewDoesNotExist).
+    """
+#ANNOTATION: docstring
+    if callable(lookup_view):
+#ANNOTATION: if lookup_view is a callable object,
+        return lookup_view
+#ANNOTATION: return lookup_view.
+
+    mod_name, func_name = get_mod_func(lookup_view)
+#ANNOTATION: call the function get_mod_func with an argument lookup_view, store the result in mod_name and func_name, respectively.
+    if not func_name:  # No '.' in lookup_view
+#ANNOTATION: if func_name is false,
+        if can_fail:
+#ANNOTATION: if can_fail is true,
+            return lookup_view
+#ANNOTATION: return lookup_view.
+        else:
+#ANNOTATION: if not,
+            raise ImportError(
+                "Could not import '%s'. The path must be fully qualified." %
+                lookup_view)
+#ANNOTATION: raise an ImportError exception with an argument string "Could not import '%s'. The path must be fully qualified.", 
+#ANNOTATION: where '%s' is replaced by lookup_view.
+
+    try:
+#ANNOTATION: try,
+        mod = import_module(mod_name)
+#ANNOTATION: call the function import_module with an argument mod_name.
+    except ImportError:
+#ANNOTATION: if ImportError exception is caught.
+        if can_fail:
+#ANNOTATION: if can_fail is true,
+            return lookup_view
+#ANNOTATION: return lookup_view
+        else:
+#ANNOTATION: if not,
+            parentmod, submod = get_mod_func(mod_name)
+#ANNOTATION: call the function get_mod_func with an argument mod_name, store the result in parentmod and submod, respectively.
+            if submod and not module_has_submodule(import_module(parentmod), submod):
+#ANNOTATION: if submod is true and return value of the function module_has_submodule called with 2 arguments: result of the function:
+#ANNOTATION: import_module called with an argument parentmod and submod, evaluates to false.
+                raise ViewDoesNotExist(
+                    "Could not import '%s'. Parent module %s does not exist." %
+                    (lookup_view, mod_name))
+#ANNOTATION: raise an ViewDoesNotExist exception with an argument string "Could not import '%s'. Parent module %s does not exist.", 
+#ANNOTATION: where string '%s' is replaced by lookup_view and mod_name, respectively.
+            else:
+#ANNOTATION: if not,
+                raise
+#ANNOTATION: raise an exception.
+    else:
+#ANNOTATION: if not,
+        try:
+#ANNOTATION: try,
+            view_func = getattr(mod, func_name)
+#ANNOTATION: get func_name attribute from the mod object, substitute it for view_func.
+        except AttributeError:
+#ANNOTATION: if AttributeError exception is caught.
+            if can_fail:
+#ANNOTATION: if can fail is true,
+                return lookup_view
+#ANNOTATION: return lookup_view
+            else:
+#ANNOTATION: if not,
+                raise ViewDoesNotExist(
+                    "Could not import '%s'. View does not exist in module %s." %
+                    (lookup_view, mod_name))
+#ANNOTATION: raise an ViewDoesNotExist exception with an argument string "Could not import '%s'. View does not exist in module %s.", 
+#ANNOTATION: where string '%s' is replaced by lookup_view and mod_name, respectively.
+        else:
+#ANNOTATION: if not,
+            if not callable(view_func):
+#ANNOTATION: if view_function is not a callable function,
+                # For backwards compatibility this is raised regardless of can_fail
+                raise ViewDoesNotExist(
+                    "Could not import '%s.%s'. View is not callable." %
+                    (mod_name, func_name))
+#ANNOTATION: raise an ViewDoesNotExist exception with an argument string "Could not import '%s.%s'. View is not callable.", 
+#ANNOTATION: where string '%s' is replaced by mod_name and func_name, respectively.
+
+            return view_func
+#ANNOTATION: return view_func.
+
+
+@lru_cache.lru_cache(maxsize=None)
+#ANNOTATION: method lru_cache.lru_cache with an argument maxsize set to None, as a decorator,
+def get_resolver(urlconf):
+#ANNOTATION: define the function get_resolver with an argument urlconf.
+    if urlconf is None:
+#ANNOTATION: if urlconf is None,
+        from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+        urlconf = settings.ROOT_URLCONF
+#ANNOTATION: substitute settings.ROOT_URLCONF for urlconf.
+    return RegexURLResolver(r'^/', urlconf)
+#ANNOTATION: return an instance of a class RegexURLResolver created with arguments: raw string '^/' and urlconf.
+
+
+@lru_cache.lru_cache(maxsize=None)
+#ANNOTATION: method lru_cache.lru_cache with an argument maxsize set to None, as a decorator,
+def get_ns_resolver(ns_pattern, resolver):
+#ANNOTATION: define the function get_ns_resolver with arguments ns_pattern and resolver.
+    # Build a namespaced resolver for the given parent urlconf pattern.
+    # This makes it possible to have captured parameters in the parent
+    # urlconf pattern.
+    ns_resolver = RegexURLResolver(ns_pattern, resolver.url_patterns)
+#ANNOTATION: ns_resolver is class instance of a class RegexURLResolver, created with 2 arguments: ns_pattern and resolver.url_patterns.
+    return RegexURLResolver(r'^/', [ns_resolver])
+#ANNOTATION: return an instance of a class RegexURLResolver created with arguments: raw string '^/' and a list containing an element ns_resolver.
+
+
+def get_mod_func(callback):
+#ANNOTATION: define the function get_mod_func with an argument callback.
+    # Converts 'django.views.news.stories.story_detail' to
+    # ['django.views.news.stories', 'story_detail']
+    try:
+#ANNOTATION: try,
+        dot = callback.rindex('.')
+#ANNOTATION: call the method callback.rindex with an argument character '.', substitute the result for dot.
+    except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+        return callback, ''
+#ANNOTATION: return callback and a empty string.
+    return callback[:dot], callback[dot + 1:]
+#ANNOTATION: return callback split into two lists at the dot index, without the element at the dot index.
+
+
+class LocaleRegexProvider(object):
+#ANNOTATION: derive the class LocaleRegexProvider with object as base class.
+    """
+    A mixin to provide a default regex property which can vary by active
+    language.
+
+    """
+#ANNOTATION: docstring
+    def __init__(self, regex):
+#ANNOTATION: define the method __init__ with arguments self and regex.
+        # regex is either a string representing a regular expression, or a
+        # translatable string (using ugettext_lazy) representing a regular
+        # expression.
+        self._regex = regex
+#ANNOTATION: substitute regex for self._regex.
+        self._regex_dict = {}
+#ANNOTATION: self._regex_dict is an empty dictionary.
+
+    @property
+#ANNOTATION: property decorator,
+    def regex(self):
+#ANNOTATION: define the method regex with an argument self.
+        """
+        Returns a compiled regular expression, depending upon the activated
+        language-code.
+        """
+#ANNOTATION: docstring
+        language_code = get_language()
+#ANNOTATION: call the function get_language, substitute the result for language_code.
+        if language_code not in self._regex_dict:
+#ANNOTATION: if language_code is not contained in self._regex_dict,
+            if isinstance(self._regex, six.string_types):
+#ANNOTATION: if self.regex is not an instance of six.string_types,
+                regex = self._regex
+#ANNOTATION: substitute self._regex for regex.
+            else:
+#ANNOTATION: if not,
+                regex = force_text(self._regex)
+#ANNOTATION: call the function force_text with arguments self and _regex, substitute the result for regex.
+            try:
+#ANNOTATION: try,
+                compiled_regex = re.compile(regex, re.UNICODE)
+#ANNOTATION: call the function re.compile with arguments regex and re.UNICODE, substitute the result for compiled_regex.
+            except re.error as e:
+#ANNOTATION: if re.error, renamed to e, is caught,
+                raise ImproperlyConfigured(
+                    '"%s" is not a valid regular expression: %s' %
+                    (regex, six.text_type(e)))
+#ANNOTATION: raise an ImproperlyConfigured exception with argument string '"%s" is not a valid regular expression: %s', 
+#ANNOTATION: where '%s' is replace by regex and return value of the function six.text_type with an argument e.
+
+            self._regex_dict[language_code] = compiled_regex
+#ANNOTATION: substitute the compiled_regex for value under the language_code key of the self._regex_dict dictionary.
+        return self._regex_dict[language_code]
+#ANNOTATION: return the value under the language_code key of the self._regex_dict dictionary.
+
+
+class RegexURLPattern(LocaleRegexProvider):
+#ANNOTATION: derive the class RegexURLPattern with LocaleRegexProvider as base class.
+    def __init__(self, regex, callback, default_args=None, name=None):
+#ANNOTATION: define the method __init__ with 5 arguments: self, regex, callback, default_args set to None and name set to None.
+        LocaleRegexProvider.__init__(self, regex)
+#ANNOTATION: call the method LocaleRegexProvider.__init__ with arguments self and regex.
+        # callback is either a string like 'foo.views.news.stories.story_detail'
+        # which represents the path to a module and a view function name, or a
+        # callable object (view).
+        if callable(callback):
+#ANNOTATION: if callback is an callable object,
+            self._callback = callback
+#ANNOTATION: substitute callback for self._callback.
+        else:
+#ANNOTATION: if not,
+            self._callback = None
+#ANNOTATION: self._callback is None.
+            self._callback_str = callback
+#ANNOTATION: substitute callback for self._callback_str.
+        self.default_args = default_args or {}
+#ANNOTATION: if default_args exists substitute it for self.default_args, if not, self.default_args is an empty dictionary.
+        self.name = name
+#ANNOTATION: substitute name for self.name.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return force_str('<%s %s %s>' % (self.__class__.__name__, self.name, self.regex.pattern))
+#ANNOTATION: substitute '%s' in string '<%s %s %s>' with self.__class__.__name__, self.name and self.regex.pattern, respectively,
+#ANNOTATION: use it as an argument for the call to the force_str function, return the result.
+
+    def add_prefix(self, prefix):
+#ANNOTATION: define the method add_prefix with arguments self and prefix.
+        """
+        Adds the prefix string to a string-based callback.
+        """
+#ANNOTATION: docstring
+        if not prefix or not hasattr(self, '_callback_str'):
+#ANNOTATION: if prefix is false, and self doesnt have '_callback_str' attribute,
+            return
+#ANNOTATION: return nothing.
+        self._callback_str = prefix + '.' + self._callback_str
+#ANNOTATION: joint prefix, character '.' and self._callback_str together, substitute the result for self._callback_str.
+
+    def resolve(self, path):
+#ANNOTATION:  define the method resolve with arguments self and path.
+        match = self.regex.search(path)
+#ANNOTATION: call the method self.regex.search with an argument path, substitute the result for match.
+        if match:
+#ANNOTATION: if match is true,
+            # If there are any named groups, use those as kwargs, ignoring
+            # non-named groups. Otherwise, pass all non-named arguments as
+            # positional arguments.
+            kwargs = match.groupdict()
+#ANNOTATION: call the method match.groupdict, substitute the result for kwargs.
+            if kwargs:
+#ANNOTATION: if kwargs is true,
+                args = ()
+#ANNOTATION: args is an empty tuple.
+            else:
+#ANNOTATION: if not,
+                args = match.groups()
+#ANNOTATION: call the method match.groups, substitute the result for args.
+            # In both cases, pass any extra_kwargs as **kwargs.
+            kwargs.update(self.default_args)
+#ANNOTATION: call the method kwargs.update with an argument self.default_args.
+
+            return ResolverMatch(self.callback, args, kwargs, self.name)
+#ANNOTATION: return an instance of a ResolverMatch class, crated with arguments self.callback, args, kwargs and self.name.
+
+    @property
+#ANNOTATION: property decorator,
+    def callback(self):
+#ANNOTATION: define the method callback with an argument self.
+        if self._callback is not None:
+#ANNOTATION: if self._callback is not None,
+            return self._callback
+#ANNOTATION: return self._callback.
+
+        self._callback = get_callable(self._callback_str)
+#ANNOTATION: call the function get_callable with an argument self._callback_str, substitute the result for self._callback.
+        return self._callback
+#ANNOTATION: return self._callback.
+
+
+class RegexURLResolver(LocaleRegexProvider):
+#ANNOTATION: derive the class RegexURLResolver with LocaleRegexProvider as base class.
+    def __init__(self, regex, urlconf_name, default_kwargs=None, app_name=None, namespace=None):
+#ANNOTATION: define the method __init__ with 6 arguments: self, regex, urlconf_name, default_kwargs set to None, app_name set to None and namespace set to None.
+        LocaleRegexProvider.__init__(self, regex)
+#ANNOTATION: call the method LocaleRegexProvider.__init__ with arguments self and regex.
+        # urlconf_name is a string representing the module containing URLconfs.
+        self.urlconf_name = urlconf_name
+#ANNOTATION: substitute urlconf_name for self.urlconf_name.
+        if not isinstance(urlconf_name, six.string_types):
+#ANNOTATION: if urlconf_name is not an instance of six.string_types class,
+            self._urlconf_module = self.urlconf_name
+#ANNOTATION: substitute self.urlconf_name for self.urlconf_module.
+        self.callback = None
+#ANNOTATION: self.callback is None.
+        self.default_kwargs = default_kwargs or {}
+#ANNOTATION: if default_kwargs exists, substitute it for self.default_kwargs, otherwise self.default_kwargs is an empty dictionary.
+        self.namespace = namespace
+#ANNOTATION: substitute namespace for self.namespace.
+        self.app_name = app_name
+#ANNOTATION: substitute app_name for self.app_name.
+        self._reverse_dict = {}
+#ANNOTATION: self._reverse_dict is an empty dictionary.
+        self._namespace_dict = {}
+#ANNOTATION: self._namespace_dict is an empty dictionary.
+        self._app_dict = {}
+#ANNOTATION: self._app_dict is an empty dictionary.
+        # set of dotted paths to all functions and classes that are used in
+        # urlpatterns
+        self._callback_strs = set()
+#ANNOTATION: self._callback_strs is an empty set.
+        self._populated = False
+#ANNOTATION: self._populated is boolean False.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        if isinstance(self.urlconf_name, list) and len(self.urlconf_name):
+#ANNOTATION: if self.urlconf_name is an instance of a list type and its length is not zero. 
+            # Don't bother to output the whole list, it can be huge
+            urlconf_repr = '<%s list>' % self.urlconf_name[0].__class__.__name__
+#ANNOTATION: replace '%s' in string '<%s list>' with __class__.__name__ field of first element of self.urlconf_name, substitute it for urlconf_repr.
+        else:
+#ANNOTATION: if not,
+            urlconf_repr = repr(self.urlconf_name)
+#ANNOTATION: create a printable representation of self.urlconf_name object, substitute it for urlconf_repr.
+        return str('<%s %s (%s:%s) %s>') % (
+            self.__class__.__name__, urlconf_repr, self.app_name,
+            self.namespace, self.regex.pattern)
+#ANNOTATION: replace all '%s' in string '<%s %s (%s:%s) %s>' with self.__class__.__name__, urlconf_repr, self.app_name,
+#ANNOTATION: self.namespace and self.regex.pattern, respectively. return it.
+
+    def _populate(self):
+#ANNOTATION: define the method _populate with an argument self.
+        lookups = MultiValueDict()
+#ANNOTATION: lookups is an instance of the MultiValueDict class.
+        namespaces = {}
+#ANNOTATION: namespaces is an empty dictionary.
+        apps = {}
+#ANNOTATION: apps is an empty dictionary.
+        language_code = get_language()
+#ANNOTATION: call the function get_language, substitute the result for language_code.
+        for pattern in reversed(self.url_patterns):
+#ANNOTATION: for every pattern in reversed list self.url_patterns,
+            if hasattr(pattern, '_callback_str'):
+#ANNOTATION: if pattern has an attribute '_callback_str',
+                self._callback_strs.add(pattern._callback_str)
+#ANNOTATION: call the method self._callback_strs.add with an argument pattern._callback_str. 
+            elif hasattr(pattern, '_callback'):
+#ANNOTATION: otherwise, if pattern has an '_callback' attribute.
+                callback = pattern._callback
+#ANNOTATION: substitute pattern._callback for callback. 
+                if isinstance(callback, functools.partial):
+#ANNOTATION: if callback is an instance of functools.partial object,
+                    callback = callback.func
+#ANNOTATION: substitute callback.func for callback.
+
+                if not hasattr(callback, '__name__'):
+#ANNOTATION: if callback doesnt have '__name__' attribute,
+                    lookup_str = callback.__module__ + "." + callback.__class__.__name__
+#ANNOTATION: join callback.__module__, character "." and callback.__class__.__name__ together, substitute the result for lookup_str.
+                else:
+#ANNOTATION: if not,
+                    lookup_str = callback.__module__ + "." + callback.__name__
+#ANNOTATION: join together callback.__module__, character "." and callback.__name__, substitute the result for lookup_str. 
+                self._callback_strs.add(lookup_str)
+#ANNOTATION: call the method self._callback_strs.add with an argument lookup_str.
+            p_pattern = pattern.regex.pattern
+#ANNOTATION: substitute pattern.regex.pattern for p_pattern.  
+            if p_pattern.startswith('^'):
+#ANNOTATION: if p_pattern starts with a string '^',
+                p_pattern = p_pattern[1:]
+#ANNOTATION: remove the first element from p_pattern.
+            if isinstance(pattern, RegexURLResolver):
+#ANNOTATION: if pattern is an instance of RegexURLResolver class,
+                if pattern.namespace:
+#ANNOTATION: if pattern.namespace is true,
+                    namespaces[pattern.namespace] = (p_pattern, pattern)
+#ANNOTATION: substitute the tuple containing 2 elements p_pattern and pattern for value under the pattern.namespace key of the namespaces dictionary. 
+                    if pattern.app_name:
+#ANNOTATION: if pattern.app_name is true,
+                        apps.setdefault(pattern.app_name, []).append(pattern.namespace)
+#ANNOTATION: call the method apps.setdefault with 2 arguments: pattern and an empty list, append to the resulting object pattern.namespace.
+                else:
+#ANNOTATION: if not,
+                    parent_pat = pattern.regex.pattern
+#ANNOTATION: substitute pattern.regex.pattern for parent_pat. 
+                    for name in pattern.reverse_dict:
+#ANNOTATION: for every name in pattern.reverse_dict,
+                        for matches, pat, defaults in pattern.reverse_dict.getlist(name):
+#ANNOTATION: for every matches, pat and defaults in return value of the method pattern.reverse_dict.getlist called with an argument name,
+                            new_matches = normalize(parent_pat + pat)
+#ANNOTATION: call the method normalize with sum of parent_pat and pat as an argument, substitute the result for new_matches.
+                            lookups.appendlist(name, (new_matches, p_pattern + pat, dict(defaults, **pattern.default_kwargs)))
+#ANNOTATION: call the method lookups.appendlist with 2 arguments: name and a tuple containing 3 elements: new_matches, sum of p_pattern and pat,
+#ANNOTATION: and dictionary created by applying defaults mapping on the pattern.default_kwargs dictionary.
+                    for namespace, (prefix, sub_pattern) in pattern.namespace_dict.items():
+#ANNOTATION: for every namespace and tuple containing: prefix and sub_pattern, in return value of the method pattern.namespace_dict.items,
+                        namespaces[namespace] = (p_pattern + prefix, sub_pattern)
+#ANNOTATION: substitute tuple containing 2 elements: sum of p_pattern and prefix, and sub_pattern for value under the namespace key of the namespace dictionary.
+                    for app_name, namespace_list in pattern.app_dict.items():
+#ANNOTATION: for every app_name and namespace_list in pattern.app_dict.items method return value,
+                        apps.setdefault(app_name, []).extend(namespace_list)
+#ANNOTATION: call the method apps.setdefault with 2 arguments: app_name and an empty list, extend the resulting list with namespaces_list.
+                    self._callback_strs.update(pattern._callback_strs)
+#ANNOTATION: call the method self._callback_strs.update with an argument pattern._callback_strs.
+            else:
+#ANNOTATION: if not,
+                bits = normalize(p_pattern)
+#ANNOTATION: call the function normalize with an argument p_pattern, substitute the result for bits.
+                lookups.appendlist(pattern.callback, (bits, p_pattern, pattern.default_args))
+#ANNOTATION: call the method lookups.appendlist with 2 arguments: pattern.callback and a tuple containing 3 elements: bits, p_pattern,
+#ANNOTATION: and pattern.default_args.
+                if pattern.name is not None:
+#ANNOTATION: if pattern.name is not None,
+                    lookups.appendlist(pattern.name, (bits, p_pattern, pattern.default_args))
+#ANNOTATION: call the method lookups.appendlist with 2 arguments: pattern.name and a tuple containing 3 elements: bits, p_pattern,
+#ANNOTATION: and pattern.default_args.
+        self._reverse_dict[language_code] = lookups
+#ANNOTATION: substitute lookups for the value under language_code key of the self._reverse_dict dictionary. 
+        self._namespace_dict[language_code] = namespaces
+#ANNOTATION: substitute namespaces for the value under language_code key of the self._namespace_dict dictionary.
+        self._app_dict[language_code] = apps
+#ANNOTATION: substitute apps for the value under language_code key of the self._app_dict dictionary.
+        self._populated = True
+#ANNOTATION: self._populated is boolean True.
+
+    @property
+#ANNOTATION: property decorator,
+    def reverse_dict(self):
+#ANNOTATION: define the method reverse_dict with an argument self.
+        language_code = get_language()
+#ANNOTATION: call the function get_language, substitute the result for language_code. 
+        if language_code not in self._reverse_dict:
+#ANNOTATION: if language_code is not contained in self._reverse_dict
+            self._populate()
+#ANNOTATION: call the method self._populate. 
+        return self._reverse_dict[language_code]
+#ANNOTATION: return the value under the language_code key of the self._reverse_dict dictionary. 
+
+    @property
+#ANNOTATION: property decorator, 
+    def namespace_dict(self):
+#ANNOTATION: define the method namespace_dict with an argument self.
+        language_code = get_language()
+#ANNOTATION: call the method get_language, substitute the result for language_code.  
+        if language_code not in self._namespace_dict:
+#ANNOTATION: if language_code is not contained in self._namespace_dict,
+            self._populate()
+#ANNOTATION: call the method self._populate. 
+        return self._namespace_dict[language_code]
+#ANNOTATION: return the value under the language_code key of the self._namespace_dict dictionary. 
+
+    @property
+#ANNOTATION: property decorator, 
+    def app_dict(self):
+#ANNOTATION: define the method app_dict with an argument self.
+        language_code = get_language()
+#ANNOTATION: call the method get_language, substitute the result for language_code.
+        if language_code not in self._app_dict:
+#ANNOTATION: if language_code is not containsed in self._app_dict
+            self._populate()
+#ANNOTATION: call the method self._populate. 
+        return self._app_dict[language_code]
+#ANNOTATION: return the value under the language_code key of the self._app_dict dictionary. 
+
+    def resolve(self, path):
+#ANNOTATION: define the method resolve with an argument self.
+        path = force_text(path)  # path may be a reverse_lazy object
+#ANNOTATION: call the function force_text with an argument path, substitute the result for path.
+        tried = []
+#ANNOTATION: tried is an empty list.
+        match = self.regex.search(path)
+#ANNOTATION: call the function self.regex.search with an argument path, substitute the result for match.
+        if match:
+#ANNOTATION: if match is true,
+            new_path = path[match.end():]
+#ANNOTATION: slice the path list from the result of the match.end method as the start index to the end, substitute it for new_path.
+            for pattern in self.url_patterns:
+#ANNOTATION: for every pattern in self.url_patterns,
+                try:
+#ANNOTATION: try,
+                    sub_match = pattern.resolve(new_path)
+#ANNOTATION: call the method pattern.resolve with an argument new_path, substitute the result for sub_match.
+                except Resolver404 as e:
+#ANNOTATION: if Resolver404, renamed to e, exception is caught,
+                    sub_tried = e.args[0].get('tried')
+#ANNOTATION: call the get method with an argument string 'tried' on the first element of the e.args, substitute the result for sub_tried.
+                    if sub_tried is not None:
+#ANNOTATION: if sub_tried is not None,
+                        tried.extend([pattern] + t for t in sub_tried)
+#ANNOTATION: call the method tried.extend with an argument: t added to a list containing element pattern, for every t in sub_tried.  
+                    else:
+#ANNOTATION: if not,
+                        tried.append([pattern])
+#ANNOTATION: append list containing pattern to tried.
+                else:
+#ANNOTATION: if not,
+                    if sub_match:
+#ANNOTATION: if sub_match is true,
+                        sub_match_dict = dict(match.groupdict(), **self.default_kwargs)
+#ANNOTATION: sub_match_dict is a dictionary created from self.default_kwargs dictionary using mapping function match.groupdict. 
+                        sub_match_dict.update(sub_match.kwargs)
+#ANNOTATION: call the method sub_match_dict.update with an argument sub_match.kwargs.
+                        return ResolverMatch(sub_match.func, sub_match.args, sub_match_dict, sub_match.url_name, self.app_name or sub_match.app_name, [self.namespace] + sub_match.namespaces)
+#ANNOTATION: return an instance of a class ResolverMatch created with 6 arguments: sub_match.func, sub_match.args, sub_match_dict,
+#ANNOTATION: sub_match.url_name, self.app_name if it exists or if not sub_match.app_name and sub_match.namespaces list appended to self.name.
+                    tried.append([pattern])
+#ANNOTATION: append pattern to tried list.
+            raise Resolver404({'tried': tried, 'path': new_path})
+#ANNOTATION: raise an Resolver404 exception with an argument dictionary containing 2 entries: new_path for 'path' and tried for 'tried'.
+        raise Resolver404({'path': path})
+#ANNOTATION: raise an Resolver404 exception with an argument dictionary containing 1 entry: path for 'path'.
+
+    @property
+#ANNOTATION: property decorator,
+    def urlconf_module(self):
+#ANNOTATION: define the method urlconf_module with an argument self.
+        try:
+#ANNOTATION: try,
+            return self._urlconf_module
+#ANNOTATION: return self._urlconf_module.
+        except AttributeError:
+#ANNOTATION: if AttributeError exception is caught.
+            self._urlconf_module = import_module(self.urlconf_name)
+#ANNOTATION: call the function import_module with argument self.urlconf_name, substitute the result for self._urlconf_module.
+            return self._urlconf_module
+#ANNOTATION: return self._urlconf_module.
+
+    @property
+#ANNOTATION: property decorator,
+    def url_patterns(self):
+#ANNOTATION: define the method url_patterns with an argument self.
+        # urlconf_module might be a valid set of patterns, so we default to it
+        patterns = getattr(self.urlconf_module, "urlpatterns", self.urlconf_module)
+#ANNOTATION: get attribute "urlpatterns" form the self.urlconf_module, substitute it for patterns, if the attribute doesnt exist, 
+#ANNOTATION: substitute self.urlconf_module for self.urlconf_module. 
+        try:
+#ANNOTATION: try,
+            iter(patterns)
+#ANNOTATION: call the function iter with an argument patterns.
+        except TypeError:
+#ANNOTATION: if TypeError exception is caught,
+            msg = (
+                "The included urlconf '{name}' does not appear to have any "
+                "patterns in it. If you see valid patterns in the file then "
+                "the issue is probably caused by a circular import."
+            )
+#ANNOTATION: msg is a string ""The included urlconf '{name}' does not appear to have any patterns in it. 
+#ANNOTATION: If you see valid patterns in the file then the issue is probably caused by a circular import."
+            raise ImproperlyConfigured(msg.format(name=self.urlconf_name))
+#ANNOTATION: raise an ImproperlyConfigured exception with an argument: return value of the method msg.format, called with an argument name set to self.urlconf_name. 
+        return patterns
+#ANNOTATION: return patterns.
+
+    def resolve_error_handler(self, view_type):
+#ANNOTATION: define the method resolve_error_handler with arguments self and view_type.
+        callback = getattr(self.urlconf_module, 'handler%s' % view_type, None)
+#ANNOTATION: replace '%s' in the string 'handler%s' with view_type, use it as an name of the attribute to get from the self.urlconf_module, 
+#ANNOTATION: substitute it for callback, if the attribute doesnt exists, callback is None.
+        if not callback:
+#ANNOTATION: if not callback,
+            # No handler specified in file; use default
+            # Lazy import, since django.urls imports this file
+            from django.conf import urls
+#ANNOTATION: from django.conf import urls into default name space,
+            callback = getattr(urls, 'handler%s' % view_type)
+#ANNOTATION: replace '%s' in the string 'handler%s' with view_type, use it as an name of the attribute to get from the urls, substitute it for callback.
+        return get_callable(callback), {}
+#ANNOTATION: call the function get_callable with an argument callback, return the result and an empty dictionary.
+
+    def reverse(self, lookup_view, *args, **kwargs):
+#ANNOTATION: define the method reverse with arguments self, lookup_view, unpacked list args and unpacked dictionary kwargs.
+        return self._reverse_with_prefix(lookup_view, '', *args, **kwargs)
+#ANNOTATION: call the method self._reverse_with_prefix with 4 arguments: lookup_view, an empty string, unpacked list args and unpacked dictionary kwargs.
+
+    def _reverse_with_prefix(self, lookup_view, _prefix, *args, **kwargs):
+#ANNOTATION: define the method _reverse_with_prefix with arguments self, lookup_view, _prefix, unpacked list args and unpacked dictionary kwargs.
+        if args and kwargs:
+#ANNOTATION: if args and kwargs are both true,
+            raise ValueError("Don't mix *args and **kwargs in call to reverse()!")
+#ANNOTATION: raise an ValueError exception with an argument string "Don't mix *args and **kwargs in call to reverse()!".
+        text_args = [force_text(v) for v in args]
+#ANNOTATION: call the function force_text with an argument v, for every v in args, put the results in a text_args list.
+        text_kwargs = dict((k, force_text(v)) for (k, v) in kwargs.items())
+#ANNOTATION: text_kwargs is a dictionary created from the result of the function force_text with an argument v, mapped through function k, for every k and v in return value of the kwargs.items.
+
+        if not self._populated:
+#ANNOTATION: if self._populated is false,
+            self._populate()
+#ANNOTATION: call the method self._populate,
+
+        original_lookup = lookup_view
+#ANNOTATION: substitute lookup_view for original_lookup, 
+        try:
+#ANNOTATION: try,
+            if lookup_view in self._callback_strs:
+#ANNOTATION: if lookup_view is contained in self._callback_strs,
+                lookup_view = get_callable(lookup_view, True)
+#ANNOTATION: call the function get_callable with arguments lookup_view and boolean True, substitute the result for lookup_view. 
+        except (ImportError, AttributeError) as e:
+#ANNOTATION: if ImportError, AttributeError, renamed to e, exceptions are caught,
+            raise NoReverseMatch("Error importing '%s': %s." % (lookup_view, e))
+#ANNOTATION: raise an NoReverseMatch exception with an argument string "Error importing '%s': %s.", where '%s' is replaced with lookup_view and e, respectively. 
+        else:
+#ANNOTATION: if not,
+            if not callable(original_lookup) and callable(lookup_view):
+#ANNOTATION: if original_lookup and lookup_view are not callable objects,
+                warnings.warn(
+                    'Reversing by dotted path is deprecated (%s).' % original_lookup,
+                    RemovedInDjango20Warning, stacklevel=3
+                )
+#ANNOTATION: call the function warnings.warn with 3 arguments: string 'Reversing by dotted path is deprecated (%s).', with '%s' replaced with 
+#ANNOTATION: original_lookup, RemovedInDjango20Warning and stacklevel set to integer 3.
+        possibilities = self.reverse_dict.getlist(lookup_view)
+#ANNOTATION: call the method self.reverse_dict.getlist with an argument lookup_view, substitute the result for possibilities.
+
+        prefix_norm, prefix_args = normalize(urlquote(_prefix))[0]
+#ANNOTATION: call the function urlquote with an argument _prefix, use the result as an argument for the call to the normalize function,
+#ANNOTATION: substitute the fitst element of the result for prefix_norm and prefix_args, respectively. 
+        for possibility, pattern, defaults in possibilities:
+#ANNOTATION: for every possibility, pattern and defaults in possibilities,
+            for result, params in possibility:
+#ANNOTATION: for every result and params in possibility,
+                if args:
+#ANNOTATION: if args is true,
+                    if len(args) != len(params) + len(prefix_args):
+#ANNOTATION: if length of args is not equal to the sum of the lengths of params and prefix_args, 
+                        continue
+#ANNOTATION: skip this loop iteration.
+                    candidate_subs = dict(zip(prefix_args + params, text_args))
+#ANNOTATION: create a list of tuples out of 2 lists: appended params list to prefix_args and text_args, covert the result into a dictionary,
+#ANNOTATION: substitute it for candidate_subs.
+                else:
+#ANNOTATION: if not,
+                    if set(kwargs.keys()) | set(defaults.keys()) != set(params) | set(defaults.keys()) | set(prefix_args):
+#ANNOTATION: if the union of the kwargs and defaults dictionary keys converted into sets is not the same as the union of the defaults and prefix
+#ANNOTATION: dictionary keys converted into sets,
+                        continue
+#ANNOTATION: skip this loop iteration,
+                    matches = True
+#ANNOTATION: matches is boolean True,
+                    for k, v in defaults.items():
+#ANNOTATION: for every k and v in return value of the function defaults.items,
+                        if kwargs.get(k, v) != v:
+#ANNOTATION: if the value of the kwargs dictionary under the key k is not equal to v,
+                            matches = False
+#ANNOTATION: matches is boolean False.
+                            break
+#ANNOTATION: break from this loop execution.
+                    if not matches:
+#ANNOTATION: if matches is false,
+                        continue
+#ANNOTATION: skip this loop iteration,
+                    candidate_subs = text_kwargs
+#ANNOTATION: substitute text_kwargs for candidate_subs.
+                # WSGI provides decoded URLs, without %xx escapes, and the URL
+                # resolver operates on such URLs. First substitute arguments
+                # without quoting to build a decoded URL and look for a match.
+                # Then, if we have a match, redo the substitution with quoted
+                # arguments in order to return a properly encoded URL.
+                candidate_pat = prefix_norm.replace('%', '%%') + result
+#ANNOTATION: replace all the occurrences of the '%' string for '%%', append result to the previous result, substitute it for candidate_pat. 
+                if re.search('^%s%s' % (prefix_norm, pattern), candidate_pat % candidate_subs, re.UNICODE):
+#ANNOTATION: call the function re.search with 3 arguments: string '^%s%s', with '%s' replaced for prefix_norm and pattern, respectively,
+#ANNOTATION: candidate_pat formated with candidate_subs and re.UNICODE.
+                    candidate_subs = dict((k, urlquote(v)) for (k, v) in candidate_subs.items())
+#ANNOTATION: candidate_subs is dictionary created from elements in return value of the function urlquote called with argument v, 
+#ANNOTATION: mapped with a function k, for every k and v in return value of the method candidate_subs.items.
+                    return candidate_pat % candidate_subs
+#ANNOTATION: format candidate_pat with candidate_subs, return the result.
+        # lookup_view can be URL label, or dotted path, or callable, Any of
+        # these can be passed in at the top, but callables are not friendly in
+        # error messages.
+        m = getattr(lookup_view, '__module__', None)
+#ANNOTATION: get the attribute '__module__' from the getattr, if it exists substitute it for m, if not, m is None.
+        n = getattr(lookup_view, '__name__', None)
+#ANNOTATION: get the attribute '__name__' from the getattr, if it exists substitute it for m, if not, m is None.
+        if m is not None and n is not None:
+#ANNOTATION: if m and n are not None,
+            lookup_view_s = "%s.%s" % (m, n)
+#ANNOTATION: join m and n into a string, separated by '.', substitute the result for lookup_view_s.
+        else:
+#ANNOTATION: if not,
+            lookup_view_s = lookup_view
+#ANNOTATION: substitute lookup_view for lookup_view_s. 
+
+        patterns = [pattern for (possibility, pattern, defaults) in possibilities]
+#ANNOTATION: append pattern into a list patterns, for every possibility, pattern and defaults in possibilities. 
+        raise NoReverseMatch("Reverse for '%s' with arguments '%s' and keyword "
+                "arguments '%s' not found. %d pattern(s) tried: %s" %
+                             (lookup_view_s, args, kwargs, len(patterns), patterns))
+#ANNOTATION: raise an NoReverseMatch exception with an argument string "Reverse for '%s' with arguments '%s' and keyword ",
+#ANNOTATION: "arguments '%s' not found. %d pattern(s) tried: %s", replace '%s' with lookup_view_s, args, kwargs, length of patterns, patterns, #ANNOTATION: and respectively. 
+
+
+class LocaleRegexURLResolver(RegexURLResolver):
+#ANNOTATION: derive the class LocaleRegexURLResolver with RegexURLResolver as base class.
+    """
+    A URL resolver that always matches the active language code as URL prefix.
+
+    Rather than taking a regex argument, we just override the ``regex``
+    function to always return the active language-code as regex.
+    """
+#ANNOTATION: docstring
+    def __init__(self, urlconf_name, default_kwargs=None, app_name=None, namespace=None):
+#ANNOTATION: define the __init__ method with 5 arguments: self, urlconf_name, default_kwargs set to None, app_name set to None and  namespace set to None.
+        super(LocaleRegexURLResolver, self).__init__(
+            None, urlconf_name, default_kwargs, app_name, namespace)
+#ANNOTATION: call the __init__ method of the base class of the class LocaleRegexURLResolver, with arguments:  None, urlconf_name, default_kwargs, app_name and namespace.
+
+    @property
+#ANNOTATION: property decorator, 
+    def regex(self):
+#ANNOTATION: define the method regex with an argument self.
+        language_code = get_language()
+#ANNOTATION: call the function get_language, substitute the result for language_code.
+        if language_code not in self._regex_dict:
+#ANNOTATION: if language_code is not contained in self._regex_dict,
+            regex_compiled = re.compile('^%s/' % language_code, re.UNICODE)
+#ANNOTATION: call the function re.compile with 2 arguments, string '^%s/', where '%s' is replaced with language_code and re.UNICODE, substitute the result for regex_compiled.
+            self._regex_dict[language_code] = regex_compiled
+#ANNOTATION: substitute the regex_compiled for value under the language_code key of the self._regex_dict dictionary.
+        return self._regex_dict[language_code]
+#ANNOTATION: return the value under the language_code of the self._regex_dict dictionary. 
+
+
+def resolve(path, urlconf=None):
+#ANNOTATION: define the function resolve with arguments path and urlconf set to None.
+    if urlconf is None:
+#ANNOTATION: if urlconf is None,
+        urlconf = get_urlconf()
+#ANNOTATION: call the function get_urlconf with an argument urlconf. 
+    return get_resolver(urlconf).resolve(path)
+#ANNOTATION: call the function get_resolver with an argument urlconf, on the result call the method resolve with an argument path, return it.
+
+
+def reverse(viewname, urlconf=None, args=None, kwargs=None, prefix=None, current_app=None):
+#ANNOTATION: define the function reverse with 6 arguments: viewname, urlconf set to None, args set to None, kwargs set to None,
+#ANNOTATION: prefix set to None, current_app set to None.
+    if urlconf is None:
+#ANNOTATION: if urlconf is None,
+        urlconf = get_urlconf()
+#ANNOTATION: call the function get_urlconf with an argument urlconf. 
+    resolver = get_resolver(urlconf)
+#ANNOTATION: call the function get_resolver with an argument urlconf, substitute the result for resolver. 
+    args = args or []
+#ANNOTATION: if args in None of boolean False, substitute it for an empty list.
+    kwargs = kwargs or {}
+#ANNOTATION: if args in None of boolean False, substitute it for an empty dictionary.
+
+    if prefix is None:
+#ANNOTATION: if prefix is None,
+        prefix = get_script_prefix()
+#ANNOTATION: call the function get_script_prefix, substitute the result for prefix.
+
+    if not isinstance(viewname, six.string_types):
+#ANNOTATION: if viewname is not an instance of the six.string_types object, 
+        view = viewname
+#ANNOTATION: substitute viewname for view.
+    else:
+#ANNOTATION: if not,
+        parts = viewname.split(':')
+#ANNOTATION: call the method viewname.split, with an argument ':', substitute the result for parts.
+        parts.reverse()
+#ANNOTATION: call the method parts.reverse.
+        view = parts[0]
+#ANNOTATION: substitute first element of parts for view.
+        path = parts[1:]
+#ANNOTATION: substitute parts, without the first element, for path.
+
+        resolved_path = []
+#ANNOTATION: resolved_path is an empty list.
+        ns_pattern = ''
+#ANNOTATION: ns_pattern is an empty string.
+        while path:
+#ANNOTATION: while path is true,
+            ns = path.pop()
+#ANNOTATION: pop the element form the path as substitute the result for ns.
+
+            # Lookup the name to see if it could be an app identifier
+            try:
+#ANNOTATION: try,
+                app_list = resolver.app_dict[ns]
+#ANNOTATION: get the value under the ns key of the resolver.app_dict dictionary, substitute it for app_list.
+                # Yes! Path part matches an app in the current Resolver
+                if current_app and current_app in app_list:
+#ANNOTATION: if current_app and is true and current_app is contained in app_list,
+                    # If we are reversing for a particular app,
+                    # use that namespace
+                    ns = current_app
+#ANNOTATION: substitute current_app for ns.
+                elif ns not in app_list:
+#ANNOTATION: otherwise if ns is not contained in app_list,
+                    # The name isn't shared by one of the instances
+                    # (i.e., the default) so just pick the first instance
+                    # as the default.
+                    ns = app_list[0]
+#ANNOTATION: substitute first element of app_list for ns.
+            except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+
+            try:
+#ANNOTATION: try,
+                extra, resolver = resolver.namespace_dict[ns]
+#ANNOTATION: substitute the value under the ns key of the resolver.namespace_dict dictionary for extra and resolver, respectively.
+                resolved_path.append(ns)
+#ANNOTATION: call the method resolved_path.append with an argument ns.
+                ns_pattern = ns_pattern + extra
+#ANNOTATION: add ns_pattern and extra, substitute the result for ns_pattern.
+            except KeyError as key:
+#ANNOTATION: if KeyError, renamed to key, exception is caught,
+                if resolved_path:
+#ANNOTATION: if resolved_path is true,
+                    raise NoReverseMatch(
+                        "%s is not a registered namespace inside '%s'" %
+                        (key, ':'.join(resolved_path)))
+#ANNOTATION: raise an NoReverseMatch exception with an argument string "%s is not a registered namespace inside '%s'", 
+#ANNOTATION: respectively replace '%s' with key and elements of the resolved_path joined into a string, separated by ':'.
+                else:
+#ANNOTATION: if not,
+                    raise NoReverseMatch("%s is not a registered namespace" %
+                                         key)
+#ANNOTATION: raise an NoReverseMatch exception with an argument string "%s is not a registered namespace", with '%s' replaced with key.
+        if ns_pattern:
+#ANNOTATION: if ns_pattern is true,
+            resolver = get_ns_resolver(ns_pattern, resolver)
+#ANNOTATION: call the function get_ns_resolver with arguments ns_pattern and resolver, substitute the result for resolver.
+
+    return iri_to_uri(resolver._reverse_with_prefix(view, prefix, *args, **kwargs))
+#ANNOTATION: call the method resolver._reverse_with_prefix with 4 arguments: view, prefix, unpacked list args, unpacked dictionary kwargs,
+#ANNOTATION: use the result as an argument for the call to the function iri_to_uri, return the result.
+
+reverse_lazy = lazy(reverse, str)
+#ANNOTATION: call the function lazy with arguments reverse and str, substitute the results for reverse_lazy.
+
+
+def clear_url_caches():
+#ANNOTATION: define the function clear_url_caches.
+    get_callable.cache_clear()
+#ANNOTATION: call the function get_callable.cache_clear. 
+    get_resolver.cache_clear()
+#ANNOTATION: call the function get_resolver.cache_clear.
+    get_ns_resolver.cache_clear()
+#ANNOTATION: call the function get_ns_resolver.cache_clear.
+
+
+def set_script_prefix(prefix):
+#ANNOTATION: define the function set_script_prefix with an argument prefix.
+    """
+    Sets the script prefix for the current thread.
+    """
+#ANNOTATION: docstring
+    if not prefix.endswith('/'):
+#ANNOTATION: if prefix doesnt end with character '/',
+        prefix += '/'
+#ANNOTATION: append '/' to prefix.
+    _prefixes.value = prefix
+#ANNOTATION: substitute prefix for _prefixes.values.
+
+
+def get_script_prefix():
+#ANNOTATION: define the function get_script_prefix.
+    """
+    Returns the currently active script prefix. Useful for client code that
+    wishes to construct their own URLs manually (although accessing the request
+    instance is normally going to be a lot cleaner).
+    """
+#ANNOTATION: docstring
+    return getattr(_prefixes, "value", '/')
+#ANNOTATION: get 'value' attribute of the _prefixes, if it exists, return it, otherwise return '/'.
+
+
+def clear_script_prefix():
+#ANNOTATION: define the function clear_script_prefix.
+    """
+    Unsets the script prefix for the current thread.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        del _prefixes.value
+#ANNOTATION: delete _prefixes.values.
+    except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+        pass
+#ANNOTATION: do nothing.
+
+
+def set_urlconf(urlconf_name):
+#ANNOTATION: define the function set_urlconf with an argument urlconf_name.
+    """
+    Sets the URLconf for the current thread (overriding the default one in
+    settings). Set to None to revert back to the default.
+    """
+#ANNOTATION: docstring
+    if urlconf_name:
+#ANNOTATION: if urlconf_name is true,
+        _urlconfs.value = urlconf_name
+#ANNOTATION: substitute urlconf_name for _urlconfs.value. 
+    else:
+#ANNOTATION: if not,
+        if hasattr(_urlconfs, "value"):
+#ANNOTATION: if _urlconfs has an attribute 'value',
+            del _urlconfs.value
+#ANNOTATION: delete _urlconfs.value.
+
+
+def get_urlconf(default=None):
+#ANNOTATION: define the function get_urlconf with an argument default set to None.
+    """
+    Returns the root URLconf to use for the current thread if it has been
+    changed from the default one.
+    """
+#ANNOTATION: docstring
+    return getattr(_urlconfs, "value", default)
+#ANNOTATION: get the 'value' attribute of the _urlconfs, if it exists return it, otherwise return defaults.
+
+
+def is_valid_path(path, urlconf=None):
+#ANNOTATION: define the function is_valid_path with arguments path and urlconf set to None.
+    """
+    Returns True if the given path resolves against the default URL resolver,
+    False otherwise.
+
+    This is a convenience method to make working with "is this a match?" cases
+    easier, avoiding unnecessarily indented try...except blocks.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        resolve(path, urlconf)
+#ANNOTATION: call the function resolve with arguments path and urlconf.
+        return True
+#ANNOTATION: return boolean True.
+    except Resolver404:
+#ANNOTATION: if Resolver404 exception is caught,
+        return False
+#ANNOTATION: return boolean False.

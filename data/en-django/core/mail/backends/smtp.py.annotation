@@ -1,0 +1,210 @@
+"""SMTP email backend class."""
+#ANNOTATION: docstring
+import smtplib
+#ANNOTATION: import module smtplib.
+import ssl
+#ANNOTATION: import module ssl.
+import threading
+#ANNOTATION: import module threading.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core.mail.backends.base import BaseEmailBackend
+#ANNOTATION: from django.core.mail.backends.base import BaseEmailBackend into default name space.
+from django.core.mail.utils import DNS_NAME
+#ANNOTATION: from django.core.mail.utils import DNS_NAME into default name space.
+from django.core.mail.message import sanitize_address
+#ANNOTATION: from django.core.mail.message import sanitize_address into default name space.
+
+
+class EmailBackend(BaseEmailBackend):
+#ANNOTATION: derive the class EmailBackend from the BaseEmailBackend base class.
+    """
+    A wrapper that manages the SMTP network connection.
+    """
+#ANNOTATION: docstring
+    def __init__(self, host=None, port=None, username=None, password=None,
+                 use_tls=None, fail_silently=False, use_ssl=None, timeout=None,
+                 **kwargs):
+#ANNOTATION: define the method __init__ with arguments: self, host set to None, port set to None, username set to None, password set to None,
+#ANNOTATION: use_tls set to None, fail_silently set to False, use_ssl set to None, timeout set to None and unpacked dictionary kwargs.
+        super(EmailBackend, self).__init__(fail_silently=fail_silently)
+#ANNOTATION: call the __init__ method from the base class of the EmailBackend class with argument fail_silently set to fail_silently.
+        self.host = host or settings.EMAIL_HOST
+#ANNOTATION: if host exists substitute it for self.host, if not substitute settings.EMAIL_HOST for self.host.
+        self.port = port or settings.EMAIL_PORT
+#ANNOTATION: if port exists substitute it for self.host, if not substitute settings.EMAIL_PORT for self.port.
+        self.username = settings.EMAIL_HOST_USER if username is None else username
+#ANNOTATION: if username is None substitute settings.EMAIL_HOST_USER for self.username, if not substitute username for self.username.
+        self.password = settings.EMAIL_HOST_PASSWORD if password is None else password
+#ANNOTATION: if password is None substitute settings.EMAIL_HOST_PASSWORD for self.username, if not substitute password for self.password.
+        self.use_tls = settings.EMAIL_USE_TLS if use_tls is None else use_tls
+#ANNOTATION: if use_tls is None substitute settings.EMAIL_USE_TLS for self.username, if not substitute use_tls for self.use_tls.
+        self.use_ssl = settings.EMAIL_USE_SSL if use_ssl is None else use_ssl
+#ANNOTATION: if use_ssl is None substitute settings.EMAIL_USE_SSL for self.username, if not substitute use_ssl for self.use_ssl.
+        self.timeout = timeout
+#ANNOTATION: substitute timeout for self.timeout.
+        if self.use_ssl and self.use_tls:
+#ANNOTATION: if self.use_ssl and self.use_tls are boolean True,
+            raise ValueError(
+                "EMAIL_USE_TLS/EMAIL_USE_SSL are mutually exclusive, so only set "
+                "one of those settings to True.")
+#ANNOTATION: raise an ValueError exception with argument string "EMAIL_USE_TLS/EMAIL_USE_SSL are mutually exclusive, so only set one of those settings to True.".
+        self.connection = None
+#ANNOTATION: self.connection is None.
+        self._lock = threading.RLock()
+#ANNOTATION: call the method threading.RLock, substitute the result for self._lock.
+
+    def open(self):
+#ANNOTATION: define the method open with argument self.
+        """
+        Ensures we have a connection to the email server. Returns whether or
+        not a new connection was required (True or False).
+        """
+#ANNOTATION: docstring
+        if self.connection:
+#ANNOTATION: if self.connection is true,
+            # Nothing to do if the connection is already open.
+            return False
+#ANNOTATION: return boolean False,
+
+        connection_class = smtplib.SMTP_SSL if self.use_ssl else smtplib.SMTP
+#ANNOTATION: substitute smtplib.SMTP_SSL for connection_class if self.use_ssl is true, if not substitute smtplib.SMTP for connection_class.
+        # If local_hostname is not specified, socket.getfqdn() gets used.
+        # For performance, we use the cached FQDN for local_hostname.
+        connection_params = {'local_hostname': DNS_NAME.get_fqdn()}
+#ANNOTATION: connection_params is a dictionary with 1 initial entry: return value of the function DNS_NAME.get_fqdn for 'local_hostname'.
+        if self.timeout is not None:
+#ANNOTATION: if self.timeout is not None,
+            connection_params['timeout'] = self.timeout
+#ANNOTATION: set value under the 'timeout' key of the connection_params to self.timeout.
+        try:
+#ANNOTATION: try,
+            self.connection = connection_class(self.host, self.port, **connection_params)
+#ANNOTATION: self.connection is a instance of a class contained in connection_class, instantiated with arguments: self.host, self.port,
+#ANNOTATION: and unpacked dictionary connection_params.
+
+            # TLS/SSL are mutually exclusive, so only attempt TLS over
+            # non-secure connections.
+            if not self.use_ssl and self.use_tls:
+#ANNOTATION: if self.use_ssl and self.use_tls are false,
+                self.connection.ehlo()
+#ANNOTATION: call the method self.connection.ehlo.
+                self.connection.starttls()
+#ANNOTATION: call the method self.connection.starttls.
+                self.connection.ehlo()
+#ANNOTATION: call the method self.connection.ehlo.
+            if self.username and self.password:
+#ANNOTATION: if self.username and self.password are true,
+                self.connection.login(self.username, self.password)
+#ANNOTATION: call the method self.connection.login with arguments self.username and self.password.
+            return True
+#ANNOTATION: return boolean True.
+        except smtplib.SMTPException:
+#ANNOTATION: if smtplib.SMTPException exception is caught,
+            if not self.fail_silently:
+#ANNOTATION: if self.fail_silently is boolean False,
+                raise
+#ANNOTATION: raise an exception.
+
+    def close(self):
+#ANNOTATION: define the method close with argument self.
+        """Closes the connection to the email server."""
+#ANNOTATION: docstring
+        if self.connection is None:
+#ANNOTATION: if self.connection is None,
+            return
+#ANNOTATION: return nothing.
+        try:
+#ANNOTATION: try,
+            try:
+#ANNOTATION: try,
+                self.connection.quit()
+#ANNOTATION: call the method self.connection.quit.
+            except (ssl.SSLError, smtplib.SMTPServerDisconnected):
+#ANNOTATION: if ssl.SSLError or smtplib.SMTPServerDisconnected exception occurred,
+                # This happens when calling quit() on a TLS connection
+                # sometimes, or when the connection was already disconnected
+                # by the server.
+                self.connection.close()
+#ANNOTATION: call the method self.connection.close.
+            except smtplib.SMTPException:
+#ANNOTATION: if smtplib.SMTPException exception is caught,
+                if self.fail_silently:
+#ANNOTATION:  if self.fail_silently is boolean True,
+                    return
+#ANNOTATION: return nothing.
+                raise
+#ANNOTATION: raise an exception.
+        finally:
+#ANNOTATION: finally perform,
+            self.connection = None
+#ANNOTATION: self.connection is None.
+
+    def send_messages(self, email_messages):
+#ANNOTATION: define the method send_messages with arguments self and email_message.
+        """
+        Sends one or more EmailMessage objects and returns the number of email
+        messages sent.
+        """
+#ANNOTATION: docstring
+        if not email_messages:
+#ANNOTATION: if email_messages is false,
+            return
+#ANNOTATION: return nothing.
+        with self._lock:
+#ANNOTATION: call the method self._lock, with the return value,
+            new_conn_created = self.open()
+#ANNOTATION: call the method self.open, substitute the result for the new_conn_created.
+            if not self.connection:
+#ANNOTATION: if self.connection is false,
+                # We failed silently on open().
+                # Trying to send would be pointless.
+                return
+#ANNOTATION: return nothing.
+            num_sent = 0
+#ANNOTATION: num_sent is an integer 0.
+            for message in email_messages:
+#ANNOTATION: for every message in email_messages:
+                sent = self._send(message)
+#ANNOTATION: call the method self._send with argument message, substitute the result for sent.
+                if sent:
+#ANNOTATION: if sent is true,
+                    num_sent += 1
+#ANNOTATION: increment num_sent by one.
+            if new_conn_created:
+#ANNOTATION: if new_conn_created is true,
+                self.close()
+#ANNOTATION: call the self.close method.
+        return num_sent
+#ANNOTATION: return num_sent.
+
+    def _send(self, email_message):
+#ANNOTATION: define the method _send with arguments self and email_message.
+        """A helper method that does the actual sending."""
+#ANNOTATION: docstring
+        if not email_message.recipients():
+#ANNOTATION: call the email_message.recipients method, if it evaluates to false,
+            return False
+#ANNOTATION: return boolean False.
+        from_email = sanitize_address(email_message.from_email, email_message.encoding)
+#ANNOTATION: call the function sanitize_address with arguments email_message.from_email and email_message.encoding, substitute the result for from_email.
+        recipients = [sanitize_address(addr, email_message.encoding)
+                      for addr in email_message.recipients()]
+#ANNOTATION: call the function sanitize_address with arguments addr and email_message.encoding, for every addr in return value of the function email_message.recipients, store the results in a recipients list.
+        message = email_message.message()
+#ANNOTATION: call the function email_message.message, substitute the result for message.
+        try:
+#ANNOTATION: try,
+            self.connection.sendmail(from_email, recipients, message.as_bytes())
+#ANNOTATION: call the method self.connection.sendmail with arguments: from_email, recipients and return value of the function message.as_bytes.
+        except smtplib.SMTPException:
+#ANNOTATION: if smtplib.SMTPException exception is caught,
+            if not self.fail_silently:
+#ANNOTATION: if self.fail_silently is false,
+                raise
+#ANNOTATION: raise an exception.
+            return False
+#ANNOTATION: return boolean False.
+        return True
+#ANNOTATION: return boolean True.

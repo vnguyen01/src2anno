@@ -1,0 +1,145 @@
+"""
+Move a file in the safest way possible::
+
+    >>> from django.core.files.move import file_move_safe
+    >>> file_move_safe("/tmp/old_file", "/tmp/new_file")
+"""
+#ANNOTATION: docstring 
+
+import os
+#ANNOTATION: import module os.
+from django.core.files import locks
+#ANNOTATION: from django.core.files import locks into default name space.
+
+try:
+#ANNOTATION: try,
+    from shutil import copystat
+#ANNOTATION: from shutil import copystat into default name space.
+except ImportError:
+#ANNOTATION: if ImportError exception occurred,
+    import stat
+#ANNOTATION: import stat.
+
+    def copystat(src, dst):
+#ANNOTATION: define the function copystat with arguments src and dst.
+        """Copy all stat info (mode bits, atime and mtime) from src to dst"""
+#ANNOTATION: docstring
+        st = os.stat(src)
+#ANNOTATION: call the os.stat function with argument src, substitute the result for st.
+        mode = stat.S_IMODE(st.st_mode)
+#ANNOTATION: call the function stat.S_IMODE with argument st.st_mode, substitute the result for mode.
+        if hasattr(os, 'utime'):
+#ANNOTATION: if os has an attribute 'utime',
+            os.utime(dst, (st.st_atime, st.st_mtime))
+#ANNOTATION: call the os.utime function with arguments dst and tuple containing 2 elements: st.st_atime and st.st_mtime.
+        if hasattr(os, 'chmod'):
+#ANNOTATION: if os has an attribute 'chmod',
+            os.chmod(dst, mode)
+#ANNOTATION: call the function os.chmod with arguments dst and mode.
+
+__all__ = ['file_move_safe']
+#ANNOTATION: __all__ is a list containing a string 'file_move_safe'.
+
+
+def _samefile(src, dst):
+#ANNOTATION: define the function _samefile with arguments src and dst.
+    # Macintosh, Unix.
+    if hasattr(os.path, 'samefile'):
+#ANNOTATION: if os.path has an attribute 'samefile',
+        try:
+#ANNOTATION: try,
+            return os.path.samefile(src, dst)
+#ANNOTATION: call the os.path.samefile with arguments src and dst, return the result.
+        except OSError:
+#ANNOTATION: if exception OSError occurred,
+            return False
+#ANNOTATION: return boolean False.
+
+    # All other platforms: check for same pathname.
+    return (os.path.normcase(os.path.abspath(src)) ==
+            os.path.normcase(os.path.abspath(dst)))
+#ANNOTATION: if file path of src and dst files are the same, return boolean True, otherwise return boolean False.
+
+
+def file_move_safe(old_file_name, new_file_name, chunk_size=1024 * 64, allow_overwrite=False):
+#ANNOTATION: define the function file_move_safe with 4 arguments: old_file_name, new_file_name, chunk_size set to multiple of integers 1024 and 64,
+#ANNOTATION: and allow_overwrite set to boolean False.
+    """
+    Moves a file from one location to another in the safest way possible.
+
+    First, tries ``os.rename``, which is simple but will break across filesystems.
+    If that fails, streams manually from one file to another in pure Python.
+
+    If the destination file exists and ``allow_overwrite`` is ``False``, this
+    function will throw an ``IOError``.
+    """
+#ANNOTATION: docstring
+
+    # There's no reason to move if we don't have to.
+    if _samefile(old_file_name, new_file_name):
+#ANNOTATION: if call to the function _samefile with old_file_name and new_file_name evaluates to boolean True, 
+        return
+#ANNOTATION: return nothing.
+
+    try:
+#ANNOTATION: try,
+        # If the destination file exists and allow_overwrite is False then raise an IOError
+        if not allow_overwrite and os.access(new_file_name, os.F_OK):
+#ANNOTATION: if allow_overwrite is boolean False and call to the os.access function with arguments new_file_name and os.F_OK evaluates to boolean True,
+            raise IOError("Destination file %s exists and allow_overwrite is False" % new_file_name)
+#ANNOTATION: raise an IOError exception with string "Destination file %s exists and allow_overwrite is False" as argument, where '%s' is replaced by new_file_name. 
+
+        os.rename(old_file_name, new_file_name)
+#ANNOTATION: call the os.rename function with arguments old_file_name and new_file_name.
+        return
+#ANNOTATION: return nothing.
+    except OSError:
+#ANNOTATION: if OSError exception is caught,
+        # This will happen with os.rename if moving to another filesystem
+        # or when moving opened files on certain operating systems
+        pass
+#ANNOTATION: do nothing.
+
+    # first open the old file, so that it won't go away
+    with open(old_file_name, 'rb') as old_file:
+#ANNOTATION: open file old_file_name in read bytes mode, with file descriptor as f,
+        # now open the new file, not forgetting allow_overwrite
+        fd = os.open(new_file_name, (os.O_WRONLY | os.O_CREAT | getattr(os, 'O_BINARY', 0) |
+                                     (os.O_EXCL if not allow_overwrite else 0)))
+#ANNOTATION: evaluate the binary expression with 4 operands: os.O_WRONLY, binary or os.O_CREATE, binary or 'O_BINARY' attribute of object os,
+#ANNOTATION: binary or os.O_EXCL if allow_overwrite is boolean False, use the previous as the mode to open new_file_name file, assign the file descriptor to fd. 
+        try:
+#ANNOTATION: try,
+            locks.lock(fd, locks.LOCK_EX)
+#ANNOTATION: call the function locks.lock with arguments fd and locks.LOCK_EX.
+            current_chunk = None
+#ANNOTATION: current_chunk is None.
+            while current_chunk != b'':
+#ANNOTATION: as long as current_chunk is not an empty string,
+                current_chunk = old_file.read(chunk_size)
+#ANNOTATION: read chunk_size bytes from the old_file file, substitute the result for current_chunk.
+                os.write(fd, current_chunk)
+#ANNOTATION: write current_chunk to file fd.
+        finally:
+#ANNOTATION: finally perform,
+            locks.unlock(fd)
+#ANNOTATION: call the function locks.unlock with fd as argument.
+            os.close(fd)
+#ANNOTATION: close the file fd.
+    copystat(old_file_name, new_file_name)
+#ANNOTATION: call the function copystat with old_file_name and new_file_name as arguments.
+
+    try:
+#ANNOTATION: tr,
+        os.remove(old_file_name)
+#ANNOTATION: remove the old_file_name file.
+    except OSError as e:
+#ANNOTATION: if OSError, renamed to e, is caught,
+        # Certain operating systems (Cygwin and Windows)
+        # fail when deleting opened files, ignore it.  (For the
+        # systems where this happens, temporary files will be auto-deleted
+        # on close anyway.)
+        if getattr(e, 'winerror', 0) != 32 and getattr(e, 'errno', 0) != 13:
+#ANNOTATION: if attribute 'winerror' of object e is not equal to integer 32 and if 'errno' attribute is not equal to integer 13, 
+            raise
+#ANNOTATION: raise an exception.

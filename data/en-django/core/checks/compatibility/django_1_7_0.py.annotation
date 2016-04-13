@@ -1,0 +1,54 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from .. import Warning, register, Tags
+#ANNOTATION: from .. import Warning, register and Tags into default name space.
+
+
+@register(Tags.compatibility)
+#ANNOTATION: decorator register with argument Tags.compatibility. 
+def check_1_7_compatibility(**kwargs):
+#ANNOTATION: define the function check_1_7_compatibility with argument kwargs dictionary. 
+    errors = []
+#ANNOTATION: errors is an empty list.
+    errors.extend(_check_middleware_classes(**kwargs))
+#ANNOTATION: call the function _check_middleware_classes with dictionary kwargs as argument, use the result as an argument for the call to the function errors.extend.
+    return errors
+#ANNOTATION: return errors.
+
+
+def _check_middleware_classes(app_configs=None, **kwargs):
+#ANNOTATION: define the function _check_middleware_classes with app_config set to None and kwargs dictionary as arguments. 
+    """
+    Checks if the user has *not* overridden the ``MIDDLEWARE_CLASSES`` setting &
+    warns them about the global default changes.
+    """
+#ANNOTATION: docstring
+    from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+
+    # MIDDLEWARE_CLASSES is overridden by default by startproject. If users
+    # have removed this override then we'll warn them about the default changes.
+    if not settings.is_overridden('MIDDLEWARE_CLASSES'):
+#ANNOTATION: call the function settings.is_overridden with argument string 'MIDDLEWARE_CLASSES', if the result is boolean False, 
+        return [
+            Warning(
+                "MIDDLEWARE_CLASSES is not set.",
+                hint=("Django 1.7 changed the global defaults for the MIDDLEWARE_CLASSES. "
+                      "django.contrib.sessions.middleware.SessionMiddleware, "
+                      "django.contrib.auth.middleware.AuthenticationMiddleware, and "
+                      "django.contrib.messages.middleware.MessageMiddleware were removed from the defaults. "
+                      "If your project needs these middleware then you should configure this setting."),
+                obj=None,
+                id='1_7.W001',
+            )
+        ]
+#ANNOTATION: call the Warning function with 4 arguments: string "MIDDLEWARE_CLASSES is not set.", hint tuple containing one string,
+#ANNOTATION: "Django 1.7 changed the global defaults for the MIDDLEWARE_CLASSES. django.contrib.sessions.middleware.SessionMiddleware, 
+#ANNOTATION: django.contrib.auth.middleware.AuthenticationMiddleware, and django.contrib.messages.middleware.MessageMiddleware were removed
+#ANNOTATION: from the defaults. If your project needs these middleware then you should configure this setting.", obj set to None, and
+#ANNOTATION: id set to a string '1_7.W001', put the result into a list and return it. 
+    else:
+#ANNOTATION: if not,
+        return []
+#ANNOTATION: return an empty list.

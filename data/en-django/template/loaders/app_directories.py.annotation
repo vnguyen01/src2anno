@@ -1,0 +1,110 @@
+"""
+Wrapper for loading templates from "templates" directories in INSTALLED_APPS
+packages.
+"""
+#ANNOTATION: docstring
+
+import os
+#ANNOTATION: import module os.
+import sys
+#ANNOTATION: import module sys.
+
+from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.template.base import TemplateDoesNotExist
+#ANNOTATION: from django.template.base import TemplateDoesNotExist into default name space.
+from django.template.loader import BaseLoader
+#ANNOTATION: from django.template.loader import BaseLoader into default name space.
+from django.utils._os import safe_join
+#ANNOTATION: from django.utils._os import safe_join into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+def calculate_app_template_dirs():
+#ANNOTATION: define the function calculate_app_template_dirs.
+    if six.PY2:
+#ANNOTATION: if six.PY2 is true,
+        fs_encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
+#ANNOTATION: call the function sys.getfilesystemencoding, if it evaluates to true, substitute the result for fs_encoding,
+#ANNOTATION: if not, call the function sys.getdefaultencoding and substitute the result for fs_encoding.
+    app_template_dirs = []
+#ANNOTATION: app_template_dirs is an empty list.
+    for app_config in apps.get_app_configs():
+#ANNOTATION: call the function apps.get_app_configs, for every app_config in result,
+        if not app_config.path:
+#ANNOTATION: if app_config.path is true,
+            continue
+#ANNOTATION: skip this loop iteration.
+        template_dir = os.path.join(app_config.path, 'templates')
+#ANNOTATION: join app_config.path and string 'templates' into file path, substitute it for template_dir.
+        if os.path.isdir(template_dir):
+#ANNOTATION: if template_dir is directory,
+            if six.PY2:
+#ANNOTATION: if six.PY2 is true,
+                template_dir = template_dir.decode(fs_encoding)
+#ANNOTATION: call the function template_dir.decode with an argument fs_encoding, substitute the result for template_dir.
+            app_template_dirs.append(template_dir)
+#ANNOTATION: append template_dir to app_template_dirs.
+    return tuple(app_template_dirs)
+#ANNOTATION: convert app_template_dirs to a tuple, return it.
+
+
+# At compile time, cache the directories to search.
+app_template_dirs = calculate_app_template_dirs()
+#ANNOTATION: call the function calculate_app_template_dirs, substitute the result for app_template_dirs.
+
+
+class Loader(BaseLoader):
+#ANNOTATION: derive the class Loader from the BaseLoader base class.
+    is_usable = True
+#ANNOTATION: is_usable is boolean True.
+
+    def get_template_sources(self, template_name, template_dirs=None):
+#ANNOTATION: define the method get_template_sources with 3 arguments: self, template_name, template_dirs set to None.
+        """
+        Returns the absolute paths to "template_name", when appended to each
+        directory in "template_dirs". Any paths that don't lie inside one of the
+        template dirs are excluded from the result set, for security reasons.
+        """
+#ANNOTATION: docstring
+        if not template_dirs:
+#ANNOTATION: if template_dirs is false,
+            template_dirs = app_template_dirs
+#ANNOTATION: substitute app_template_dirs for template_dirs.
+        for template_dir in template_dirs:
+#ANNOTATION: for every template_dir in template_dirs,
+            try:
+#ANNOTATION: try,
+                yield safe_join(template_dir, template_name)
+#ANNOTATION: call the function safe_join with 2 arguments template_dir and template_name, yield the result.
+            except UnicodeDecodeError:
+#ANNOTATION: if UnicodeDecodeError exception is caught,
+                # The template dir name was a bytestring that wasn't valid UTF-8.
+                raise
+#ANNOTATION: raise an exception.
+            except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+                # The joined path was located outside of template_dir.
+                pass
+#ANNOTATION: do nothing.
+
+    def load_template_source(self, template_name, template_dirs=None):
+#ANNOTATION: define the method load_template_source with 3 arguments: self, template_name, template_dirs set to None.
+        for filepath in self.get_template_sources(template_name, template_dirs):
+#ANNOTATION: call the method self.get_template_sources with 2 arguments template_name and template_dirs, for every filepath in the result,
+            try:
+#ANNOTATION: try,
+                with open(filepath, 'rb') as fp:
+#ANNOTATION: open the file named filepath in read mode, with file descriptor renamed to fp perform,
+                    return (fp.read().decode(settings.FILE_CHARSET), filepath)
+#ANNOTATION: read file fp, call the method decode on the result with an argument settings.FILE_CHARSET, return tuple containing 2 elements,
+#ANNOTATION: previous result and filepath.
+            except IOError:
+#ANNOTATION: if IOError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+        raise TemplateDoesNotExist(template_name)
+#ANNOTATION: raise an TemplateDoesNotExist exception with an argument template_name.

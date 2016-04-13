@@ -1,0 +1,2004 @@
+"""
+Field classes.
+"""
+#ANNOTATION: docstring
+
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import copy
+#ANNOTATION: import module copy.
+import datetime
+#ANNOTATION: import module datetime.
+import os
+#ANNOTATION: import module os.
+import re
+#ANNOTATION: import module re.
+import sys
+#ANNOTATION: import module sys.
+import warnings
+#ANNOTATION: import module warnings.
+from decimal import Decimal, DecimalException
+#ANNOTATION: from decimal import Decimal and DecimalException into default name space.
+from io import BytesIO
+#ANNOTATION: from io import BytesIO into default name space.
+
+from django.core import validators
+#ANNOTATION: from django.core import validators into default name space.
+from django.core.exceptions import ValidationError
+#ANNOTATION: from django.core.exceptions import ValidationError into default name space.
+from django.forms.utils import from_current_timezone, to_current_timezone
+#ANNOTATION: from django.forms.utils import from_current_timezone and to_current_timezone into default name space.
+from django.forms.widgets import (
+    TextInput, NumberInput, EmailInput, URLInput, HiddenInput,
+    MultipleHiddenInput, ClearableFileInput, CheckboxInput, Select,
+    NullBooleanSelect, SelectMultiple, DateInput, DateTimeInput, TimeInput,
+    SplitDateTimeWidget, SplitHiddenDateTimeWidget, FILE_INPUT_CONTRADICTION
+)
+#ANNOTATION: from django.forms.widgets import TextInput, NumberInput, EmailInput, URLInput, HiddenInput, MultipleHiddenInput, ClearableFileInput,
+#ANNOTATION: CheckboxInput, Select, NullBooleanSelect, SelectMultiple, DateInput, DateTimeInput, TimeInput, SplitDateTimeWidget, 
+#ANNOTATION: SplitHiddenDateTimeWidget and FILE_INPUT_CONTRADICTION.
+from django.utils import formats
+#ANNOTATION: from django.utils import formats into default name space.
+from django.utils.encoding import smart_text, force_str, force_text
+#ANNOTATION: from django.utils.encoding import smart_text, force_str and force_text into default name space.
+from django.utils.ipv6 import clean_ipv6_address
+#ANNOTATION: from django.utils.ipv6 import clean_ipv6_address into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.six.moves.urllib.parse import urlsplit, urlunsplit
+#ANNOTATION: from django.utils.six.moves.urllib.parse import urlsplit and urlunsplit into default name space.
+from django.utils.translation import ugettext_lazy as _, ungettext_lazy
+#ANNOTATION: from django.utils.translation import ugettext_lazy as _ and ungettext_lazy into default name space.
+
+# Provide this import for backwards compatibility.
+from django.core.validators import EMPTY_VALUES  # NOQA
+#ANNOTATION: from django.core.validators import EMPTY_VALUES into default name space.
+
+
+__all__ = (
+    'Field', 'CharField', 'IntegerField',
+    'DateField', 'TimeField', 'DateTimeField',
+    'RegexField', 'EmailField', 'FileField', 'ImageField', 'URLField',
+    'BooleanField', 'NullBooleanField', 'ChoiceField', 'MultipleChoiceField',
+    'ComboField', 'MultiValueField', 'FloatField', 'DecimalField',
+    'SplitDateTimeField', 'IPAddressField', 'GenericIPAddressField', 'FilePathField',
+    'SlugField', 'TypedChoiceField', 'TypedMultipleChoiceField'
+)
+#ANNOTATION: __all__ a tuple containing strings: 'Field', 'CharField', 'IntegerField', 'DateField', 'TimeField', 'DateTimeField', 'RegexField',
+#ANNOTATION: 'EmailField', 'FileField', 'ImageField', 'URLField', 'BooleanField', 'NullBooleanField', 'ChoiceField', 'MultipleChoiceField',
+#ANNOTATION: 'ComboField', 'MultiValueField', 'FloatField', 'DecimalField', 'SplitDateTimeField', 'IPAddressField', 'GenericIPAddressField',
+#ANNOTATION: 'FilePathField', 'SlugField', 'TypedChoiceField', 'TypedMultipleChoiceField'.
+
+
+class Field(object):
+#ANNOTATION: derive the class Field from the base class object.
+    widget = TextInput  # Default widget to use when rendering this type of Field.
+#ANNOTATION: substitute substitute TextInput for widget.
+    hidden_widget = HiddenInput  # Default widget to use when rendering this as "hidden".
+#ANNOTATION: substitute HiddenInput for hidden_widget. 
+    default_validators = []  # Default set of validators
+#ANNOTATION: default_validators is an empty list.
+    # Add an 'invalid' entry to default_error_message if you want a specific
+    # field error message not raised by the field validators.
+    default_error_messages = {
+        'required': _('This field is required.'),
+    }
+#ANNOTATION: default_error_messages is an dictionary containing entry: return value of the function _ called with an string 'This field is required.' for 'required'.
+    empty_values = list(validators.EMPTY_VALUES)
+#ANNOTATION: put elements of validators.EMPTY_VALUES to a list, substitute the result for empty_values.
+
+    # Tracks each time a Field instance is created. Used to retain order.
+    creation_counter = 0
+#ANNOTATION: creation_counter is an integer 0.
+
+    def __init__(self, required=True, widget=None, label=None, initial=None,
+                 help_text='', error_messages=None, show_hidden_initial=False,
+                 validators=[], localize=False, label_suffix=None):
+#ANNOTATION: define the function __init__ with 11 arguments: self, required set to boolean True, widget set to None, label set to None,
+#ANNOTATION: initial set to None, help_text set to an empty string, error_messages set to None, show_hidden_initial set to boolean False,
+#ANNOTATION: validators is an empty, localize set to boolean False, label_suffix set to None.
+        # required -- Boolean that specifies whether the field is required.
+        #             True by default.
+        # widget -- A Widget class, or instance of a Widget class, that should
+        #           be used for this Field when displaying it. Each Field has a
+        #           default Widget that it'll use if you don't specify this. In
+        #           most cases, the default widget is TextInput.
+        # label -- A verbose name for this field, for use in displaying this
+        #          field in a form. By default, Django will use a "pretty"
+        #          version of the form field name, if the Field is part of a
+        #          Form.
+        # initial -- A value to use in this Field's initial display. This value
+        #            is *not* used as a fallback if data isn't given.
+        # help_text -- An optional string to use as "help text" for this Field.
+        # error_messages -- An optional dictionary to override the default
+        #                   messages that the field will raise.
+        # show_hidden_initial -- Boolean that specifies if it is needed to render a
+        #                        hidden widget with initial value after widget.
+        # validators -- List of additional validators to use
+        # localize -- Boolean that specifies if the field should be localized.
+        # label_suffix -- Suffix to be added to the label. Overrides
+        #                 form's label_suffix.
+        self.required, self.label, self.initial = required, label, initial
+#ANNOTATION: substitute required, label and initial for self.required, self.label and self.initial.
+        self.show_hidden_initial = show_hidden_initial
+#ANNOTATION: substitute show_hidden_initial for self.show_hidden_initial.
+        self.help_text = help_text
+#ANNOTATION: substitute help_text for self.help_text.
+        self.label_suffix = label_suffix
+#ANNOTATION: substitute label_suffix for self.label_suffix.
+        widget = widget or self.widget
+#ANNOTATION: substitute self.widget if the widget is false, otherwise substitute widget for widget.
+        if isinstance(widget, type):
+#ANNOTATION: if widget is an instance of type class,
+            widget = widget()
+#ANNOTATION: call the function widget, substitute the result for widget.
+
+        # Trigger the localization machinery if needed.
+        self.localize = localize
+#ANNOTATION: substitute localize for self.localize.
+        if self.localize:
+#ANNOTATION: if self.localize is true,
+            widget.is_localized = True
+#ANNOTATION: widget.is_localized is boolean True.
+
+        # Let the widget know whether it should display as required.
+        widget.is_required = self.required
+#ANNOTATION: substitute self.required for widget.is_required.
+
+        # Hook into self.widget_attrs() for any Field-specific HTML attributes.
+        extra_attrs = self.widget_attrs(widget)
+#ANNOTATION: call the method self.widget_attrs with an argument widget, substitute the result for extra_attrs.
+        if extra_attrs:
+#ANNOTATION: if extra_attrs is true,
+            widget.attrs.update(extra_attrs)
+#ANNOTATION: update widget.attrs dictionary with extra_attrs.
+
+        self.widget = widget
+#ANNOTATION: substitute widget for self.widget.
+
+        # Increase the creation counter, and save our local copy.
+        self.creation_counter = Field.creation_counter
+#ANNOTATION: substitute Field.creation_counter for self.creation_counter.
+        Field.creation_counter += 1
+#ANNOTATION: increment Field.creation_counter by one.
+
+        messages = {}
+#ANNOTATION: messages is an empty dictionary.
+        for c in reversed(self.__class__.__mro__):
+#ANNOTATION: for every c in reversed order of self.__class__.__mro__,
+            messages.update(getattr(c, 'default_error_messages', {}))
+#ANNOTATION: get 'default_error_messages' from the c object, if it doesnt exists return an empty dictionary, 
+#ANNOTATION: use the result as the argument for the call to the messages.update function.
+        messages.update(error_messages or {})
+#ANNOTATION: update messages dictionary with error_messages, if it exists, if not don't update it.
+        self.error_messages = messages
+#ANNOTATION: substitute messages for self.error_messages. 
+
+        self.validators = self.default_validators + validators
+#ANNOTATION: add self.default_validators and validators, substitute the result for self.validators.
+        super(Field, self).__init__()
+#ANNOTATION: call the method __init__ from the base class of the Field class.
+
+    def prepare_value(self, value):
+#ANNOTATION: define the method prepare_value with arguments: self and value.
+        return value
+#ANNOTATION: return value.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        return value
+#ANNOTATION: return value.
+
+    def validate(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        if value in self.empty_values and self.required:
+#ANNOTATION: if value is contained in self.empty_values and self.required is true,
+            raise ValidationError(self.error_messages['required'], code='required')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'required' key of the self.error_messages dictionary and code set to string 'required'. 
+
+    def run_validators(self, value):
+#ANNOTATION: define the method run_validators with arguments self and value.
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            return
+#ANNOTATION: return nothing,
+        errors = []
+#ANNOTATION: errors is an empty list.
+        for v in self.validators:
+#ANNOTATION: for every v in self.validators,
+            try:
+#ANNOTATION: try
+                v(value)
+#ANNOTATION: call the function v with an argument value.
+            except ValidationError as e:
+#ANNOTATION: if ValidationError, substituted for e, exception is caught,
+                if hasattr(e, 'code') and e.code in self.error_messages:
+#ANNOTATION: if e has an attribute 'code' and e.code is contained in self.error_messages,
+                    e.message = self.error_messages[e.code]
+#ANNOTATION: get the value under the e.code key of the self.error_messages dictionary, substitute the result for e.message.
+                errors.extend(e.error_list)
+#ANNOTATION: extend errors list with e.error_list.
+        if errors:
+#ANNOTATION: if errors is true,
+            raise ValidationError(errors)
+#ANNOTATION: raise an ValidationError exception with an argument errors,
+
+    def clean(self, value):
+#ANNOTATION: define the method clean with arguments self and value.
+        """
+        Validates the given value and returns its "cleaned" value as an
+        appropriate Python object.
+
+        Raises ValidationError for any errors.
+        """
+#ANNOTATION: docstring
+        value = self.to_python(value)
+#ANNOTATION: call the method self.to_python with an argument value, substitute it for value.
+        self.validate(value)
+#ANNOTATION: call the method self.validate with an argument value.
+        self.run_validators(value)
+#ANNOTATION: call the method self.run_validators with an argument value.
+        return value
+#ANNOTATION: return value.
+
+    def bound_data(self, data, initial):
+#ANNOTATION: define the method bound_data with arguments self, data and initial.
+        """
+        Return the value that should be shown for this field on render of a
+        bound form, given the submitted POST data for the field and the initial
+        data, if any.
+
+        For most fields, this will simply be data; FileFields need to handle it
+        a bit differently.
+        """
+#ANNOTATION: docstring
+        return data
+#ANNOTATION: return data.
+
+    def widget_attrs(self, widget):
+#ANNOTATION: define the method widget_attrs with arguments self and widget.
+        """
+        Given a Widget instance (*not* a Widget class), returns a dictionary of
+        any HTML attributes that should be added to the Widget, based on this
+        Field.
+        """
+#ANNOTATION: docstring
+        return {}
+#ANNOTATION: return is empty dictionary.
+
+    def get_limit_choices_to(self):
+#ANNOTATION: define the method get_limit_choices_to with arguments self.
+        """
+        Returns ``limit_choices_to`` for this form field.
+
+        If it is a callable, it will be invoked and the result will be
+        returned.
+        """
+#ANNOTATION: docstring
+        if callable(self.limit_choices_to):
+#ANNOTATION: if self.limit_choices_to object is callable,
+            return self.limit_choices_to()
+#ANNOTATION: call the method self.limit_choices_to, return the result,
+        return self.limit_choices_to
+#ANNOTATION: return self.limit_choices_to.
+
+    def _has_changed(self, initial, data):
+#ANNOTATION: define the method _has_changed with arguments self, initial and data.
+        """
+        Return True if data differs from initial.
+        """
+#ANNOTATION: docstring
+        # For purposes of seeing whether something has changed, None is
+        # the same as an empty string, if the data or initial value we get
+        # is None, replace it w/ ''.
+        initial_value = initial if initial is not None else ''
+#ANNOTATION: substitute initial for initial_value, if initial is not None, if not, initial_value is an empty string.
+        try:
+#ANNOTATION: try,
+            data = self.to_python(data)
+#ANNOTATION: call the function self.to_python with an argument data, substitute the result for data.
+            if hasattr(self, '_coerce'):
+#ANNOTATION: if self has an attribute '_coerce',
+                data = self._coerce(data)
+#ANNOTATION: call the method self._coerce with an argument data, substitute the result for data.
+        except ValidationError:
+#ANNOTATION: if ValidationError exception is caught,
+            return True
+#ANNOTATION: return boolean True.
+        data_value = data if data is not None else ''
+#ANNOTATION: substitute data for data_value if data is not None, otherwise data_value is an empty list.
+        return initial_value != data_value
+#ANNOTATION: if initial_value is not equal to data_value, return boolean True, otherwise return boolean False.
+
+    def __deepcopy__(self, memo):
+#ANNOTATION: define the method __deepcopy__ with arguments self and memo.
+        result = copy.copy(self)
+#ANNOTATION: call the method copy.copy with an argument self, substitute the result for result.
+        memo[id(self)] = result
+#ANNOTATION: substitute result for the value of the memo dictionary, with identity of the self object as an key.
+        result.widget = copy.deepcopy(self.widget, memo)
+#ANNOTATION: call the method copy.deepcopy with arguments self.widget and memo, substitute the result for result.widget.
+        result.validators = self.validators[:]
+#ANNOTATION: substitute elements of self.validators list for result.validators.
+        return result
+#ANNOTATION: return result.
+
+
+class CharField(Field):
+#ANNOTATION: derive the class CharField from the base class Field class.
+    def __init__(self, max_length=None, min_length=None, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 5 arguments: self, max_length set to None, min_length set to None, unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+        self.max_length, self.min_length = max_length, min_length
+#ANNOTATION: substitute max_length and min_length for self.max_length for self.min_length.
+        super(CharField, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class CharField, with arguments unpacked list args and unpacked dictionary kwargs.
+        if min_length is not None:
+#ANNOTATION: if min_length is not None,
+            self.validators.append(validators.MinLengthValidator(int(min_length)))
+#ANNOTATION: call the method validators.MinLengthValidator with min_length converted into an integer, append the result to list self.validators.
+        if max_length is not None:
+#ANNOTATION: if max_length is not None,
+            self.validators.append(validators.MaxLengthValidator(int(max_length)))
+#ANNOTATION: call the method validators.MaxLengthValidator with max_length converted into an integer, append the result to list self.validators.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        "Returns a Unicode object."
+#ANNOTATION: docstring
+        if value in self.empty_values:
+#ANNOTATION: if value in self.empty_values,
+            return ''
+#ANNOTATION: return an empty string.
+        return smart_text(value)
+#ANNOTATION: evaluate the function smart_text with an argument value, return the result.
+
+    def widget_attrs(self, widget):
+#ANNOTATION: define the method widget_attrs with arguments self and widget.
+        attrs = super(CharField, self).widget_attrs(widget)
+#ANNOTATION: call the method widget_attrs from the base class of the class CharField, with an argument widget, substitute the result for attrs.
+        if self.max_length is not None:
+#ANNOTATION: if self.max_length is not None,
+            # The HTML attribute is maxlength, not max_length.
+            attrs.update({'maxlength': str(self.max_length)})
+#ANNOTATION: update attrs dictionary with entry: self.max_length converted into a string for 'maxlength'.
+        return attrs
+#ANNOTATION: return attrs.
+
+
+class IntegerField(Field):
+#ANNOTATION: derive the class IntegerField from the base class Field class.
+    widget = NumberInput
+#ANNOTATION: substitute NumberInput for widget.
+    default_error_messages = {
+        'invalid': _('Enter a whole number.'),
+    }
+#ANNOTATION: default_error_messages is an dictionary with an initial entry: result of the function _ called with an argument string,
+#ANNOTATION: 'Enter a whole number.' for 'invalid'.
+
+    def __init__(self, max_value=None, min_value=None, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 5 arguments: self, max_value set to None, min_value set to None, unpacked list args and unpacked dictionary kwargs.
+        self.max_value, self.min_value = max_value, min_value
+#ANNOTATION: substitute max_value and min_value for self.max_value and self.min_value.
+        if kwargs.get('localize') and self.widget == NumberInput:
+#ANNOTATION: get the value under the 'localize' key of the kwargs dictionary, if it is true and self.widget equals to NumberInput,
+            # Localized number input is not well supported on most browsers
+            kwargs.setdefault('widget', super(IntegerField, self).widget)
+#ANNOTATION: if 'widget' key of the kwargs dictionary doesnt exists assign it widget field of the base class of the IntegerField class value.
+        super(IntegerField, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class IntegerField, with arguments unpacked list args and unpacked dictionary kwargs.
+
+        if max_value is not None:
+#ANNOTATION: if max_value is not None,
+            self.validators.append(validators.MaxValueValidator(max_value))
+#ANNOTATION: call the method validators.MaxValueValidator with max_value converted into an integer, append the result to list self.validators.
+        if min_value is not None:
+#ANNOTATION: if min_value is not None,
+            self.validators.append(validators.MinValueValidator(min_value))
+#ANNOTATION: call the method validators.MinValueValidator with min_value converted into an integer, append the result to list self.validators.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        """
+        Validates that int() can be called on the input. Returns the result
+        of int(). Returns None for empty values.
+        """
+#ANNOTATION: docstring
+        value = super(IntegerField, self).to_python(value)
+#ANNOTATION: call the method to_python with an argument value, from the base class of the IntegerField class, substitute the result for value.
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            return None
+#ANNOTATION: return None.
+        if self.localize:
+#ANNOTATION: if self.localize is true,
+            value = formats.sanitize_separators(value)
+#ANNOTATION: call the method formats.sanitize_separators with an argument value, substitute the result for value.
+        try:
+#ANNOTATION: try,
+            value = int(str(value))
+#ANNOTATION: convert value into an string, convert the result into an integer and substitute it for value.
+        except (ValueError, TypeError):
+#ANNOTATION: if ValueError or TypeError exceptions are caught,
+            raise ValidationError(self.error_messages['invalid'], code='invalid')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid' key of the self.error_messages dictionary and code set to 'invalid'.
+        return value
+#ANNOTATION: return value
+
+    def widget_attrs(self, widget):
+#ANNOTATION: define the method widget_attrs with arguments self and widget.
+        attrs = super(IntegerField, self).widget_attrs(widget)
+#ANNOTATION: call the method widget_attrs with an argument widget, from the base class of the class IntegerField, substitute it for attrs.
+        if isinstance(widget, NumberInput):
+#ANNOTATION: if widget is an instance of the NumberInput,
+            if self.min_value is not None:
+#ANNOTATION: if self.min_value is not None,
+                attrs['min'] = self.min_value
+#ANNOTATION: substitute self.min_value for the value under the 'min' key of the attrs dictionary.
+            if self.max_value is not None:
+#ANNOTATION: if self.max_value is not None,
+                attrs['max'] = self.max_value
+#ANNOTATION: substitute self.max_value for the value under the 'max' key of the attrs dictionary.
+        return attrs
+#ANNOTATION: return attrs.
+
+
+class FloatField(IntegerField):
+#ANNOTATION: derive the class FloatField from the base class IntegerField class.
+    default_error_messages = {
+        'invalid': _('Enter a number.'),
+    }
+#ANNOTATION: default_error_messages is an dictionary with an initial entry: result of the function _ called with an argument string,
+#ANNOTATION: 'Enter a number.' for 'invalid'.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        """
+        Validates that float() can be called on the input. Returns the result
+        of float(). Returns None for empty values.
+        """
+#ANNOTATION: docstring
+        value = super(IntegerField, self).to_python(value)
+#ANNOTATION: call the method to_python with an argument value, from the base class of the IntegerField class, substitute the result for value.
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            return None
+#ANNOTATION: return None.
+        if self.localize:
+#ANNOTATION: if self.localize is true,
+            value = formats.sanitize_separators(value)
+#ANNOTATION: call the method formats.sanitize_separators with an argument value, substitute the result for value.
+        try:
+#ANNOTATION: try,
+            value = float(value)
+#ANNOTATION: convert value into an floating point number, substitute it for value.
+        except (ValueError, TypeError):
+#ANNOTATION: if ValueError or TypeError exceptions are caught,
+            raise ValidationError(self.error_messages['invalid'], code='invalid')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid' key of the self.error_messages dictionary and code set to 'invalid'.
+        return value
+#ANNOTATION: return value.
+
+    def validate(self, value):
+#ANNOTATION: define the method validate with arguments self and value.
+        super(FloatField, self).validate(value)
+#ANNOTATION: call the method validate with an argument value, from the base class of the FloatField class.
+
+        # Check for NaN (which is the only thing not equal to itself) and +/- infinity
+        if value != value or value in (Decimal('Inf'), Decimal('-Inf')):
+#ANNOTATION: if value is Nan, or value is contained in return value of the Decimal called twice with string 'Inf' and with string '-Inf',
+            raise ValidationError(self.error_messages['invalid'], code='invalid')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid' key of the self.error_messages dictionary and code set to 'invalid'.
+
+        return value
+#ANNOTATION: return value.
+
+    def widget_attrs(self, widget):
+#ANNOTATION: define the method widget_attrs with arguments self and widget.
+        attrs = super(FloatField, self).widget_attrs(widget)
+#ANNOTATION: call the method widget_attrs with an argument widget, from the base class of the FloatField class, substitute the result for attrs.
+        if isinstance(widget, NumberInput) and 'step' not in widget.attrs:
+#ANNOTATION: if widget is an instance of the NumberInput class, and string 'step' is not contained in widget.attrs,
+            attrs.setdefault('step', 'any')
+#ANNOTATION: if 'step' attribute of attrs dictionary does not exists, set it to to string 'any'.
+        return attrs
+#ANNOTATION: return attrs.
+
+
+class DecimalField(IntegerField):
+#ANNOTATION: derive the class DecimalField from the base class IntegerField class.
+    default_error_messages = {
+        'invalid': _('Enter a number.'),
+        'max_digits': ungettext_lazy(
+            'Ensure that there are no more than %(max)s digit in total.',
+            'Ensure that there are no more than %(max)s digits in total.',
+            'max'),
+        'max_decimal_places': ungettext_lazy(
+            'Ensure that there are no more than %(max)s decimal place.',
+            'Ensure that there are no more than %(max)s decimal places.',
+            'max'),
+        'max_whole_digits': ungettext_lazy(
+            'Ensure that there are no more than %(max)s digit before the decimal point.',
+            'Ensure that there are no more than %(max)s digits before the decimal point.',
+            'max'),
+    }
+#ANNOTATION: default_error_messages is a dictionary with 4 initial entries: return value of the function _ called with string as an argument,
+#ANNOTATION: 'Enter a number.' for 'invalid', return value of the function ungettext_lazy called with 3 string arguments:
+#ANNOTATION: 'Ensure that there are no more than %(max)s digit in total.', 'Ensure that there are no more than %(max)s digits in total.',
+#ANNOTATION: and 'max' for 'max_digits', return value of the function ungettext_lazy called with 3 string arguments: 
+#ANNOTATION: 'Ensure that there are no more than %(max)s decimal place.', 'Ensure that there are no more than %(max)s decimal places.' and 'max',
+#ANNOTATION: for 'max_decimal_places' and return value of the function ungettext_lazy called with 3 string arguments:
+#ANNOTATION: 'Ensure that there are no more than %(max)s digit before the decimal point.', 
+#ANNOTATION: 'Ensure that there are no more than %(max)s digits before the decimal point.' and 'max' for 'max_whole_digits'. 
+
+    def __init__(self, max_value=None, min_value=None, max_digits=None, decimal_places=None, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 7 arguments: self, max_value set to None, min_value set to None, max_digits set to None,
+#ANNOTATION: decimal_places set to None, unpacked list args and unpacked dictionary kwargs.
+        self.max_digits, self.decimal_places = max_digits, decimal_places
+#ANNOTATION: substitute max_digits and decimal_places for self.max_digits and self.decimal_places.
+        super(DecimalField, self).__init__(max_value, min_value, *args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class DecimalField, with 4 arguments: max_value, min_value, 
+#ANNOTATION: unpacked list args and unpacked dictionary kwargs.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        """
+        Validates that the input is a decimal number. Returns a Decimal
+        instance. Returns None for empty values. Ensures that there are no more
+        than max_digits in the number, and no more than decimal_places digits
+        after the decimal point.
+        """
+#ANNOTATION: docstring
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            return None
+#ANNOTATION: return None.
+        if self.localize:
+#ANNOTATION: if self.localize is true,
+            value = formats.sanitize_separators(value)
+#ANNOTATION: call the method formats.sanitize_separators with an argument value, substitute the result for value.
+        value = smart_text(value).strip()
+#ANNOTATION: call the function smart_text with an argument value, strip the result of whitespaces from both ends and substitute it for value.
+        try:
+#ANNOTATION: try,
+            value = Decimal(value)
+#ANNOTATION: value is an instance of a class Decimal created with value as an argument.
+        except DecimalException:
+#ANNOTATION: if DecimalException exception is caught,
+            raise ValidationError(self.error_messages['invalid'], code='invalid')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid' key of the self.error_messages dictionary and code set to 'invalid'.
+        return value
+#ANNOTATION: return value.
+
+    def validate(self, value):
+#ANNOTATION: define the method validate with arguments self and value.
+        super(DecimalField, self).validate(value)
+#ANNOTATION: call the method validate with an argument value from the base class of the DecimalField class.
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            return
+#ANNOTATION: return nothing.
+        # Check for NaN, Inf and -Inf values. We can't compare directly for NaN,
+        # since it is never equal to itself. However, NaN is the only value that
+        # isn't equal to itself, so we can use this to identify NaN
+        if value != value or value == Decimal("Inf") or value == Decimal("-Inf"):
+#ANNOTATION: if value is not equal to value or value equals return value of the call to Decimal with argument 'Inf',
+#ANNOTATION: or value equals return value of the call to Decimal with argument '-Inf'
+            raise ValidationError(self.error_messages['invalid'], code='invalid')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid' key of the self.error_messages dictionary and code set to 'invalid'.
+        sign, digittuple, exponent = value.as_tuple()
+#ANNOTATION: call the method value.as_tuple, assign the result to sign, digittuple and exponent, respectively.
+        decimals = abs(exponent)
+#ANNOTATION: substitute absolute value of the exponent for decimals.
+        # digittuple doesn't include any leading zeros.
+        digits = len(digittuple)
+#ANNOTATION: substitute length of digittuple for digits.
+        if decimals > digits:
+#ANNOTATION: if decimals is greater than digits,
+            # We have leading zeros up to or past the decimal point.  Count
+            # everything past the decimal point as a digit.  We do not count
+            # 0 before the decimal point as a digit since that would mean
+            # we would not allow max_digits = decimal_places.
+            digits = decimals
+#ANNOTATION: substitute decimals for digits.
+        whole_digits = digits - decimals
+#ANNOTATION: subtract decimals from digits, substitute the result for whole_digits. 
+
+        if self.max_digits is not None and digits > self.max_digits:
+#ANNOTATION: if self.max_digits is not None and digits is grater than self.max_digits,
+            raise ValidationError(
+                self.error_messages['max_digits'],
+                code='max_digits',
+                params={'max': self.max_digits},
+            )
+#ANNOTATION: raise an ValidationError with 3 arguments: value under the 'max_digits' key of the self.error_messages dictionary,
+#ANNOTATION: code set to string 'max_digits' and params set to a dictionary with an entry: self.max_digits for 'max'.
+        if self.decimal_places is not None and decimals > self.decimal_places:
+#ANNOTATION: if self.decimal_places is not None and decimals is grater than self.decimal_places:
+            raise ValidationError(
+                self.error_messages['max_decimal_places'],
+                code='max_decimal_places',
+                params={'max': self.decimal_places},
+            )
+#ANNOTATION: raise an ValidationError with 3 arguments: value under the 'max_decimal_places' key of the self.error_messages dictionary,
+#ANNOTATION: code set to string 'max_decimal_places' and params set to a dictionary with an entry: self.decimal_places for 'max'.
+        if (self.max_digits is not None and self.decimal_places is not None
+                and whole_digits > (self.max_digits - self.decimal_places)):
+#ANNOTATION:  if self.max_digits is not None and self.decimal_places is not None and whole_digits is grater than the difference of,
+#ANNOTATION: self.max_digits and self.decimal_places,
+            raise ValidationError(
+                self.error_messages['max_whole_digits'],
+                code='max_whole_digits',
+                params={'max': (self.max_digits - self.decimal_places)},
+            )
+#ANNOTATION: raise an ValidationError with 3 arguments: value under the 'max_whole_digits' key of the self.error_messages dictionary,
+#ANNOTATION: code set to string 'max_whole_digits' and params set to a dictionary with an entry: difference of the self.max_digits and self.decimal_places, for 'max'.
+        return value
+#ANNOTATION:  return value.
+
+    def widget_attrs(self, widget):
+#ANNOTATION: define the method widget_attrs with arguments self and widget.
+        attrs = super(DecimalField, self).widget_attrs(widget)
+#ANNOTATION: call the method widget_attrs with an argument widget, from the base class of the DecimalField class, substitute the result for attrs.
+        if isinstance(widget, NumberInput) and 'step' not in widget.attrs:
+#ANNOTATION: if widget is an instance of NumberInput and string 'step' is not contained in widget.attrs.
+            if self.decimal_places is not None:
+#ANNOTATION: if self.decimal_places is not None,
+                # Use exponential notation for small values since they might
+                # be parsed as 0 otherwise. ref #20765
+                step = str(Decimal('1') / 10 ** self.decimal_places).lower()
+#ANNOTATION: call the object Decimal with string '1' as an argument, divide it by 10, bring the result to the power of self.decimal_places,
+#ANNOTATION: convert the result to a lowercase string, substitute it for step.
+            else:
+#ANNOTATION: if not,
+                step = 'any'
+#ANNOTATION: step is an string 'any'.
+            attrs.setdefault('step', step)
+#ANNOTATION: if 'step' key of the attrs dictionary doesnt exists assign it step as an value.
+        return attrs
+#ANNOTATION: return attrs.
+
+
+class BaseTemporalField(Field):
+#ANNOTATION: derive the class BaseTemporalField from the base class Field class.
+
+    def __init__(self, input_formats=None, *args, **kwargs):
+#ANNOTATION: define the method __init__ with arguments self, input_formats set to None, unpacked list args and unpacked dictionary kwargs.
+        super(BaseTemporalField, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the BaseTemporalField class, with arguments: unpacked list args and unpacked dictionary kwargs.
+        if input_formats is not None:
+#ANNOTATION: if input_formats is not None,
+            self.input_formats = input_formats
+#ANNOTATION: substitute input_formats for self.input_formats.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        # Try to coerce the value to unicode.
+        unicode_value = force_text(value, strings_only=True)
+#ANNOTATION: call the function force_text with arguments value and strings_only set to boolean True, substitute the result for unicode_value.
+        if isinstance(unicode_value, six.text_type):
+#ANNOTATION: if unicode_value is an instance of six.text_type,
+            value = unicode_value.strip()
+#ANNOTATION: strip whitespaces from both ends of unicode_value, substitute the result for value.
+        # If unicode, try to strptime against each input format.
+        if isinstance(value, six.text_type):
+#ANNOTATION: if value is an instance of six.text_type class,
+            for format in self.input_formats:
+#ANNOTATION: for every format in self.input_formats,
+                try:
+#ANNOTATION: try,
+                    return self.strptime(value, format)
+#ANNOTATION: call the method self.strptime with arguments value and format, return the result.
+                except (ValueError, TypeError):
+#ANNOTATION: if ValueError or TypeError exceptions are caught,
+                    continue
+#ANNOTATION: skip this loop iteration.
+        raise ValidationError(self.error_messages['invalid'], code='invalid')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid' key of the self.error_messages dictionary and code set to 'invalid'.
+
+    def strptime(self, value, format):
+#ANNOTATION: define the method strptime with arguments self, value and format.
+        raise NotImplementedError('Subclasses must define this method.')
+#ANNOTATION: raise an NotImplementedError with an argument string 'Subclasses must define this method.'.
+
+
+class DateField(BaseTemporalField):
+#ANNOTATION: derive the class DateField from the base class BaseTemporalField class.
+    widget = DateInput
+#ANNOTATION: substitute DateInput for widget. 
+    input_formats = formats.get_format_lazy('DATE_INPUT_FORMATS')
+#ANNOTATION: call the method formats.get_format_lazy with an argument string 'DATE_INPUT_FORMATS', substitute the result for input_formats.
+    default_error_messages = {
+        'invalid': _('Enter a valid date.'),
+    }
+#ANNOTATION: default_error_messages is an dictionary with an entry: return value of the function _ called with an argument string 'Enter a valid date.' for 'invalid'. 
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        """
+        Validates that the input can be converted to a date. Returns a Python
+        datetime.date object.
+        """
+#ANNOTATION: docstring
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            return None
+#ANNOTATION: return None.
+        if isinstance(value, datetime.datetime):
+#ANNOTATION: if value is an instance of datetime.datetime class,
+            return value.date()
+#ANNOTATION: call the method value.date, return the result.
+        if isinstance(value, datetime.date):
+#ANNOTATION: if value is an instance of datetime.date class,
+            return value
+#ANNOTATION: return value.
+        return super(DateField, self).to_python(value)
+#ANNOTATION: call the method to_python with an argument value from the base class of the DateField class, return the result.
+
+    def strptime(self, value, format):
+#ANNOTATION: define the method strptime with arguments self, value and format.
+        return datetime.datetime.strptime(force_str(value), format).date()
+#ANNOTATION: call the method datetime.datetime.strptime with 2 arguments: result of the function force_str called with an argument value,
+#ANNOTATION: and format, call the method date on the result, return the result.
+
+
+class TimeField(BaseTemporalField):
+#ANNOTATION: derive the class TimeField from the base class BaseTemporalField class.
+    widget = TimeInput
+#ANNOTATION: substitute TimeInput for widget.
+    input_formats = formats.get_format_lazy('TIME_INPUT_FORMATS')
+#ANNOTATION: call the method formats.get_format_lazy with an argument string 'TIME_INPUT_FORMATS', substitute the result for input_formats.
+    default_error_messages = {
+        'invalid': _('Enter a valid time.')
+    }
+#ANNOTATION: default_error_messages is an dictionary with an entry: return value of the function _ called with an argument string 'Enter a valid time.' for 'invalid'.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        """
+        Validates that the input can be converted to a time. Returns a Python
+        datetime.time object.
+        """
+#ANNOTATION: docstring
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            return None
+#ANNOTATION: return None.
+        if isinstance(value, datetime.time):
+#ANNOTATION: if value is an instance of datetime.time,
+            return value
+#ANNOTATION: return value,
+        return super(TimeField, self).to_python(value)
+#ANNOTATION: call the method to_python with an argument value from the base class of the TimeField class, return the result.
+
+    def strptime(self, value, format):
+#ANNOTATION: define the method strptime with arguments self, value and format.
+        return datetime.datetime.strptime(force_str(value), format).time()
+#ANNOTATION: call the method datetime.datetime.strptime with 2 arguments: result of the function force_str called with an argument value,
+#ANNOTATION: and format, call the method time on the result, return the result.
+
+
+class DateTimeField(BaseTemporalField):
+#ANNOTATION: derive the class DateTimeField from the base class BaseTemporalField class.
+    widget = DateTimeInput
+#ANNOTATION: substitute DateTimeInput for widget.
+    input_formats = formats.get_format_lazy('DATETIME_INPUT_FORMATS')
+#ANNOTATION: call the method formats.get_format_lazy with an argument string 'DATETIME_INPUT_FORMATS', substitute the result for input_formats.
+    default_error_messages = {
+        'invalid': _('Enter a valid date/time.'),
+    }
+#ANNOTATION: default_error_messages is an dictionary with an entry: return value of the function _ called with an argument string 'Enter a valid date/time.' for 'invalid'.
+
+    def prepare_value(self, value):
+#ANNOTATION: define the method prepare_value with arguments self and value.
+        if isinstance(value, datetime.datetime):
+#ANNOTATION: if value is an instance of datetime.datetime,
+            value = to_current_timezone(value)
+#ANNOTATION: call the function to_current_timezone with an argument value, substitute the result for value.
+        return value
+#ANNOTATION: return value.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        """
+        Validates that the input can be converted to a datetime. Returns a
+        Python datetime.datetime object.
+        """
+#ANNOTATION: docstring
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            return None
+#ANNOTATION: return None.
+        if isinstance(value, datetime.datetime):
+#ANNOTATION: if value is an instance of datetime.datetime,
+            return from_current_timezone(value)
+#ANNOTATION: call the function __current_timezone with an argument value, return the result.
+        if isinstance(value, datetime.date):
+#ANNOTATION: if value is an instance of datetime.date,
+            result = datetime.datetime(value.year, value.month, value.day)
+#ANNOTATION: call the function datetime.datetime with 3 arguments: value.year, value.month and value.day, substitute the result for result.
+            return from_current_timezone(result)
+#ANNOTATION: call the function from_current_timezone with an argument result, return the result.
+        if isinstance(value, list):
+#ANNOTATION: if value is an instance of list type,
+            # Input comes from a SplitDateTimeWidget, for example. So, it's two
+            # components: date and time.
+            warnings.warn(
+                'Using SplitDateTimeWidget with DateTimeField is deprecated. '
+                'Use SplitDateTimeField instead.',
+                RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the function warnings.warn with 3 arguments: string 'Using SplitDateTimeWidget with DateTimeField is deprecated. '
+#ANNOTATION: 'Use SplitDateTimeField instead.', RemovedInDjango19Warning and stacklevel set to integer 2.
+            if len(value) != 2:
+#ANNOTATION: if length of value is not equal to integer 2,
+                raise ValidationError(self.error_messages['invalid'], code='invalid')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid' key of the self.error_messages dictionary and code set to 'invalid'.
+            if value[0] in self.empty_values and value[1] in self.empty_values:
+#ANNOTATION: if first and second elements of value are contained in self.empty_values,
+                return None
+#ANNOTATION: return None.
+            value = '%s %s' % tuple(value)
+#ANNOTATION: substitute '%s' in string '%s %s' with the elements of value converted into a tuple, substitute the result for value.
+        result = super(DateTimeField, self).to_python(value)
+#ANNOTATION: call the method to_python with an argument value from the base class of the DateTimeField class, substitute the result for result.
+        return from_current_timezone(result)
+#ANNOTATION: call the function from_current_timezone with an argument, return the result.
+
+    def strptime(self, value, format):
+#ANNOTATION: define the method strptime with arguments self, value and format.
+        return datetime.datetime.strptime(force_str(value), format)
+#ANNOTATION: call the method datetime.datetime.strptime with 2 arguments: result of the function force_str called with an argument value,
+#ANNOTATION: and format, return the result.
+
+
+class RegexField(CharField):
+#ANNOTATION: derive the class RegexField from the base class CharField class.
+    def __init__(self, regex, max_length=None, min_length=None, error_message=None, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 7 arguments: self, regex, max_length set to None, min_length set to None, error_message set to None,
+#ANNOTATION: unpacked list args and unpacked dictionary kwargs.
+        """
+        regex can be either a string or a compiled regular expression object.
+        error_message is an optional error message to use, if
+        'Enter a valid value' is too generic for you.
+        """
+#ANNOTATION: docstring
+        # error_message is just kept for backwards compatibility:
+        if error_message is not None:
+#ANNOTATION: if error_message is not None,
+            error_messages = kwargs.get('error_messages') or {}
+#ANNOTATION: get the value under the 'error_messages' key of the kwargs dictionary, if it exists substitute it for error_messages, if not,
+#ANNOTATION: error_messages is an empty dictionary.
+            error_messages['invalid'] = error_message
+#ANNOTATION: substitute error_message for value under the 'invalid' key of the error_messages dictionary.
+            kwargs['error_messages'] = error_messages
+#ANNOTATION: substitute error_messages for value under the ''error_messages' key of the kwargs dictionary.
+        super(RegexField, self).__init__(max_length, min_length, *args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class RegexField, with 4 arguments: max_length, min_length, unpacked list args,
+#ANNOTATION: unpacked dictionary kwargs.
+        self._set_regex(regex)
+#ANNOTATION: call the method self._set_regex with an argument regex.
+
+    def _get_regex(self):
+#ANNOTATION: define the method _get_regex an argument self.
+        return self._regex
+#ANNOTATION: return self._regex.
+
+    def _set_regex(self, regex):
+#ANNOTATION: define the method _set_regex with arguments self and regex.
+        if isinstance(regex, six.string_types):
+#ANNOTATION: if regex is an instance of six.string_types class,
+            regex = re.compile(regex, re.UNICODE)
+#ANNOTATION: call the function re.compile with 2 arguments regex, re.UNICODE and substitute the result for regex.
+        self._regex = regex
+#ANNOTATION: substitute regex for self._regex.
+        if hasattr(self, '_regex_validator') and self._regex_validator in self.validators:
+#ANNOTATION: if self has an '_regex_validator' attribute and self._regex_validator is contained in self.validators,
+            self.validators.remove(self._regex_validator)
+#ANNOTATION: remove self._regex_validator from self.validators.
+        self._regex_validator = validators.RegexValidator(regex=regex)
+#ANNOTATION: call the method validators.RegexValidator with an argument regex set to regex, substitute it for self._regex_validator. 
+        self.validators.append(self._regex_validator)
+#ANNOTATION: append self._regex_validator to self.validators.
+
+    regex = property(_get_regex, _set_regex)
+#ANNOTATION: regex is an property object of this class, with _get_regex getter and _set_regex setter function.
+
+
+class EmailField(CharField):
+#ANNOTATION: derive the class EmailField from the base class CharField class.
+    widget = EmailInput
+#ANNOTATION: substitute EmailInput for widget.
+    default_validators = [validators.validate_email]
+#ANNOTATION: default_validators is a list with an element validators.validate_email.
+
+    def clean(self, value):
+#ANNOTATION: define the method clean with 2 arguments self and value.
+        value = self.to_python(value).strip()
+#ANNOTATION: call the method self.to_python with an argument value, strip the whitespaces from the both ends of the result and substitute it for value.
+        return super(EmailField, self).clean(value)
+#ANNOTATION: call the method clean with an argument value from the base class of the EmailField class. 
+
+
+class FileField(Field):
+#ANNOTATION: derive the class FileField from the base class Field class.
+    widget = ClearableFileInput
+#ANNOTATION: substitute ClearableFileInput for widget.
+    default_error_messages = {
+        'invalid': _("No file was submitted. Check the encoding type on the form."),
+        'missing': _("No file was submitted."),
+        'empty': _("The submitted file is empty."),
+        'max_length': ungettext_lazy(
+            'Ensure this filename has at most %(max)d character (it has %(length)d).',
+            'Ensure this filename has at most %(max)d characters (it has %(length)d).',
+            'max'),
+        'contradiction': _('Please either submit a file or check the clear checkbox, not both.')
+    }
+#ANNOTATION: default_error_messages is an dictionary with 5 initial entries: return value of the function _ called with an argument string,
+#ANNOTATION: "No file was submitted. Check the encoding type on the form." for 'invalid', return value of the function _ called with an argument,
+#ANNOTATION: string "No file was submitted." for 'missing', return value of the function _ called with an argument "The submitted file is empty.",
+#ANNOTATION: for 'empty', return value of the function ungettext_lazy called with 3 arguments:
+#ANNOTATION: string 'Ensure this filename has at most %(max)d character (it has %(length)d).', 
+#ANNOTATION: string 'Ensure this filename has at most %(max)d characters (it has %(length)d).' and string 'max' for 'max_length',
+#ANNOTATION: and return value of the function _ called with an argument string,
+#ANNOTATION: 'Please either submit a file or check the clear checkbox, not both.' for 'contradiction'.
+
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+        self.max_length = kwargs.pop('max_length', None)
+#ANNOTATION: remove the value under 'max_length' key from the kwargs dictionary and if the key exists substitute it for self.max_length, 
+#ANNOTATION: if not self.max_length is None.
+        self.allow_empty_file = kwargs.pop('allow_empty_file', False)
+#ANNOTATION: remove the value under 'allow_empty_file' key from the kwargs dictionary and if the key exists,
+#ANNOTATION: substitute it for self.allow_empty_file, if not self.allow_empty_file is boolean False.
+        super(FileField, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the FileField class, with 2 arguments: unpacked list args and unpacked dictionary.
+
+    def to_python(self, data):
+#ANNOTATION: define the method to_python with arguments self and data.
+        if data in self.empty_values:
+#ANNOTATION: if data in self.empty_values is true,
+            return None
+#ANNOTATION: return None.
+
+        # UploadedFile objects should have name and size attributes.
+        try:
+#ANNOTATION: try,
+            file_name = data.name
+#ANNOTATION: substitute data.name for file_name.
+            file_size = data.size
+#ANNOTATION: substitute data.size for file_name.
+        except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+            raise ValidationError(self.error_messages['invalid'], code='invalid')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid' key of the self.error_messages dictionary and code set to 'invalid'.
+
+        if self.max_length is not None and len(file_name) > self.max_length:
+#ANNOTATION: if self.max_length is not None and length of file_name is grater than self.max_length,
+            params = {'max': self.max_length, 'length': len(file_name)}
+#ANNOTATION: params is a dictionary with 2 initial entries: self.max_length for 'max' and length of file_name for 'length'.
+            raise ValidationError(self.error_messages['max_length'], code='max_length', params=params)
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'max_length' key of the self.error_messages dictionary and code set to 'max_length'.
+        if not file_name:
+#ANNOTATION: if file_name is false,
+            raise ValidationError(self.error_messages['invalid'], code='invalid')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid' key of the self.error_messages dictionary and code set to 'invalid'.
+        if not self.allow_empty_file and not file_size:
+#ANNOTATION: if self.allow_empty_file and file_size are both false,
+            raise ValidationError(self.error_messages['empty'], code='empty')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'empty' key of the self.error_messages dictionary and code set to 'empty'.
+
+        return data
+#ANNOTATION: return data.
+
+    def clean(self, data, initial=None):
+#ANNOTATION: define the method clean with arguments self, data and initial set to None.
+        # If the widget got contradictory inputs, we raise a validation error
+        if data is FILE_INPUT_CONTRADICTION:
+#ANNOTATION: if data is bound to the same object as FILE_INPUT_CONTRADICTION,
+            raise ValidationError(self.error_messages['contradiction'], code='contradiction')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'contradiction' key of the self.error_messages dictionary and code set to 'contradiction'.
+        # False means the field value should be cleared; further validation is
+        # not needed.
+        if data is False:
+#ANNOTATION: if data is boolean False,
+            if not self.required:
+#ANNOTATION: if self.required is false,
+                return False
+#ANNOTATION: return boolean False.
+            # If the field is required, clearing is not possible (the widget
+            # shouldn't return False data in that case anyway). False is not
+            # in self.empty_value; if a False value makes it this far
+            # it should be validated from here on out as None (so it will be
+            # caught by the required check).
+            data = None
+#ANNOTATION: data is None.
+        if not data and initial:
+#ANNOTATION: if data is false and initial is true,
+            return initial
+#ANNOTATION: return initial.
+        return super(FileField, self).clean(data)
+#ANNOTATION: call the method clean with an argument data from the base class of the class FileField, return the result.
+
+    def bound_data(self, data, initial):
+#ANNOTATION: define the method bound_data with arguments self, data and initial.
+        if data in (None, FILE_INPUT_CONTRADICTION):
+#ANNOTATION: if data is not None or FILE_INPUT_CONTRADICTION,
+            return initial
+#ANNOTATION: return initial.
+        return data
+#ANNOTATION: return data.
+
+    def _has_changed(self, initial, data):
+#ANNOTATION: define the method _has_changed with arguments self, data and initial.
+        if data is None:
+#ANNOTATION: if data is None,
+            return False
+#ANNOTATION: return is boolean False.
+        return True
+#ANNOTATION: return is boolean True.
+
+
+class ImageField(FileField):
+#ANNOTATION: derive the class ImageField from the base class FileField class.
+    default_error_messages = {
+        'invalid_image': _("Upload a valid image. The file you uploaded was either not an image or a corrupted image."),
+    }
+#ANNOTATION: default_error_messages is an dictionary with an entry: return value of the function _ called with an argument string,
+#ANNOTATION: '"Upload a valid image. The file you uploaded was either not an image or a corrupted image."' for 'invalid_image'.
+
+    def to_python(self, data):
+#ANNOTATION: define the method to_python with arguments self and data.
+        """
+        Checks that the file-upload field data contains a valid image (GIF, JPG,
+        PNG, possibly others -- whatever the Python Imaging Library supports).
+        """
+#ANNOTATION: docstring
+        f = super(ImageField, self).to_python(data)
+#ANNOTATION: call the method to_python with an argument data from the base class of the class ImageField, substitute the result for f.
+        if f is None:
+#ANNOTATION: if f is None,
+            return None
+#ANNOTATION: return None.
+
+        from PIL import Image
+#ANNOTATION: from PIL import Image into default namespace.
+
+        # We need to get a file object for Pillow. We might have a path or we might
+        # have to read the data into memory.
+        if hasattr(data, 'temporary_file_path'):
+#ANNOTATION: if data has an 'temporary_file_path' attribute,
+            file = data.temporary_file_path()
+#ANNOTATION: substitute the result of the function data.temporary_file_path for file.
+        else:
+#ANNOTATION: if not,
+            if hasattr(data, 'read'):
+#ANNOTATION: if data has an attribute 'read',
+                file = BytesIO(data.read())
+#ANNOTATION: file is an instance of BytesIO class created with an argument: return value of the method data.read.
+            else:
+#ANNOTATION: if not,
+                file = BytesIO(data['content'])
+#ANNOTATION:  file is an instance of BytesIO class created with an argument: value under the 'content' key of the data dictionary.
+
+        try:
+#ANNOTATION: try,
+            # load() could spot a truncated JPEG, but it loads the entire
+            # image in memory, which is a DoS vector. See #3848 and #18520.
+            # verify() must be called immediately after the constructor.
+            Image.open(file).verify()
+#ANNOTATION: call the method Image.open with an argument file, on the result call the verify method 
+        except Exception:
+#ANNOTATION: if Exception exception is caught,
+            # Pillow doesn't recognize it as an image.
+            six.reraise(ValidationError, ValidationError(
+                self.error_messages['invalid_image'],
+                code='invalid_image',
+            ), sys.exc_info()[2])
+#ANNOTATION: call the function six.reraise with 3 arguments: ValidationError, ValidationError created with 2 arguments:
+#ANNOTATION: value under the 'invalid_image' key of the self.error_messages dictionary and code set to a string 'invalid_image',
+#ANNOTATION: and third element of the return value of the function sys.exc_info.
+
+        if hasattr(f, 'seek') and callable(f.seek):
+#ANNOTATION: if f has an attribute 'seek' and if f.seek is an callable object,
+            f.seek(0)
+#ANNOTATION: call the method f.seek with an argument integer 0.
+        return f
+#ANNOTATION: return f.
+
+
+class URLField(CharField):
+#ANNOTATION: derive the class URLField from the base class CharField class.
+    widget = URLInput
+#ANNOTATION: substitute URLInput for widget.
+    default_error_messages = {
+        'invalid': _('Enter a valid URL.'),
+    }
+#ANNOTATION: default_error_messages is an dictionary with an entry: return value of the function _ called with an argument string 'Enter a valid URL.' for 'invalid'.
+    default_validators = [validators.URLValidator()]
+#ANNOTATION: default_validators is a list with an element, return value of the validators.URLValidator method.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and data.
+
+        def split_url(url):
+#ANNOTATION: define the function split_url with an argument url.
+            """
+            Returns a list of url parts via ``urlparse.urlsplit`` (or raises a
+            ``ValidationError`` exception for certain).
+            """
+#ANNOTATION: docstring
+            try:
+#ANNOTATION: try,
+                return list(urlsplit(url))
+#ANNOTATION: call the urlsplit with an argument url, convert the result into a list and return it.
+            except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+                # urlparse.urlsplit can raise a ValueError with some
+                # misformatted URLs.
+                raise ValidationError(self.error_messages['invalid'], code='invalid')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid' key of the self.error_messages dictionary and code set to 'invalid'.
+
+        value = super(URLField, self).to_python(value)
+#ANNOTATION: call the method to_python with an argument data from the base class of the class URLField, substitute the result for value.
+        if value:
+#ANNOTATION: if value is true,
+            url_fields = split_url(value)
+#ANNOTATION: call the function split_url with an argument value, substitute the result for url_fields.
+            if not url_fields[0]:
+#ANNOTATION: if first element of the url_fields is false,
+                # If no URL scheme given, assume http://
+                url_fields[0] = 'http'
+#ANNOTATION: first element of url_fields is string 'http'.
+            if not url_fields[1]:
+#ANNOTATION: if second element of url_fields is false,
+                # Assume that if no domain is provided, that the path segment
+                # contains the domain.
+                url_fields[1] = url_fields[2]
+#ANNOTATION: substitute third element of url_fields for second element of url_fields.
+                url_fields[2] = ''
+#ANNOTATION: third element of url_fields is an empty string.
+                # Rebuild the url_fields list, since the domain segment may now
+                # contain the path too.
+                url_fields = split_url(urlunsplit(url_fields))
+#ANNOTATION: call the function urlunsplit with an argument url_fields, use the result as an argument for the call to the function split_url,
+#ANNOTATION: substitute the result for url_fields.
+            value = urlunsplit(url_fields)
+#ANNOTATION: call the function urlunsplit with an argument url_fields, substitute the result for value.
+        return value
+#ANNOTATION: return value.
+
+    def clean(self, value):
+#ANNOTATION: define the method clean with arguments self and value.
+        value = self.to_python(value).strip()
+#ANNOTATION: call the method self.to_python with an argument value, strip the whitespaces from the result, substitute it for value.
+        return super(URLField, self).clean(value)
+#ANNOTATION: call the method clean with an argument data from the base class of the class URLField, return the result.
+
+
+class BooleanField(Field):
+#ANNOTATION: derive the class BooleanField from the base class Field class.
+    widget = CheckboxInput
+#ANNOTATION: substitute CheckboxInput for widget.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        """Returns a Python boolean object."""
+#ANNOTATION: docstring
+        # Explicitly check for the string 'False', which is what a hidden field
+        # will submit for False. Also check for '0', since this is what
+        # RadioSelect will provide. Because bool("True") == bool('1') == True,
+        # we don't need to handle that explicitly.
+        if isinstance(value, six.string_types) and value.lower() in ('false', '0'):
+#ANNOTATION: if value is an instance of six.string_types and value converted to lowercase is not equal to strings 'false' or '0',
+            value = False
+#ANNOTATION: value is boolean False.
+        else:
+#ANNOTATION: if not,
+            value = bool(value)
+#ANNOTATION: convert value into boolean and substitute it for value.
+        return super(BooleanField, self).to_python(value)
+#ANNOTATION: call the method to_python with an argument data from the base class of the class BooleanField, return the result.
+
+    def validate(self, value):
+#ANNOTATION: define the method validate with arguments self and value.
+        if not value and self.required:
+#ANNOTATION: if value is false and self.required is true,
+            raise ValidationError(self.error_messages['required'], code='required')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'required' key of the self.error_messages dictionary and code set to 'required'.
+
+    def _has_changed(self, initial, data):
+#ANNOTATION: define the method _has_changed with arguments self, initial and data.
+        # Sometimes data or initial could be None or '' which should be the
+        # same thing as False.
+        if initial == 'False':
+#ANNOTATION:  if initial equals a string 'False',
+            # show_hidden_initial may have transformed False to 'False'
+            initial = False
+#ANNOTATION: initial is boolean False.
+        return bool(initial) != bool(data)
+#ANNOTATION: convert initial and data into boolean, if they are not equal return boolean True, if they are return boolean False.
+
+
+class NullBooleanField(BooleanField):
+#ANNOTATION: derive the class NullBooleanField from the base class BooleanField class.
+    """
+    A field whose valid values are None, True and False. Invalid values are
+    cleaned to None.
+    """
+#ANNOTATION: docstring
+    widget = NullBooleanSelect
+#ANNOTATION: substitute NullBooleanSelect for widget.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        """
+        Explicitly checks for the string 'True' and 'False', which is what a
+        hidden field will submit for True and False, and for '1' and '0', which
+        is what a RadioField will submit. Unlike the Booleanfield we need to
+        explicitly check for True, because we are not using the bool() function
+        """
+#ANNOTATION: docstring
+        if value in (True, 'True', '1'):
+#ANNOTATION: if value is boolean True, string 'True' or string '1',
+            return True
+#ANNOTATION: return boolean True.
+        elif value in (False, 'False', '0'):
+#ANNOTATION: otherwise if value is boolean False, string 'False' or string '0'
+            return False
+#ANNOTATION: return boolean False,
+        else:
+#ANNOTATION: if not,
+            return None
+#ANNOTATION: return None.
+
+    def validate(self, value):
+#ANNOTATION: define the method validate with arguments self and value.
+        pass
+#ANNOTATION: do nothing.
+
+    def _has_changed(self, initial, data):
+#ANNOTATION: define the method _has_changed with arguments self, initial and data.
+        # None (unknown) and False (No) are not the same
+        if initial is not None:
+#ANNOTATION: if initial is not None,
+            initial = bool(initial)
+#ANNOTATION: convert initial into boolean and substitute it for initial.
+        if data is not None:
+#ANNOTATION: if data is not None,
+            data = bool(data)
+#ANNOTATION: convert data into boolean and substitute it for data.
+        return initial != data
+#ANNOTATION: if initial is not equal to data, return boolean True, if it is return boolean False.
+
+
+class ChoiceField(Field):
+#ANNOTATION: derive the class ChoiceField from the base class Field class.
+    widget = Select
+#ANNOTATION: substitute Select for widget.
+    default_error_messages = {
+        'invalid_choice': _('Select a valid choice. %(value)s is not one of the available choices.'),
+    }
+#ANNOTATION: default_error_messages is an dictionary with an entry: return value of the function _ called with an argument string,
+#ANNOTATION: 'Select a valid choice. %(value)s is not one of the available choices.' for 'invalid_choice'.
+
+    def __init__(self, choices=(), required=True, widget=None, label=None,
+                 initial=None, help_text='', *args, **kwargs):
+#ANNOTATION: define the method __init__ with 9 arguments: self, choices set to an empty tuple, required set to boolean True, widget set to None,
+#ANNOTATION: label set to None, initial set to None, help_text set to an empty string, unpacked list args and unpacked dictionary kwargs.
+        super(ChoiceField, self).__init__(required=required, widget=widget, label=label,
+                                        initial=initial, help_text=help_text, *args, **kwargs)
+#ANNOTATION: call the __init__ method of the base class of the class ChoiceField, called with 7 arguments: required set to required,
+#ANNOTATION: widget set to widget, label set to label, initial set to initial, help_text set to help_text, unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+        self.choices = choices
+#ANNOTATION: substitute choices for self.choices.
+
+    def __deepcopy__(self, memo):
+#ANNOTATION: define the method __deepcopy__ with arguments self and memo.
+        result = super(ChoiceField, self).__deepcopy__(memo)
+#ANNOTATION: call the method __deepcopy__ with an argument memo from the base class of the class ChoiceField, substitute the result for result.
+        result._choices = copy.deepcopy(self._choices, memo)
+#ANNOTATION: call the method copy.deepcopy with arguments self._choices and memo, substitute the result for result._choices.
+        return result
+#ANNOTATION: return result.
+
+    def _get_choices(self):
+#ANNOTATION: define the method _get_choices with an argument self.
+        return self._choices
+#ANNOTATION: return self._choices.
+
+    def _set_choices(self, value):
+#ANNOTATION: define the method _set_choices with arguments self and value.
+        # Setting choices also sets the choices on the widget.
+        # choices can be any iterable, but we call list() on it because
+        # it will be consumed more than once.
+        self._choices = self.widget.choices = list(value)
+#ANNOTATION: self._choices and self.widget.choices are assigned value converted into a list.
+
+    choices = property(_get_choices, _set_choices)
+#ANNOTATION: choices is an property object of this class where _get_choices is a getter and _set_choices is a setter function.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        "Returns a Unicode object."
+#ANNOTATION: docstring
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            return ''
+#ANNOTATION: return an empty string.
+        return smart_text(value)
+#ANNOTATION: call the function smart_text with an argument value, return the result.
+
+    def validate(self, value):
+#ANNOTATION: define the method validate with arguments self and value.
+        """
+        Validates that the input is in self.choices.
+        """
+#ANNOTATION: docstring
+        super(ChoiceField, self).validate(value)
+#ANNOTATION: call the method validate with an argument value from the base class of the class ChoiceField.
+        if value and not self.valid_value(value):
+#ANNOTATION: if value is true and method self.valid_value called with an argument value evaluates to false,
+            raise ValidationError(
+                self.error_messages['invalid_choice'],
+                code='invalid_choice',
+                params={'value': value},
+            )
+#ANNOTATION: raise an ValidationError with 3 arguments: value under the 'invalid_choice' key of the self.error_messages dictionary,
+#ANNOTATION: code set to an string 'invalid_choice' and dictionary params with an entry: value for 'value'.
+
+    def valid_value(self, value):
+#ANNOTATION: define the method valid_value with arguments self and value.
+        "Check to see if the provided value is a valid choice"
+#ANNOTATION: docstring
+        text_value = force_text(value)
+#ANNOTATION: call the function force_text with an argument value, substitute the result for text_value.
+        for k, v in self.choices:
+#ANNOTATION: for every k and v in self.choices,
+            if isinstance(v, (list, tuple)):
+#ANNOTATION: if v is an instance of list or tuple type,
+                # This is an optgroup, so look inside the group for options
+                for k2, v2 in v:
+#ANNOTATION: for every k2 and v2 in v,
+                    if value == k2 or text_value == force_text(k2):
+#ANNOTATION: if value equals k2 or text_value equals return value of the function force_text called with argument k2,
+                        return True
+#ANNOTATION: return boolean True.
+            else:
+#ANNOTATION: if not,
+                if value == k or text_value == force_text(k):
+#ANNOTATION: if value equals k or text_value equals return value of the function force_text called with argument k,
+                    return True
+#ANNOTATION: return boolean True.
+        return False
+#ANNOTATION: return boolean False.
+
+
+class TypedChoiceField(ChoiceField):
+#ANNOTATION: derive the class TypedChoiceField from the base class ChoiceField class.
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+        self.coerce = kwargs.pop('coerce', lambda val: val)
+#ANNOTATION: if 'coerce' key of the kwargs dictionary exists remove it and substitute its value for self.coerce, 
+#ANNOTATION: if not, self.coerce is an identity lambda function with an argument val. 
+        self.empty_value = kwargs.pop('empty_value', '')
+#ANNOTATION: if 'empty_value' key of the kwargs dictionary exists remove it and substitute its value for self.empty_value,
+#ANNOTATION: if not, sself.empty_value is an empty string. 
+        super(TypedChoiceField, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ with 2 arguments: unpacked list args and unpacked dictionary kwargs,
+#ANNOTATION: from the base class of the class TypedChoiceField.
+
+    def _coerce(self, value):
+#ANNOTATION: define the method _coerce with arguments self and value.
+        """
+        Validate that the value can be coerced to the right type (if not empty).
+        """
+#ANNOTATION: docstring
+        if value == self.empty_value or value in self.empty_values:
+#ANNOTATION: if value equals self.empty_value or value is contained in self.empty_values,
+            return self.empty_value
+#ANNOTATION: return self.empty_value.
+        try:
+#ANNOTATION: try,
+            value = self.coerce(value)
+#ANNOTATION: call the function self.coerce with an argument value, substitute it for value.
+        except (ValueError, TypeError, ValidationError):
+#ANNOTATION: if ValueError, TypeError or ValidationError exception is caught,
+            raise ValidationError(
+                self.error_messages['invalid_choice'],
+                code='invalid_choice',
+                params={'value': value},
+            )
+#ANNOTATION: raise an ValidationError with 3 arguments: value under the 'invalid_choice' key of the self.error_messages dictionary,
+#ANNOTATION: code set to an string 'invalid_choice' and dictionary params with an entry: value for 'value'.
+        return value
+#ANNOTATION: return value.
+
+    def clean(self, value):
+#ANNOTATION: define the method clean with arguments self and value.
+        value = super(TypedChoiceField, self).clean(value)
+#ANNOTATION: call the method clean with an argument value from the base class of the class TypedChoiceField, substitute the result for value.
+        return self._coerce(value)
+#ANNOTATION: call the method self._coerce with an argument value, return the result.
+
+
+class MultipleChoiceField(ChoiceField):
+#ANNOTATION: derive the class MultipleChoiceField from the base class ChoiceField class.
+    hidden_widget = MultipleHiddenInput
+#ANNOTATION: substitute MultipleHiddenInput for hidden_widget.
+    widget = SelectMultiple
+#ANNOTATION: substitute SelectMultiple for widget.
+    default_error_messages = {
+        'invalid_choice': _('Select a valid choice. %(value)s is not one of the available choices.'),
+        'invalid_list': _('Enter a list of values.'),
+    }
+#ANNOTATION: default_error_messages is an dictionary with an entry: return value of the function _ called with an argument string,
+#ANNOTATION: 'Select a valid choice. %(value)s is not one of the available choices.' for 'invalid_choice',
+#ANNOTATION: and return value of the function _ called with an argument string 'Enter a list of values.' for 'invalid_list'.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        if not value:
+#ANNOTATION: if value is false,
+            return []
+#ANNOTATION: return an empty list.
+        elif not isinstance(value, (list, tuple)):
+#ANNOTATION: otherwise if value is not an instance of list ot tuple type,
+            raise ValidationError(self.error_messages['invalid_list'], code='invalid_list')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid_list' key of the self.error_messages dictionary and code set to 'invalid_list'.
+        return [smart_text(val) for val in value]
+#ANNOTATION: for every val in value call the function smart_text with an argument val, return the results in a lit.
+
+    def validate(self, value):
+#ANNOTATION: define the method validate with arguments self and value.
+        """
+        Validates that the input is a list or tuple.
+        """
+#ANNOTATION: docstring
+        if self.required and not value:
+#ANNOTATION: if self.required is true and value is false,
+            raise ValidationError(self.error_messages['required'], code='required')
+#ANNOTATION: raise an ValidationError with 3 arguments: value under the 'required' key of the self.error_messages dictionary,
+#ANNOTATION: and code set to an string 'required'.
+        # Validate that each value in the value list is in self.choices.
+        for val in value:
+#ANNOTATION: for every val in value, 
+            if not self.valid_value(val):
+#ANNOTATION: call the method self.valid_value with an argument val, if it evaluates to false,
+                raise ValidationError(
+                    self.error_messages['invalid_choice'],
+                    code='invalid_choice',
+                    params={'value': val},
+                )
+#ANNOTATION: raise an ValidationError with 3 arguments: value under the 'invalid_choice' key of the self.error_messages dictionary,
+#ANNOTATION: code set to an string 'invalid_choice' and dictionary params with an entry: val for 'value'.
+
+    def _has_changed(self, initial, data):
+#ANNOTATION: define the method _has_changed with arguments self, initial and data.
+        if initial is None:
+#ANNOTATION: if initial is None,
+            initial = []
+#ANNOTATION: initial is an empty list.
+        if data is None:
+#ANNOTATION: if data is None,
+            data = []
+#ANNOTATION: data is an empty list.
+        if len(initial) != len(data):
+#ANNOTATION: if lengths of initial and data are not the same,
+            return True
+#ANNOTATION: return boolean True.
+        initial_set = set(force_text(value) for value in initial)
+#ANNOTATION: for every value in initial call the function force_text with an argument value, add the results into a set, substitute the resulting set for initial_set.
+        data_set = set(force_text(value) for value in data)
+#ANNOTATION: for every value in data call the function force_text with an argument value, add the results into a set, substitute the resulting set for data_set.
+        return data_set != initial_set
+#ANNOTATION: if data_set is not equal to initial_set, return boolean True, otherwise return boolean False.
+
+
+class TypedMultipleChoiceField(MultipleChoiceField):
+#ANNOTATION: derive the class TypedMultipleChoiceField from the base class MultipleChoiceField class.
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self unpacked list args and unpacked dictionary kwargs.
+        self.coerce = kwargs.pop('coerce', lambda val: val)
+#ANNOTATION: if 'coerce' key of the kwargs dictionary exists remove it and substitute its value for self.coerce, 
+#ANNOTATION: if not, self.coerce is an identity lambda function with an argument val. 
+        self.empty_value = kwargs.pop('empty_value', [])
+#ANNOTATION: if 'empty_value' key of the kwargs dictionary exists remove it and substitute its value for self.empty_value, 
+#ANNOTATION: if not, self.empty_value is an empty list. 
+        super(TypedMultipleChoiceField, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ with 2 arguments: unpacked list args and unpacked dictionary kwargs,
+#ANNOTATION: from the base class of the class TypedMultipleChoiceField.
+
+    def _coerce(self, value):
+#ANNOTATION: define the method _coerce with arguments self and value.
+        """
+        Validates that the values are in self.choices and can be coerced to the
+        right type.
+        """
+#ANNOTATION: docstring
+        if value == self.empty_value or value in self.empty_values:
+#ANNOTATION: if value equals self.empty_value or value is contained in self.empty_values,
+            return self.empty_value
+#ANNOTATION: return self.empty_value.
+        new_value = []
+#ANNOTATION: new_value is an empty list.
+        for choice in value:
+#ANNOTATION: for every choice in value,
+            try:
+#ANNOTATION: try,
+                new_value.append(self.coerce(choice))
+#ANNOTATION: call the method self.coerce with an argument choice, append the result to new_value.
+            except (ValueError, TypeError, ValidationError):
+#ANNOTATION: if ValueError, TypeError or ValidationError exception is caught,
+                raise ValidationError(
+                    self.error_messages['invalid_choice'],
+                    code='invalid_choice',
+                    params={'value': choice},
+                )
+#ANNOTATION: raise an ValidationError with 3 arguments: value under the 'invalid_choice' key of the self.error_messages dictionary,
+#ANNOTATION: code set to an string 'invalid_choice' and dictionary params with an entry: choice for 'value'.
+        return new_value
+#ANNOTATION: return new_value.
+
+    def clean(self, value):
+#ANNOTATION: define the method clean with arguments self and value.
+        value = super(TypedMultipleChoiceField, self).clean(value)
+#ANNOTATION: call the method clean with an argument value from the base class of the class TypedMultipleChoiceField, substitute the result for value.
+        return self._coerce(value)
+#ANNOTATION: call the method self._coerce with an argument value, return the result.
+
+    def validate(self, value):
+#ANNOTATION: define the method validate with arguments self and value.
+        if value != self.empty_value:
+#ANNOTATION: if value is not equal self.empty_value,
+            super(TypedMultipleChoiceField, self).validate(value)
+#ANNOTATION: call the method validate with an argument value from the base class of the class TypedMultipleChoiceField.
+        elif self.required:
+#ANNOTATION: otherwise if self.required is true,
+            raise ValidationError(self.error_messages['required'], code='required')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'required' key of the self.error_messages dictionary and code set to 'required'.
+
+
+class ComboField(Field):
+#ANNOTATION: derive the class ComboField from the base class Field class.
+    """
+    A Field whose clean() method calls multiple Field clean() methods.
+    """
+#ANNOTATION: docstring
+    def __init__(self, fields=(), *args, **kwargs):
+#ANNOTATION: define the method __init__ with arguments: self, fields set to an empty tuple, unpacked list args and unpacked dictionary kwargs.
+        super(ComboField, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ with 2 arguments: unpacked list args and unpacked dictionary kwargs, from the base class of the class ComboField.
+        # Set 'required' to False on the individual fields, because the
+        # required validation will be handled by ComboField, not by those
+        # individual fields.
+        for f in fields:
+#ANNOTATION: for every f in fields,
+            f.required = False
+#ANNOTATION: f.required is boolean False.
+        self.fields = fields
+#ANNOTATION: substitute fields for self.fields.
+
+    def clean(self, value):
+#ANNOTATION: define the method clean with arguments self and value.
+        """
+        Validates the given value against all of self.fields, which is a
+        list of Field instances.
+        """
+#ANNOTATION: docstring
+        super(ComboField, self).clean(value)
+#ANNOTATION: call the method clean with an argument value from the base class of the class ComboField.
+        for field in self.fields:
+#ANNOTATION: for every field in self.fields,
+            value = field.clean(value)
+#ANNOTATION: call the method field.clean with an argument value, substitute the result for value.
+        return value
+#ANNOTATION: return value.
+
+
+class MultiValueField(Field):
+#ANNOTATION: derive the class MultiValueField from the base class Field class.
+    """
+    A Field that aggregates the logic of multiple Fields.
+
+    Its clean() method takes a "decompressed" list of values, which are then
+    cleaned into a single value according to self.fields. Each value in
+    this list is cleaned by the corresponding field -- the first value is
+    cleaned by the first field, the second value is cleaned by the second
+    field, etc. Once all fields are cleaned, the list of clean values is
+    "compressed" into a single value.
+
+    Subclasses should not have to implement clean(). Instead, they must
+    implement compress(), which takes a list of valid values and returns a
+    "compressed" version of those values -- a single value.
+
+    You'll probably want to use this with MultiWidget.
+    """
+#ANNOTATION: docstring
+    default_error_messages = {
+        'invalid': _('Enter a list of values.'),
+        'incomplete': _('Enter a complete value.'),
+    }
+#ANNOTATION: default_error_messages is an dictionary with 2 entries: return value of the function _ called with an argument string,
+#ANNOTATION: 'Enter a list of values.' for 'invalid' and return value of the function _ called with an argument string, 
+#ANNOTATION: 'Enter a complete value.' for 'incomplete'.
+
+    def __init__(self, fields=(), *args, **kwargs):
+#ANNOTATION: define the method __init__ with arguments self, fields set to an empty ilst, unpacked list args and unpacked dictionary kwargs.
+        self.require_all_fields = kwargs.pop('require_all_fields', True)
+#ANNOTATION: if 'require_all_fields' key of the kwargs dictionary exists remove it and substitute its value for self.require_all_fields, 
+#ANNOTATION: if not, self.require_all_fields is boolean True. 
+        super(MultiValueField, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ with 2 arguments: unpacked list args and unpacked dictionary kwargs, from the base class of the class MultiValueField.
+        for f in fields:
+#ANNOTATION: for every f in fields,
+            f.error_messages.setdefault('incomplete',
+                                        self.error_messages['incomplete'])
+#ANNOTATION: if 'incomplete' key of the f.error_messages doesnt exists, assign it the value under the 'incomplete' key of the self.error_messages dictionary.
+            if self.require_all_fields:
+#ANNOTATION: if self.require_all_fields is true,
+                # Set 'required' to False on the individual fields, because the
+                # required validation will be handled by MultiValueField, not
+                # by those individual fields.
+                f.required = False
+#ANNOTATION: f.required is boolean False.
+        self.fields = fields
+#ANNOTATION: substitute fields for self.fields.
+
+    def __deepcopy__(self, memo):
+#ANNOTATION: define the method __deepcopy__ with arguments self and memo.
+        result = super(MultiValueField, self).__deepcopy__(memo)
+#ANNOTATION: call the method __deepcopy__ with an argument memo, from the base class of the class MultiValueField, substitute the result for result.
+        result.fields = tuple([x.__deepcopy__(memo) for x in self.fields])
+#ANNOTATION: for every x in self.fields call the method x.__deepcopy__ with an argument memo, put the result into a tuple, substitute it for result.fields.
+        return result
+#ANNOTATION: return result.
+
+    def validate(self, value):
+#ANNOTATION: define the method validate with arguments self and value.
+        pass
+#ANNOTATION: do nothing.
+
+    def clean(self, value):
+#ANNOTATION: define the method clean with arguments self and value.
+        """
+        Validates every value in the given list. A value is validated against
+        the corresponding Field in self.fields.
+
+        For example, if this MultiValueField was instantiated with
+        fields=(DateField(), TimeField()), clean() would call
+        DateField.clean(value[0]) and TimeField.clean(value[1]).
+        """
+#ANNOTATION: docstring
+        clean_data = []
+#ANNOTATION: clean_data is an empty list.
+        errors = []
+#ANNOTATION: errors is an empty list.
+        if not value or isinstance(value, (list, tuple)):
+#ANNOTATION: if value is false or value is not an instance of list or tuple types,
+            if not value or not [v for v in value if v not in self.empty_values]:
+#ANNOTATION: if value is false or for every v in value every v is contained in self.empty_values,
+                if self.required:
+#ANNOTATION: if self.required is true,
+                    raise ValidationError(self.error_messages['required'], code='required')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'required' key of the self.error_messages dictionary and code set to 'required'.
+                else:
+#ANNOTATION: if not,
+                    return self.compress([])
+#ANNOTATION: call the function self.compress with empty list as an argument, return the result.
+        else:
+#ANNOTATION: if not,
+            raise ValidationError(self.error_messages['invalid'], code='invalid')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid' key of the self.error_messages dictionary and code set to 'invalid'.
+        for i, field in enumerate(self.fields):
+#ANNOTATION: for every i and field in enumerated iterable self.fields,
+            try:
+#ANNOTATION: try,
+                field_value = value[i]
+#ANNOTATION: substitute i-th element of value for field_value.
+            except IndexError:
+#ANNOTATION: if IndexError exception is caught,
+                field_value = None
+#ANNOTATION: field_value is None.
+            if field_value in self.empty_values:
+#ANNOTATION: if field_value is cotained in self.empty_values,
+                if self.require_all_fields:
+#ANNOTATION: if self.require_all_fields is boolean true,
+                    # Raise a 'required' error if the MultiValueField is
+                    # required and any field is empty.
+                    if self.required:
+#ANNOTATION: if self.required is boolean true,
+                        raise ValidationError(self.error_messages['required'], code='required')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'required' key of the self.error_messages dictionary and code set to 'required'.
+                elif field.required:
+#ANNOTATION: otherwise if field.required is true,
+                    # Otherwise, add an 'incomplete' error to the list of
+                    # collected errors and skip field cleaning, if a required
+                    # field is empty.
+                    if field.error_messages['incomplete'] not in errors:
+#ANNOTATION: get the value under the 'incomplete' key of the field.error_messages dictionary, if it is not contained in errors,
+                        errors.append(field.error_messages['incomplete'])
+#ANNOTATION: get the value under the 'incomplete' key of the field.error_messages dictionary, append it to errors.
+                    continue
+#ANNOTATION: skip this loop iteration,
+            try:
+#ANNOTATION: try,
+                clean_data.append(field.clean(field_value))
+#ANNOTATION: call the method field.clean with an argument field_value, append the result to clean_data.
+            except ValidationError as e:
+#ANNOTATION: if ValidationError, renamed to e, is caught,
+                # Collect all validation errors in a single list, which we'll
+                # raise at the end of clean(), rather than raising a single
+                # exception for the first error we encounter. Skip duplicates.
+                errors.extend(m for m in e.error_list if m not in errors)
+#ANNOTATION: extend errors list with m for every m in e.error_list, only if m is not in errors.
+        if errors:
+#ANNOTATION: if errors is true,
+            raise ValidationError(errors)
+#ANNOTATION: raise an ValidationError with an argument errors.
+
+        out = self.compress(clean_data)
+#ANNOTATION: call the method self.compress with an argument clean_data, substitute the result for out.
+        self.validate(out)
+#ANNOTATION: call the method self.validate with an argument out.
+        self.run_validators(out)
+#ANNOTATION: call the method self.run_validators with an argument out.
+        return out
+#ANNOTATION: return out.
+
+    def compress(self, data_list):
+#ANNOTATION: define the method compress with arguments self and data_list.
+        """
+        Returns a single value for the given list of values. The values can be
+        assumed to be valid.
+
+        For example, if this MultiValueField was instantiated with
+        fields=(DateField(), TimeField()), this might return a datetime
+        object created by combining the date and time in data_list.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('Subclasses must implement this method.')
+#ANNOTATION: raise an NotImplementedError with an argument string 'Subclasses must implement this method.'.
+
+    def _has_changed(self, initial, data):
+#ANNOTATION: define the method has_changed with arguments self, initial and data.
+        if initial is None:
+#ANNOTATION: if initial is None,
+            initial = ['' for x in range(0, len(data))]
+#ANNOTATION: for every x in sequence of integer from integer 0 to length of data, append an empty string to a list, substitute the resulting list for initial.
+        else:
+#ANNOTATION: if not,
+            if not isinstance(initial, list):
+#ANNOTATION: if initial is not an instance of the list type,
+                initial = self.widget.decompress(initial)
+#ANNOTATION: call the method self.widget.decompress with an argument initial, substitute the result for initial.
+        for field, initial, data in zip(self.fields, initial, data):
+#ANNOTATION: for every field, initial and data in list of tuples tuple containing elements of self.fields, initial and data, respectively,
+            if field._has_changed(field.to_python(initial), data):
+#ANNOTATION: call the method field._has_changed with 2 arguments: return value of the function field.to_python called with an argument initial,
+#ANNOTATION: and data, if it evaluates to true,
+                return True
+#ANNOTATION:  return boolean  True.
+        return False
+#ANNOTATION: return boolean False.
+
+
+class FilePathField(ChoiceField):
+#ANNOTATION: derive the class FilePathField from the base class ChoiceField class.
+    def __init__(self, path, match=None, recursive=False, allow_files=True,
+                 allow_folders=False, required=True, widget=None, label=None,
+                 initial=None, help_text='', *args, **kwargs):
+#ANNOTATION: define the method __init__ with 13 arguments: self, path, match set to None, recursive set to boolean False, 
+#ANNOTATION: allow_files set to boolean True, allow_folders set to boolean False, required set to boolean True, widget set to None, 
+#ANNOTATION: label set to None, initial set to None, help_text set to an empty string, unpacked list args, unpacked dictionary kwargs.
+        self.path, self.match, self.recursive = path, match, recursive
+#ANNOTATION: substitute path, match and recursive for self.path, self.match and self.recursive.
+        self.allow_files, self.allow_folders = allow_files, allow_folders
+#ANNOTATION: substitute allow_files and allow_folders for self.allow_files and self.allow_folders.
+        super(FilePathField, self).__init__(choices=(), required=required,
+            widget=widget, label=label, initial=initial, help_text=help_text,
+            *args, **kwargs)
+#ANNOTATION: call the __init__ method of the base class of the class FilePathField, with arguments: choices set to an empty tuple,4
+#ANNOTATION: required set to required, widget set to widget, label set to label, initial st to initial, help_text set to help_text,
+#ANNOTATION: unpacked list args, unpacked dictionary kwargs.
+
+        if self.required:
+#ANNOTATION: if self.required is true,
+            self.choices = []
+#ANNOTATION: self.choices is an empty list.
+        else:
+#ANNOTATION: if not,
+            self.choices = [("", "---------")]
+#ANNOTATION: self.choices is an list containing an tuple with 2 elements: an empty string and string "---------".
+
+        if self.match is not None:
+#ANNOTATION: if self.match is not None,
+            self.match_re = re.compile(self.match)
+#ANNOTATION: compile self.match regular expression, substitute it for self.match_re.
+
+        if recursive:
+#ANNOTATION: if recursive is true,
+            for root, dirs, files in sorted(os.walk(self.path)):
+#ANNOTATION: for root, dirs and files in sorted list of the directory tree starting from the directory self.path,
+                if self.allow_files:
+#ANNOTATION: if self.allow_files is true,
+                    for f in files:
+#ANNOTATION: for every f in files,
+                        if self.match is None or self.match_re.search(f):
+#ANNOTATION: if self.match is None or call to the method self.match_re.search with an argument f, evaluated to true,
+                            f = os.path.join(root, f)
+#ANNOTATION: join root and f into a file, substitute it for f.
+                            self.choices.append((f, f.replace(path, "", 1)))
+#ANNOTATION: append a tuple with 2 elements: f and f with first occurrence of the path replaced with an empty string, to self.choices.
+                if self.allow_folders:
+#ANNOTATION: if self.allow_folders is true,
+                    for f in dirs:
+#ANNOTATION: for every f in files,
+                        if f == '__pycache__':
+#ANNOTATION: if f equals to string '__pycache__',
+                            continue
+#ANNOTATION: skip this loop execution.
+                        if self.match is None or self.match_re.search(f):
+#ANNOTATION: if self.match is None or call to the method self.match_re.search with an argument f, evaluated to true,
+                            f = os.path.join(root, f)
+#ANNOTATION: join root and f in path, substitute the result for f.
+                            self.choices.append((f, f.replace(path, "", 1)))
+#ANNOTATION: append a tuple with 2 elements: f and f with first occurrence of the path replaced with an empty string, to self.choices.
+        else:
+#ANNOTATION: if not,
+            try:
+#ANNOTATION: try,
+                for f in sorted(os.listdir(self.path)):
+#ANNOTATION: for f in sorted list of the files in the self.path directory,
+                    if f == '__pycache__':
+#ANNOTATION: if f equals to string '__pycache__',
+                        continue
+#ANNOTATION: skip this loop execution.
+                    full_file = os.path.join(self.path, f)
+#ANNOTATION: join self.path and f in path, substitute the result for full_file.
+                    if (((self.allow_files and os.path.isfile(full_file)) or
+                            (self.allow_folders and os.path.isdir(full_file))) and
+                            (self.match is None or self.match_re.search(f))):
+#ANNOTATION: if self.allow_files is true and full_file is a file, or if self.allow_folders is true and full_file is an directory, 
+#ANNOTATION: and only if self.match is None or return value of the method self.match_re.search called with an argument f is true.
+                        self.choices.append((full_file, f))
+#ANNOTATION: append a tuple containing 2 elements: full_file and f to self.choices list.
+            except OSError:
+#ANNOTATION: if OSError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+
+        self.widget.choices = self.choices
+#ANNOTATION: substitute self.choices for self.widgetchoices.
+
+
+class SplitDateTimeField(MultiValueField):
+#ANNOTATION: derive the class SplitDateTimeField from the base class MultiValueField class.
+    widget = SplitDateTimeWidget
+#ANNOTATION: substitute SplitDateTimeWidget for widget.
+    hidden_widget = SplitHiddenDateTimeWidget
+#ANNOTATION: substitute SplitHiddenDateTimeWidget for hidden_widget.
+    default_error_messages = {
+        'invalid_date': _('Enter a valid date.'),
+        'invalid_time': _('Enter a valid time.'),
+    }
+#ANNOTATION: default_error_messages is an dictionary with 2 entries: return value of the function _ called with an string 'Enter a valid date.',
+#ANNOTATION: for 'invalid_date' and return value of the function _ called with an string 'Enter a valid time.', for 'invalid_time. 
+
+    def __init__(self, input_date_formats=None, input_time_formats=None, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self, input_date_formats set to None, input_time_formats set to None,
+#ANNOTATION: unpacked list args and unpacked dictionary kwargs.
+        warnings.warn("IPAddressField has been deprecated. Use GenericIPAddressField instead.",
+        errors = self.default_error_messages.copy()
+#ANNOTATION: call the function warnings.warn with 2 arguments string "IPAddressField has been deprecated. Use GenericIPAddressField instead.",
+#ANNOTATION: and errors set to the result of self.default_error_messages.copy.
+        if 'error_messages' in kwargs:
+#ANNOTATION: if 'error_messages' is contained in kwargs,
+            errors.update(kwargs['error_messages'])
+#ANNOTATION: get the value under the 'error_messages' key of the kwargs dictionary, update errors dictionary with it.
+        localize = kwargs.get('localize', False)
+#ANNOTATION: get the value under the 'localize' key of the kwargs dictionary, substitute it for localize, if the key doesnt exists, substitute the result for localize.
+        fields = (
+            DateField(input_formats=input_date_formats,
+                      error_messages={'invalid': errors['invalid_date']},
+                      localize=localize),
+            TimeField(input_formats=input_time_formats,
+                      error_messages={'invalid': errors['invalid_time']},
+                      localize=localize),
+        )
+#ANNOTATION: fields is an tuple containing instances of the class DateField, created with 3 arguments: input_formats set to input_date_formats,
+#ANNOTATION: error_messages as an dictionary with an entry: value under the 'invalid_date' of errors dictionary for 'invalid', 
+#ANNOTATION: localize set to localize, and an instance of the class TimeField created with 3 arguments: input_formats set to input_time_formats,
+#ANNOTATION: error_messages as an dictionary with an entry: value under the 'invalid_time' of errors dictionary for 'invalid', 
+#ANNOTATION: localize set to localize
+        super(SplitDateTimeField, self).__init__(fields, *args, **kwargs)
+#ANNOTATION: call the __init__ method with fields, unpacked list args and unpacked dictionary kwargs from the base class of the SplitDateTimeField class.
+
+    def compress(self, data_list):
+#ANNOTATION: define the method compress with arguments self and data_list.
+        if data_list:
+#ANNOTATION: if data_list is true,
+            # Raise a validation error if time or date is empty
+            # (possible if SplitDateTimeField has required=False).
+            if data_list[0] in self.empty_values:
+#ANNOTATION: if first element of data_list is contained in self.empty_values,
+                raise ValidationError(self.error_messages['invalid_date'], code='invalid_date')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid_date' key of the self.error_messages dictionary and code set to string 'invalid_date'.
+            if data_list[1] in self.empty_values:
+#ANNOTATION: if second element of data_list is contained in self.empty_values,
+                raise ValidationError(self.error_messages['invalid_time'], code='invalid_time')
+#ANNOTATION: raise an ValidationError with 2 arguments: value under the 'invalid_time' key of the self.error_messages dictionary and code set to string 'invalid_time'.
+            result = datetime.datetime.combine(*data_list)
+#ANNOTATION: call the method datetime.datetime.combine with unpacked list data_list, substitute the result for result.
+            return from_current_timezone(result)
+#ANNOTATION: call the method from_current_timezone with an argument result, return the result.
+        return None
+#ANNOTATION: return None.
+
+
+class IPAddressField(CharField):
+#ANNOTATION: derive the class IPAddressField from the base class CharField class.
+    default_validators = [validators.validate_ipv4_address]
+#ANNOTATION: default_validators is an list containing validators.validate_ipv4_address.
+
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self,unpacked list args and unpacked dictionary kwargs.
+        warnings.warn("IPAddressField has been deprecated. Use GenericIPAddressField instead.",
+                      RemovedInDjango19Warning)
+#ANNOTATION: call the function warnings.warn with 2 arguments string "IPAddressField has been deprecated. Use GenericIPAddressField instead.",
+#ANNOTATION: and RemovedInDjango19Warning.
+        super(IPAddressField, self).__init__(*args, **kwargs)
+#ANNOTATION: call the __init__ method with unpacked list args and unpacked dictionary kwargs from the base class of the IPAddressField class.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            return ''
+#ANNOTATION: return an empty string.
+        return value.strip()
+#ANNOTATION: strip whitespaces from both sides of the value, return the result.
+
+
+class GenericIPAddressField(CharField):
+#ANNOTATION: derive the class GenericIPAddressField from the base class CharField class.
+    def __init__(self, protocol='both', unpack_ipv4=False, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 5 arguments: self, protocol set to string 'both', unpack_ipv4 set to boolean False,
+#ANNOTATION: unpacked list args, unpacked dictionary kwargs.
+        self.unpack_ipv4 = unpack_ipv4
+#ANNOTATION: substitute unpack_ipv4 for self.unpack_ipv4. 
+        self.default_validators = validators.ip_address_validators(protocol, unpack_ipv4)[0]
+#ANNOTATION: call the method validators.ip_address_validators with arguments protocol, unpack_ipv4, substitute first element of the result for self.default_validators.
+        super(GenericIPAddressField, self).__init__(*args, **kwargs)
+#ANNOTATION: call the __init__ method with unpacked list args and unpacked dictionary kwargs from the base class of the GenericIPAddressField class.
+
+    def to_python(self, value):
+#ANNOTATION: define the method to_python with arguments self and value.
+        if value in self.empty_values:
+#ANNOTATION: if value is contained in self.empty_values,
+            return ''
+#ANNOTATION: return an empty string.
+        value = value.strip()
+#ANNOTATION: strip whitespaces from both sides of the value, substitute it for value.
+        if value and ':' in value:
+#ANNOTATION: if value is true and character ':' is contained in value,
+            return clean_ipv6_address(value, self.unpack_ipv4)
+#ANNOTATION: call the function clean_ipv6_address with arguments value and self.unpack_ipv4, return the result.
+        return value
+#ANNOTATION: return value.
+
+
+class SlugField(CharField):
+#ANNOTATION: derive the class SlugField from the base class CharField class.
+    default_validators = [validators.validate_slug]
+#ANNOTATION: default_validators is an list containing validators.validate_slug.
+
+    def clean(self, value):
+#ANNOTATION: define the method clean with arguments self and value.
+        value = self.to_python(value).strip()
+#ANNOTATION: call the self.to_python method with an argument value, strip the result of the whitespaces from the sides, substitute the result for value.
+        return super(SlugField, self).clean(value)
+#ANNOTATION: call the clean method wiht value argument from the base class of the SlugField class, return the result.

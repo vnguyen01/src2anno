@@ -1,0 +1,927 @@
+# -*- coding: utf-8 -*-
+
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+"""
+Base classes for writing management commands (named commands which can
+be executed through ``django-admin.py`` or ``manage.py``).
+"""
+#ANNOTATION: docstring
+
+import os
+#ANNOTATION: import module os.
+import sys
+#ANNOTATION: import module sys.
+import warnings
+#ANNOTATION: import module warnings.
+
+from argparse import ArgumentParser
+#ANNOTATION: from argparse import ArgumentParser into default name space.
+from optparse import OptionParser
+#ANNOTATION: from optparse import OptionParser into default name space.
+
+import django
+#ANNOTATION: import module django.
+from django.core import checks
+#ANNOTATION: from django.core import checks into default name space.
+from django.core.exceptions import ImproperlyConfigured
+#ANNOTATION: from django.core.exceptions import ImproperlyConfigured into default name space.
+from django.core.management.color import color_style, no_style
+#ANNOTATION: from django.core.management.color import color_style and no_style into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning, RemovedInDjango20Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning and RemovedInDjango20Warning into default name space.
+from django.utils.encoding import force_str
+#ANNOTATION: from django.utils.encoding import force_st into default name space.
+
+
+class CommandError(Exception):
+#ANNOTATION: derive the class CommandError from the base class Exception.
+    """
+    Exception class indicating a problem while executing a management
+    command.
+
+    If this exception is raised during the execution of a management
+    command, it will be caught and turned into a nicely-printed error
+    message to the appropriate output stream (i.e., stderr); as a
+    result, raising this exception (with a sensible description of the
+    error) is the preferred way to indicate that something has gone
+    wrong in the execution of a command.
+
+    """
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class CommandParser(ArgumentParser):
+#ANNOTATION: derive the CommandParser class from the ArgumentParser base class.
+    """
+    Customized ArgumentParser class to improve some error messages and prevent
+    SystemExit in several occasions, as SystemExit is unacceptable when a
+    command is called programmatically.
+    """
+#ANNOTATION: docstring
+    def __init__(self, cmd, **kwargs):
+#ANNOTATION: define the method __init__ with arguments: self, cmd and unpacked dictionary kwargs.
+        self.cmd = cmd
+#ANNOTATION: substitute cmd for self.cmd.
+        super(CommandParser, self).__init__(**kwargs)
+#ANNOTATION: call the method __init__ from the base class of the CommandParser class, with unpacked dictionary kwargs as argument.
+
+    def parse_args(self, args=None, namespace=None):
+#ANNOTATION: define the method parse_args with 3 arguments: self, args set to None and namespace set to None.
+        # Catch missing argument for a better error message
+        if (hasattr(self.cmd, 'missing_args_message') and
+                not (args or any([not arg.startswith('-') for arg in args]))):
+#ANNOTATION: if self.cmd has an attribute 'missing_args_message' and next statement is not true: args is true or any arg doesnt start with '-' for arg in args,
+            self.error(self.cmd.missing_args_message)
+#ANNOTATION: call the method self.error with an argument self.cmd.missing_args_message.
+        return super(CommandParser, self).parse_args(args, namespace)
+#ANNOTATION: call the parse_args method with arguments args and namespace, from the base class of the CommandParser class.
+
+    def error(self, message):
+#ANNOTATION: define the method error with arguments self and message.
+        if self.cmd._called_from_command_line:
+#ANNOTATION: if self.cmd._called_from_command_line is true,
+            super(CommandParser, self).error(message)
+#ANNOTATION: call the method error with an argument message, from the base class of the class CommandParser.
+        else:
+#ANNOTATION: if not,
+            raise CommandError("Error: %s" % message)
+#ANNOTATION: raise an CommandError exception with an argument string "Error: %s", with '%s' replaced by message.
+
+
+def handle_default_options(options):
+#ANNOTATION: define the function handle_default_options with an argument options. 
+    """
+    Include any default options that all commands should accept here
+    so that ManagementUtility can handle them before searching for
+    user commands.
+
+    """
+#ANNOTATION: docstring
+    if options.settings:
+#ANNOTATION: if options.settings is true, 
+        os.environ['DJANGO_SETTINGS_MODULE'] = options.settings
+#ANNOTATION: substitute options.settings for value under the 'DJANGO_SETTINGS_MODULE' key of the os.environ dictionary.
+    if options.pythonpath:
+#ANNOTATION: if options.pythonpath is true,
+        sys.path.insert(0, options.pythonpath)
+#ANNOTATION: insert options.pythonpath at the beginning of sys.path.
+
+
+class OutputWrapper(object):
+#ANNOTATION: derive the OutputWrapper class from the object base class.
+    """
+    Wrapper around stdout/stderr
+    """
+#ANNOTATION: docstring.
+    def __init__(self, out, style_func=None, ending='\n'):
+#ANNOTATION: define the method __init__ with 4 arguments: self, out, style, func set to None and endings set to newline character.
+        self._out = out
+#ANNOTATION: substitute out for self._out.
+        self.style_func = None
+#ANNOTATION: substitute None for self.style_func.
+        if hasattr(out, 'isatty') and out.isatty():
+#ANNOTATION: if out has an 'isatty' argument and return value of the function out.isatty is true,
+            self.style_func = style_func
+#ANNOTATION: substitute style_func for self.style_func.
+        self.ending = ending
+#ANNOTATION: substitute ending for self.ending.
+
+    def __getattr__(self, name):
+#ANNOTATION: define the method __getattr__ with arguments self and name.
+        return getattr(self._out, name)
+#ANNOTATION: get name attribute of the self._out object, return it.
+
+    def write(self, msg, style_func=None, ending=None):
+#ANNOTATION: define the method write with 4 arguments: self, msg, style_func with None and ending set None.
+        ending = self.ending if ending is None else ending
+#ANNOTATION: if ending is None substitute self.ending for ending.
+        if ending and not msg.endswith(ending):
+#ANNOTATION: if ending is true and msg doesnt end with ending, 
+            msg += ending
+#ANNOTATION: append ending to msg.
+        style_func = [f for f in (style_func, self.style_func, lambda x:x)
+                      if f is not None][0]
+#ANNOTATION: if f is not None append it to a list for every f in tuple containing 3 elements: style_func, self.style_func,
+#ANNOTATION: and lambda function returning x for x, substitute the firs element of resulting list for style_func.
+        self._out.write(force_str(style_func(msg)))
+#ANNOTATION: call the function style_func with an argument msg, use the result as an argument for the call to the function force_str, 
+#ANNOTATION: use the result as an argument for the call to the function self._out.write.
+
+
+class BaseCommand(object):
+#ANNOTATION: derive the BaseCommand class from the object base class.
+    """
+    The base class from which all management commands ultimately
+    derive.
+
+    Use this class if you want access to all of the mechanisms which
+    parse the command-line arguments and work out what code to call in
+    response; if you don't need to change any of that behavior,
+    consider using one of the subclasses defined in this file.
+
+    If you are interested in overriding/customizing various aspects of
+    the command-parsing and -execution behavior, the normal flow works
+    as follows:
+
+    1. ``django-admin.py`` or ``manage.py`` loads the command class
+       and calls its ``run_from_argv()`` method.
+
+    2. The ``run_from_argv()`` method calls ``create_parser()`` to get
+       an ``ArgumentParser`` for the arguments, parses them, performs
+       any environment changes requested by options like
+       ``pythonpath``, and then calls the ``execute()`` method,
+       passing the parsed arguments.
+
+    3. The ``execute()`` method attempts to carry out the command by
+       calling the ``handle()`` method with the parsed arguments; any
+       output produced by ``handle()`` will be printed to standard
+       output and, if the command is intended to produce a block of
+       SQL statements, will be wrapped in ``BEGIN`` and ``COMMIT``.
+
+    4. If ``handle()`` or ``execute()`` raised any exception (e.g.
+       ``CommandError``), ``run_from_argv()`` will  instead print an error
+       message to ``stderr``.
+
+    Thus, the ``handle()`` method is typically the starting point for
+    subclasses; many built-in commands and command types either place
+    all of their logic in ``handle()``, or perform some additional
+    parsing work in ``handle()`` and then delegate from it to more
+    specialized methods as needed.
+
+    Several attributes affect behavior at various steps along the way:
+
+    ``args``
+        A string listing the arguments accepted by the command,
+        suitable for use in help messages; e.g., a command which takes
+        a list of application names might set this to '<app_label
+        app_label ...>'.
+
+    ``can_import_settings``
+        A boolean indicating whether the command needs to be able to
+        import Django settings; if ``True``, ``execute()`` will verify
+        that this is possible before proceeding. Default value is
+        ``True``.
+
+    ``help``
+        A short description of the command, which will be printed in
+        help messages.
+
+    ``option_list``
+        This is the list of ``optparse`` options which will be fed
+        into the command's ``OptionParser`` for parsing arguments.
+        Deprecated and will be removed in Django 2.0.
+
+    ``output_transaction``
+        A boolean indicating whether the command outputs SQL
+        statements; if ``True``, the output will automatically be
+        wrapped with ``BEGIN;`` and ``COMMIT;``. Default value is
+        ``False``.
+
+    ``requires_system_checks``
+        A boolean; if ``True``, entire Django project will be checked for errors
+        prior to executing the command. Default value is ``True``.
+        To validate an individual application's models
+        rather than all applications' models, call
+        ``self.check(app_configs)`` from ``handle()``, where ``app_configs``
+        is the list of application's configuration provided by the
+        app registry.
+
+    ``requires_model_validation``
+        DEPRECATED - This value will only be used if requires_system_checks
+        has not been provided. Defining both ``requires_system_checks`` and
+        ``requires_model_validation`` will result in an error.
+
+        A boolean; if ``True``, validation of installed models will be
+        performed prior to executing the command. Default value is
+        ``True``. To validate an individual application's models
+        rather than all applications' models, call
+        ``self.validate(app_config)`` from ``handle()``, where ``app_config``
+        is the application's configuration provided by the app registry.
+
+    ``leave_locale_alone``
+        A boolean indicating whether the locale set in settings should be
+        preserved during the execution of the command instead of being
+        forcibly set to 'en-us'.
+
+        Default value is ``False``.
+
+        Make sure you know what you are doing if you decide to change the value
+        of this option in your custom command if it creates database content
+        that is locale-sensitive and such content shouldn't contain any
+        translations (like it happens e.g. with django.contrim.auth
+        permissions) as making the locale differ from the de facto default
+        'en-us' might cause unintended effects.
+
+        This option can't be False when the can_import_settings option is set
+        to False too because attempting to set the locale needs access to
+        settings. This condition will generate a CommandError.
+    """
+#ANNOTATION: docstring
+    # Metadata about this command.
+    option_list = ()
+#ANNOTATION: options_list is an empty tuple.
+    help = ''
+#ANNOTATION: help is an empty string.
+    args = ''
+#ANNOTATION: args is an empty string.
+
+    # Configuration shortcuts that alter various logic.
+    _called_from_command_line = False
+#ANNOTATION: _called_from_command_line is boolean False.
+    can_import_settings = True
+#ANNOTATION: can_import_settings is boolean True.
+    output_transaction = False  # Whether to wrap the output in a "BEGIN; COMMIT;"
+#ANNOTATION: output_transaction is boolean False.
+    leave_locale_alone = False
+#ANNOTATION: leave_locale_alone is boolean False.
+
+    # Uncomment the following line of code after deprecation plan for
+    # requires_model_validation comes to completion:
+    #
+    # requires_system_checks = True
+
+    def __init__(self):
+#ANNOTATION: define the method __init__ with an argument self.
+        self.style = color_style()
+#ANNOTATION: call the function color_style, substitute the result for self.style.
+
+        # `requires_model_validation` is deprecated in favor of
+        # `requires_system_checks`. If both options are present, an error is
+        # raised. Otherwise the present option is used. If none of them is
+        # defined, the default value (True) is used.
+        has_old_option = hasattr(self, 'requires_model_validation')
+#ANNOTATION: if self has an 'requires_model_validation' attribute, has_old_option is boolean True, otherwise it is boolean False.
+        has_new_option = hasattr(self, 'requires_system_checks')
+#ANNOTATION: if self has an 'requires_system_checks' attribute, has_new_option is boolean True, otherwise it is boolean False.
+
+        if has_old_option:
+#ANNOTATION: if has_old_option is true,
+            warnings.warn(
+                '"requires_model_validation" is deprecated '
+                'in favor of "requires_system_checks".',
+                RemovedInDjango19Warning)
+#ANNOTATION: call the function warnings.warn with 2 arguments: string '"requires_model_validation" is deprecated '
+#ANNOTATION: 'in favor of "requires_system_checks".' and RemovedInDjango19Warning. 
+        if has_old_option and has_new_option:
+#ANNOTATION: if has_old_option and has_new_option are both true,
+            raise ImproperlyConfigured(
+                'Command %s defines both "requires_model_validation" '
+                'and "requires_system_checks", which is illegal. Use only '
+                '"requires_system_checks".' % self.__class__.__name__)
+#ANNOTATION: raise an ImproperlyConfigured exception wiht an argument string 'Command %s defines both "requires_model_validation" '
+#ANNOTATION: 'and "requires_system_checks", which is illegal. Use only "requires_system_checks".', replace '%s' for self.__class__.__name__. 
+
+        self.requires_system_checks = (
+            self.requires_system_checks if has_new_option else
+            self.requires_model_validation if has_old_option else
+            True)
+#ANNOTATION: call the method self.requires_system_checks with an argument: self.requires_system_checks if has_new_option is true, 
+#ANNOTATION: or if it is false, but has_old_option is true use self.requires_model_validation, if they are both false use boolean True as an argument. 
+
+    @property
+#ANNOTATION: property decorator,
+    def use_argparse(self):
+#ANNOTATION: define the method use_argparse with an argument self, 
+        return not bool(self.option_list)
+#ANNOTATION: convert self.option_list into a boolean, return the inverted value.
+
+    def get_version(self):
+#ANNOTATION: define the method get_version with an arguments self.
+        """
+        Return the Django version, which should be correct for all
+        built-in Django commands. User-supplied commands should
+        override this method.
+
+        """
+#ANNOTATION: docstring
+        return django.get_version()
+#ANNOTATION: call the function django.get_version, return the result.
+
+    def usage(self, subcommand):
+#ANNOTATION: define the method usage with arguments self and subcommand. 
+        """
+        Return a brief description of how to use this command, by
+        default from the attribute ``self.help``.
+
+        """
+#ANNOTATION: docstring
+        usage = '%%prog %s [options] %s' % (subcommand, self.args)
+#ANNOTATION: substitute '%s' in the string '%%prog %s [options] %s' with subcommand and self.args, respectively, substitute it for usage.  
+        if self.help:
+#ANNOTATION: if self.help is true,
+            return '%s\n\n%s' % (usage, self.help)
+#ANNOTATION: join usage and self.help into a string, separated by 2 new line characters, return it. 
+        else:
+#ANNOTATION: if not,
+            return usage
+#ANNOTATION: return usage.
+
+    def create_parser(self, prog_name, subcommand):
+#ANNOTATION: define the method create_parser with 3 arguments: self, prog_name and subcommand.
+        """
+        Create and return the ``ArgumentParser`` which will be used to
+        parse the arguments to this command.
+
+        """
+#ANNOTATION: docstring
+        if not self.use_argparse:
+#ANNOTATION: if self.use_argparse is false,
+            # Backwards compatibility: use deprecated optparse module
+            warnings.warn("OptionParser usage for Django management commands "
+                          "is deprecated, use ArgumentParser instead",
+                          RemovedInDjango20Warning)
+#ANNOTATION: call the function warnings.warn with 2 arguments: string "OptionParser usage for Django management commands "
+#ANNOTATION: "is deprecated, use ArgumentParser instead" and RemovedInDjango20Warning.
+            parser = OptionParser(prog=prog_name,
+                                usage=self.usage(subcommand),
+                                version=self.get_version())
+#ANNOTATION: parser is an instance of the object OptionParser, created with arguments: prog set to prog_name, 
+#ANNOTATION: usage set to return value of the method self.usage called with an argument subcommand, version set to return value of the method self.get_version.
+            parser.add_option('-v', '--verbosity', action='store', dest='verbosity', default='1',
+                type='choice', choices=['0', '1', '2', '3'],
+                help='Verbosity level; 0=minimal output, 1=normal output, 2=verbose output, 3=very verbose output')
+#ANNOTATION: call the method parser.add_option with 8 arguments: string '-v', string '--verbosity', action set to string 'store',
+#ANNOTATION: dest set to string 'verbosity', default set to string '1', type set to string 'choice', choices is a list containing elements: '0', '1', '2', '3', and help as a string 'Verbosity level; 0=minimal output, 1=normal output, 2=verbose output, 3=very verbose output'.
+            parser.add_option('--settings',
+                help='The Python path to a settings module, e.g. "myproject.settings.main". If this isn\'t provided, the DJANGO_SETTINGS_MODULE environment variable will be used.')
+#ANNOTATION: call the method parser.add_option with 2 arguments: string '--settings' and help as a string 'The Python path to a settings module, e.g. "myproject.settings.main". If this isn\'t provided, the DJANGO_SETTINGS_MODULE environment variable will be used.'.
+            parser.add_option('--pythonpath',
+                help='A directory to add to the Python path, e.g. "/home/djangoprojects/myproject".'),
+#ANNOTATION: call the method parser.add_option with 2 arguments: string '--pythonpath' and help set to string 'A directory to add to the Python path, e.g. "/home/djangoprojects/myproject".'.
+            parser.add_option('--traceback', action='store_true',
+                help='Raise on exception')
+#ANNOTATION: call the method parser.add_option with 3 arguments: string '--traceback', action set to a string 'store_true', 
+#ANNOTATION: and help='Raise on exception'.
+            parser.add_option('--no-color', action='store_true', dest='no_color', default=False,
+                help="Don't colorize the command output.")
+#ANNOTATION: call the method parser.add_option with 5 arguments: string '--no-color', action set to a string 'store_true', 
+#ANNOTATION: dest set to string 'no_color' default set to boolean False and help set to a string "Don't colorize the command output.".
+            for opt in self.option_list:
+#ANNOTATION: for every opt in self.option_list,
+                parser.add_option(opt)
+#ANNOTATION: call the method parser.add_option with an argument opt.
+        else:
+#ANNOTATION: if not,
+            parser = CommandParser(self, prog="%s %s" % (os.path.basename(prog_name), subcommand),
+                description=self.help or None)
+#ANNOTATION: parser is an instance of CommandParser class, created with 3 arguments: self, prog as a string created by joining:
+#ANNOTATION: os.path.basename(prog_name) and subcommand, separated by whitespace and description set to self.help, if exists, or None, otherwise.
+            parser.add_argument('--version', action='version', version=self.get_version())
+#ANNOTATION: call the method parser.add_option with 3 arguments: string '--version', action set to string 'version',
+#ANNOTATION: and version set to result of the method self.get_version.
+            parser.add_argument('-v', '--verbosity', action='store', dest='verbosity', default='1',
+                type=int, choices=[0, 1, 2, 3],
+                help='Verbosity level; 0=minimal output, 1=normal output, 2=verbose output, 3=very verbose output')
+#ANNOTATION: call the method parser.add_option with 8 arguments: string '-v', string '--verbosity', action set to string 'store',
+#ANNOTATION: dest set to string 'verbosity', default set to string '1', type set to int, choices is a list, containing integers: 0, 1, 2 and 3,
+#ANNOTATOIN: and help as a string 'Verbosity level; 0=minimal output, 1=normal output, 2=verbose output, 3=very verbose output'.
+            parser.add_argument('--settings',
+                help='The Python path to a settings module, e.g. "myproject.settings.main". If this isn\'t provided, the DJANGO_SETTINGS_MODULE environment variable will be used.')
+#ANNOTATION: call the method parser.add_option with 2 arguments: string '--settings' and help as a string 'The Python path to a settings module, #ANNOTATION: e.g. "myproject.settings.main". If this isn\'t provided, the DJANGO_SETTINGS_MODULE environment variable will be used.'
+            parser.add_argument('--pythonpath',
+                help='A directory to add to the Python path, e.g. "/home/djangoprojects/myproject".')
+#ANNOTATION: call the method parser.add_option with 2 arguments: string '--pythonpath' and help set to a string 'A directory to add to the Python #ANNOTATION: path, e.g. "/home/djangoprojects/myproject".'
+            parser.add_argument('--traceback', action='store_true',
+                help='Raise on exception')
+#ANNOTATION: call the method parser.add_option with 3 arguments: string '--traceback', action set to a string 'store_true',
+#ANNOTATION: and help set to string 'Raise on exception'.
+            parser.add_argument('--no-color', action='store_true', dest='no_color', default=False,
+                help="Don't colorize the command output.")
+#ANNOTATION: call the method parser.add_option with 5 arguments: string '--no-color', action is string 'store_true', dest is string 'no_color',
+#ANNOTATION: default is boolean False, and help is a string "Don't colorize the command output.".
+            if self.args:
+#ANNOTATION: if self.args is true,
+                # Keep compatibility and always accept positional arguments, like optparse when args is set
+                parser.add_argument('args', nargs='*')
+#ANNOTATION: call the method parser.add_argument with 2 arguments: string 'args' and nargs set to '*'.
+            self.add_arguments(parser)
+#ANNOTATION: call the method self.add_arguments with an argument parser.
+        return parser
+#ANNOTATION: return parser
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with an argument self and parser. 
+        """
+        Entry point for subclassed commands to add custom arguments.
+        """
+#ANNOTATION: docstring
+        pass
+#ANNOTATION: do nothing
+
+    def print_help(self, prog_name, subcommand):
+#ANNOTATION: define the method print_help with 3 arguments: self, prog_name and subcommand.
+        """
+        Print the help message for this command, derived from
+        ``self.usage()``.
+
+        """
+#ANNOTATION: docstring
+        parser = self.create_parser(prog_name, subcommand)
+#ANNOTATION: call the method self.create_parser with arguments prog_name and subcommand. 
+        parser.print_help()
+#ANNOTATION: call the method parser.print_help.
+
+    def run_from_argv(self, argv):
+#ANNOTATION: define the method run_from_argv with arguments self and argv.
+        """
+        Set up any environment changes requested (e.g., Python path
+        and Django settings), then run this command. If the
+        command raises a ``CommandError``, intercept it and print it sensibly
+        to stderr. If the ``--traceback`` option is present or the raised
+        ``Exception`` is not ``CommandError``, raise it.
+        """
+#ANNOTATION: docstring
+        self._called_from_command_line = True
+#ANNOTATION: self._called_from_command_line is boolean True.
+        parser = self.create_parser(argv[0], argv[1])
+#ANNOTATION: call the method self.create_parser with first and second element of argv, substitute the result for parser.
+
+        if self.use_argparse:
+#ANNOTATION: if self.use_argparse is true,
+            options = parser.parse_args(argv[2:])
+#ANNOTATION: call the method parser.parse_args with argv, without the first 2 elements, substitute the result for options.
+            cmd_options = vars(options)
+#ANNOTATION: call the function vars with an argument options, substitute the result for cmd_options.
+            # Move positional args out of options to mimic legacy optparse
+            if 'args' in options:
+#ANNOTATION: if 'args' is contained in options,
+                args = options.args
+#ANNOTATION: substitute options.args for args.
+                del cmd_options['args']
+#ANNOTATION: delete value under the 'args' key of the cmd_options dictionary.
+            else:
+#ANNOTATION: if not,
+                args = ()
+#ANNOTATION: args is an empty tuple.
+        else:
+#ANNOTATION: if not,
+            options, args = parser.parse_args(argv[2:])
+#ANNOTATION: call the method parser.parse_args with argv, without the first 2 elements, substitute the result for options and args.
+            cmd_options = vars(options)
+#ANNOTATION: call the function vars with an argument options, substitute the result for cmd_options.
+        handle_default_options(options)
+#ANNOTATION: call the function handle_default_options with an argument options. 
+        try:
+#ANNOTATION: try,
+            self.execute(*args, **cmd_options)
+#ANNOTATION: call the method self.execute, with 2 arguments: unpacked list args and unpacked dictionary cmd_options. 
+        except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+            if options.traceback or not isinstance(e, CommandError):
+#ANNOTATION: if options.traceback is true or e is not CommandError instance,
+                raise
+#ANNOTATION: raise an exception.
+
+            # self.stderr is not guaranteed to be set here
+            stderr = getattr(self, 'stderr', OutputWrapper(sys.stderr, self.style.ERROR))
+#ANNOTATION: if it exists, get 'stderr' attribute of self, substitute it for stderr, if not, stderr is an instance of OutputWrapper class,
+#ANNOTATION: created with arguments sys.stderr and self.style.ERROR.
+            stderr.write('%s: %s' % (e.__class__.__name__, e))
+#ANNOTATION: replace '%s' in string '%s: %s' with e.__class__.__name__ and e, respectively, write it to the stderr stream.
+            sys.exit(1)
+#ANNOTATION: call the function sys.exit with an argument integer 1.
+
+    def execute(self, *args, **options):
+#ANNOTATION: define the method execute with 3 arguments: self, unpacked list args and unpacked dictionary options.
+        """
+        Try to execute this command, performing system checks if needed (as
+        controlled by attributes ``self.requires_system_checks`` and
+        ``self.requires_model_validation``, except if force-skipped).
+        """
+#ANNOTATION: docstring
+        self.stdout = OutputWrapper(options.get('stdout', sys.stdout))
+#ANNOTATION: self.stdout is an instance of OutputWrapper class created with an argument: value under the 'stdout' key of the options dictionary,
+#ANNOTATION: if the key doesnt exists use sys.stdout as an argument.
+        if options.get('no_color'):
+#ANNOTATION: if value under the 'no_color' key of the options dictionary.
+            self.style = no_style()
+#ANNOTATION: call the function no_style, substitute the result for self.style.
+            self.stderr = OutputWrapper(options.get('stderr', sys.stderr))
+#ANNOTATION: self.stderr is an OutputWrapper object instance, created with value under the 'stderr' key of the options dictionary as an argument, 
+#ANNOTATION: if the key doesnt exists use sys.stderr as an argument.
+        else:
+#ANNOTATION: if not,
+            self.stderr = OutputWrapper(options.get('stderr', sys.stderr), self.style.ERROR)
+#ANNOTATION: self.stderr is an instance of an OutputWrapper object, created with 2 arguments: value under the 'stderr' key of the options dictionary, if it doesnt exists use the sys.stderr instead, and self.style.ERROR. 
+
+        if self.can_import_settings:
+#ANNOTATION: if self.can_import_settings is true,
+            from django.conf import settings  # NOQA
+#ANNOTATION: from django.conf import settings into default namespace,
+
+        saved_locale = None
+#ANNOTATION: saved_locale is None.
+        if not self.leave_locale_alone:
+#ANNOTATION: if self.leave_locale_alone is false,
+            # Only mess with locales if we can assume we have a working
+            # settings file, because django.utils.translation requires settings
+            # (The final saying about whether the i18n machinery is active will be
+            # found in the value of the USE_I18N setting)
+            if not self.can_import_settings:
+#ANNOTATION: if self.can_import_settings is false,
+                raise CommandError("Incompatible values of 'leave_locale_alone' "
+                                   "(%s) and 'can_import_settings' (%s) command "
+                                   "options." % (self.leave_locale_alone,
+                                                 self.can_import_settings))
+#ANNOTATION: raise an CommandError exception with an argument string, "Incompatible values of 'leave_locale_alone' " 
+#ANNOTATION: "(%s) and 'can_import_settings' (%s) command options.", replace '%s' with self.leave_locale_alone and self.can_import_settings.
+            # Switch to US English, because django-admin.py creates database
+            # content like permissions, and those shouldn't contain any
+            # translations.
+            from django.utils import translation
+#ANNOTATION: from django.utils import translation into default namespace.
+            saved_locale = translation.get_language()
+#ANNOTATION: call the method translation.get_language, substitute th result for saved_locale.
+            translation.activate('en-us')
+#ANNOTATION: call the method translation.activate with an argument string 'en-us'.
+
+        try:
+#ANNOTATION: try,
+            if (self.requires_system_checks and
+                    not options.get('skip_validation') and  # This will be removed at the end of deprecation process for `skip_validation`.
+                    not options.get('skip_checks')):
+#ANNOTATION: if self.requires_system_checks is true and values under the 'skip_validation' and 'skip_checks' keys of the options dictionary are false,
+                self.check()
+#ANNOTATION: call the method self.check,
+            output = self.handle(*args, **options)
+#ANNOTATION: call the method self.handle with 2 arguments unpacked list args and unpacked dictionary options, substitute the result for output.
+            if output:
+#ANNOTATION: if output is true,
+                if self.output_transaction:
+#ANNOTATION: if self.output_transaction is true,
+                    # This needs to be imported here, because it relies on
+                    # settings.
+                    from django.db import connections, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import connections and DEFAULT_DB_ALIAS into default namespace.
+                    connection = connections[options.get('database', DEFAULT_DB_ALIAS)]
+#ANNOTATION: get the value under the 'database' key of the options dictionary, if it doesnt exists use the DEFAULT_DB_ALIAS to address an element
+#ANNOTATION: from the connections list, substitute it for connection.
+                    if connection.ops.start_transaction_sql():
+#ANNOTATION: call the method connection.ops.start_transaction_sql, if it evaluates to true,
+                        self.stdout.write(self.style.SQL_KEYWORD(connection.ops.start_transaction_sql()))
+#ANNOTATION: call the method connection.ops.start_transaction_sql, use the result as an argument for the call to the method self.style.SQL_KEYWORD,
+#ANNOTATION: write the result to the self.stdout stream.
+                self.stdout.write(output)
+#ANNOTATION: write output to self.stdout stream.
+                if self.output_transaction:
+#ANNOTATION: if self.output_transaction is true,
+                    self.stdout.write('\n' + self.style.SQL_KEYWORD(connection.ops.end_transaction_sql()))
+#ANNOTATION: call the method connection.ops.end_transaction_sql, use the result as the argument for the call to the method self.style.SQL_KEYWORD,
+#ANNOTATION: append the result to the '\n' string, write it to self.stdout.
+        finally:
+#ANNOTATION: finally perform,
+            if saved_locale is not None:
+#ANNOTATION: if saved_locale is not None,
+                translation.activate(saved_locale)
+#ANNOTATION: call the method translation.activate with an argument saved_locale.
+
+    def validate(self, app_config=None, display_num_errors=False):
+#ANNOTATION: define the method with 3 arguments: self, app_config  set to None and display_num_errors set to boolean False.
+        """ Deprecated. Delegates to ``check``."""
+#ANNOTATION: docstring
+
+        if app_config is None:
+#ANNOTATION: if app_config is None,
+            app_configs = None
+#ANNOTATION: app_configs is not None.
+        else:
+#ANNOTATION: if not,
+            app_configs = [app_config]
+#ANNOTATION: app_configs is a list containing app_config.
+
+        return self.check(app_configs=app_configs, display_num_errors=display_num_errors)
+#ANNOTATION: call the method self.check with 2 arguments app_configs set to app_configs, display_num_errors set to display_num_errors, return the result.
+
+    def check(self, app_configs=None, tags=None, display_num_errors=False):
+#ANNOTATION: define the method check with 4 arguments: self, app_configs set to None, tags set to None, display_num_errors set to boolean False.
+        """
+        Uses the system check framework to validate entire Django project.
+        Raises CommandError for any serious message (error or critical errors).
+        If there are only light messages (like warnings), they are printed to
+        stderr and no exception is raised.
+        """
+#ANNOTATION: docstring
+        all_issues = checks.run_checks(app_configs=app_configs, tags=tags)
+#ANNOTATION: call the method checks.run_checks with 2 arguments: app_configs set to app_configs, tags set t tags, substitute the result for all_issues.
+
+        msg = ""
+#ANNOTATION: msg is an empty string.
+        visible_issue_count = 0  # excludes silenced warnings
+#ANNOTATION: visible_issue_count is an integer 0.
+
+        if all_issues:
+#ANNOTATION: if all_issues is true,
+            debugs = [e for e in all_issues if e.level < checks.INFO and not e.is_silenced()]
+#ANNOTATION: append e to debugs list for every e in all_issues, if e.level is lesser than checks.INFO and result of the method e.is_silenced in false.
+            infos = [e for e in all_issues if checks.INFO <= e.level < checks.WARNING and not e.is_silenced()]
+#ANNOTATION: append e to infos list for every e in all_issues, if checks.INFO is lesser or equal to e.level,
+#ANNOTATION: and e.level is lesser than checks.WARNING and result of the method e.is_silenced in false.
+            warnings = [e for e in all_issues if checks.WARNING <= e.level < checks.ERROR and not e.is_silenced()]
+#ANNOTATION: append e to warnings list for every e in all_issues, if checks.WARNING is lesser than or equal to e.level,
+#ANNOTATION: and e.level is lesser than checks.WARNING and result of the method e.is_silenced in false.
+            errors = [e for e in all_issues if checks.ERROR <= e.level < checks.CRITICAL]
+#ANNOTATION: append e to errors list for every e in all_issues, if checks.ERROR is lesser than or equal to e.level, 
+#ANNOTATION: and e.level is lesser than checks.CRITICAL.
+            criticals = [e for e in all_issues if checks.CRITICAL <= e.level]
+#ANNOTATION: append e to criticals list for every e in all_issues, if checks.CRITICAL is lesser than or equal to e.level.
+            sorted_issues = [
+                (criticals, 'CRITICALS'),
+                (errors, 'ERRORS'),
+                (warnings, 'WARNINGS'),
+                (infos, 'INFOS'),
+                (debugs, 'DEBUGS'),
+            ]
+#ANNOTATION: sorted_issues is a list of tuples with 5 entries: criticals and 'CRITICALS', errors and 'ERRORS', warnings and 'WARNINGS',
+#ANNOTATION: infos, 'INFOS'
+
+            for issues, group_name in sorted_issues:
+#ANNOTATION: for every issues and group_name in sorted_issues,
+                if issues:
+#ANNOTATION: if issues is true,
+                    visible_issue_count += len(issues)
+#ANNOTATION: increment visible_issue_count for length of issues.
+                    formatted = (
+                        color_style().ERROR(force_str(e))
+                        if e.is_serious()
+                        else color_style().WARNING(force_str(e))
+                        for e in issues)
+#ANNOTATION: if e.is_serious method evaluates to true, call the function color_style, on the result call the method ERROR with result of the #ANNOTATION: force_str called with an argument e, if not call the function color_style on the result call the method ERROR with result of the #ANNOTATION: force_str called with an argument e, for every e in issues, formatted is a tuple containing the previous result.
+
+                    formatted = "\n".join(sorted(formatted))
+#ANNOTATION: sort elements formatted, join them in the list separated with newline character, substitute the result for formatted.
+                    msg += '\n%s:\n%s\n' % (group_name, formatted)
+#ANNOTATION: substitute '%s' in the string '\n%s:\n%s\n', with group_name and formatted, substitute the result for msg.
+            if msg:
+#ANNOTATION: if msg is true,
+                msg = "System check identified some issues:\n%s" % msg
+#ANNOTATION: replace '%s' in string "System check identified some issues:\n%s" with msg, substitute it for msg.
+
+        if display_num_errors:
+#ANNOTATION: if display_num_errors is true,
+            if msg:
+#ANNOTATION: if msg is true,
+                msg += '\n'
+#ANNOTATION: append newline character to msg.
+            msg += "System check identified %s (%s silenced)." % (
+                "no issues" if visible_issue_count == 0 else
+                "1 issue" if visible_issue_count == 1 else
+                "%s issues" % visible_issue_count,
+                len(all_issues) - visible_issue_count,
+            )
+#ANNOTATION: append string "System check identified %s (%s silenced)." to msg, replace first '%s' for: string "no issues",
+#ANNOTATION: if visible_issue_count equals to integer 0, or for string "1 issue" if visible_issue_count equals integer 1,
+#ANNOTATION: or for string "%s issues", with '%s' replaced by visible_issue_count, subtract visible_issue_count from length of all_issues,
+#ANNOTATION: and substitute it for second '%s' in the stirting string.
+
+        if any(e.is_serious() and not e.is_silenced() for e in all_issues):
+#ANNOTATION: if any element in the return value of the e.is_serious method is true, and if return value of the method e.is_silenced is false,
+#ANNOTATION: for every e in all_issues,
+            raise CommandError(msg)
+#ANNOTATION: raise an CommandError with argument msg,
+        elif msg and visible_issue_count:
+#ANNOTATION: otherwise if msg and visible_issue_count are true,
+            self.stderr.write(msg)
+#ANNOTATION: write msg to self.stderr stream.
+        elif msg:
+#ANNOTATION: otherwise if msg is true,
+            self.stdout.write(msg)
+#ANNOTATION: write msg to self.stderr stream.
+
+    def handle(self, *args, **options):
+#ANNOTATION: define the method handle with 3 arguments: self, unpacked args and unpacked dictionary options.
+        """
+        The actual logic of the command. Subclasses must implement
+        this method.
+
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of BaseCommand must provide a handle() method')
+#ANNOTATION: raise an NotImplementedError exception with an argument string 'subclasses of BaseCommand must provide a handle() method'.
+
+
+class AppCommand(BaseCommand):
+#ANNOTATION: derive the AppCommand class from the BaseCommand base class.
+    """
+    A management command which takes one or more installed application labels
+    as arguments, and does something with each of them.
+
+    Rather than implementing ``handle()``, subclasses must implement
+    ``handle_app_config()``, which will be called once for each application.
+    """
+#ANNOTATION: docstring
+    missing_args_message = "Enter at least one application label."
+#ANNOTATION: missing_args_message is an string "Enter at least one application label.".
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with self and parser as arguments. 
+        parser.add_argument('args', metavar='app_label', nargs='+',
+            help='One or more application label.')
+#ANNOTATION: call the method parser.add_argument with 4 arguments: string 'args', metavar set to 'app_label', nargs set to '+',
+#ANNOTATION: and help set to string 'One or more application label.'.  
+
+    def handle(self, *app_labels, **options):
+#ANNOTATION: define the method handle with 3 arguments: self, unpacked list app_labels and unpacked dictionary options.
+        from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+        try:
+#ANNOTATION: try,
+            app_configs = [apps.get_app_config(app_label) for app_label in app_labels]
+#ANNOTATION: call the method apps.get_app_config with an argument app_lable, for every app_label in app_labels, append the results to app_configs list.
+        except (LookupError, ImportError) as e:
+#ANNOTATION: if LookupError or ImportError, renamed to e, exceptions are caught,
+            raise CommandError("%s. Are you sure your INSTALLED_APPS setting is correct?" % e)
+#ANNOTATION: raise an CommandError with an argument string "%s. Are you sure your INSTALLED_APPS setting is correct?", with '%s' replaced by e.
+        output = []
+#ANNOTATION: output is an empty list.
+        for app_config in app_configs:
+#ANNOTATION: for eery app_config in app_configs,
+            app_output = self.handle_app_config(app_config, **options)
+#ANNOTATION: call the self.handle_app_config method with app_config and options as arguments, substitute the result for app_output.
+            if app_output:
+#ANNOTATION: if app_output is true,
+                output.append(app_output)
+#ANNOTATION: append app_output to output.
+        return '\n'.join(output)
+#ANNOTATION: join elements of output into a string, separated by newline characters, return it.
+
+    def handle_app_config(self, app_config, **options):
+#ANNOTATION: define the method handle_app_config with 3 arguments: self, app_config and unpacked dictionary options.
+        """
+        Perform the command's actions for app_config, an AppConfig instance
+        corresponding to an application label given on the command line.
+        """
+#ANNOTATION: docstring
+        try:
+#ANNOTATION: try,
+            # During the deprecation path, keep delegating to handle_app if
+            # handle_app_config isn't implemented in a subclass.
+            handle_app = self.handle_app
+#ANNOTATION: substitute self.handle_app for handle_app.
+        except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+            # Keep only this exception when the deprecation completes.
+            raise NotImplementedError(
+                "Subclasses of AppCommand must provide"
+                "a handle_app_config() method.")
+#ANNOTATION: raise an NotImplementedError with an argument string "Subclasses of AppCommand must provide a handle_app_config() method.".
+        else:
+#ANNOTATION: if not,
+            warnings.warn(
+                "AppCommand.handle_app() is superseded by "
+                "AppCommand.handle_app_config().",
+                RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the function warnings.warn with 3 argument: string "AppCommand.handle_app() is superseded by AppCommand.handle_app_config().",
+#ANNOTATION: RemovedInDjango19Warning and stacklevel set to integer 2.
+            if app_config.models_module is None:
+#ANNOTATION: if app_config.models_module is None,
+                raise CommandError(
+                    "AppCommand cannot handle app '%s' in legacy mode "
+                    "because it doesn't have a models module."
+                    % app_config.label)
+#ANNOTATION: raise an CommandError with an argument string "AppCommand cannot handle app '%s' in legacy mode because it doesn't have a models module.", where '%s' is replaced by app_config.label.
+            return handle_app(app_config.models_module, **options)
+#ANNOTATION: call the function handle_app with 2 arguments: app_config.models_module and unpacked dictionary options.
+
+
+class LabelCommand(BaseCommand):
+#ANNOTATION: derive the LabelCommand class from the BaseCommand base class.
+    """
+    A management command which takes one or more arbitrary arguments
+    (labels) on the command line, and does something with each of
+    them.
+
+    Rather than implementing ``handle()``, subclasses must implement
+    ``handle_label()``, which will be called once for each label.
+
+    If the arguments should be names of installed applications, use
+    ``AppCommand`` instead.
+
+    """
+#ANNOTATION: docstring
+    label = 'label'
+#ANNOTATION: label is a string 'label'
+    missing_args_message = "Enter at least one %s." % label
+#ANNOTATION: substitute string "Enter at least one %s.", with '%s' replaced by label, for missing_args_message.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with arguments self and parser.
+        parser.add_argument('args', metavar=self.label, nargs='+')
+#ANNOTATION: call the method parser.add_argument with 3 arguments: string 'args', metavar set to self.label and nargs set to '+'. 
+
+    def handle(self, *labels, **options):
+#ANNOTATION: define the method handle with 3 arguments: self, unpacked list labels and unpacked dictionary options.
+        output = []
+#ANNOTATION: output is an empty list.
+        for label in labels:
+#ANNOTATION: for every label in labels,
+            label_output = self.handle_label(label, **options)
+#ANNOTATION: call the method self.handle_label with 2 arguments: label and unpacked dictionary options, substitute the result for label_output.
+            if label_output:
+#ANNOTATION: if label_output is true,
+                output.append(label_output)
+#ANNOTATION: append label_output to output.
+        return '\n'.join(output)
+#ANNOTATION: join output into a string, separated by newline characters, return it.
+
+    def handle_label(self, label, **options):
+#ANNOTATION: define the method handle_label with 3 arguments: self, label and unpacked dictionary options.
+        """
+        Perform the command's actions for ``label``, which will be the
+        string as given on the command line.
+
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of LabelCommand must provide a handle_label() method')
+#ANNOTATION: raise an NotImplementedError exception with an argument string 'subclasses of LabelCommand must provide a handle_label() method'.
+
+
+class NoArgsCommand(BaseCommand):
+#ANNOTATION: derive the NoArgsCommand class from the BaseCommand base class. 
+    """
+    A command which takes no arguments on the command line.
+
+    Rather than implementing ``handle()``, subclasses must implement
+    ``handle_noargs()``; ``handle()`` itself is overridden to ensure
+    no arguments are passed to the command.
+
+    Attempting to pass arguments will raise ``CommandError``.
+
+    """
+#ANNOTATION: docstring
+    args = ''
+#ANNOTATION: args is an empty string.
+
+    def __init__(self):
+#ANNOTATION: define the method __init__ with an argument self.
+        warnings.warn(
+            "NoArgsCommand class is deprecated and will be removed in Django 2.0. "
+            "Use BaseCommand instead, which takes no arguments by default.",
+            RemovedInDjango20Warning
+        )
+#ANNOTATION: call the function warnings.warn with 2 arguments: string "NoArgsCommand class is deprecated and will be removed in Django 2.0. "
+#ANNOTATION: "Use BaseCommand instead, which takes no arguments by default." and RemovedInDjango20Warning. 
+        super(NoArgsCommand, self).__init__()
+#ANNOTATION: call the __init__ method from the base class of the NoArgsCommand class. 
+
+    def handle(self, *args, **options):
+#ANNOTATION: define the method handle with 3 arguments: self, unpacked list args and unpacked dictionary options.
+        if args:
+#ANNOTATION: if args is true,
+            raise CommandError("Command doesn't accept any arguments")
+#ANNOTATION: raise an CommandError exception with an argument string "Command doesn't accept any arguments".
+        return self.handle_noargs(**options)
+#ANNOTATION: call the self.handle_noargs method with with unpacked dictionary options as argument, return the result.
+
+    def handle_noargs(self, **options):
+#ANNOTATION: define the method handle_noargs with 2 arguments: self and unpacked dictionary options.
+        """
+        Perform this command's actions.
+
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of NoArgsCommand must provide a handle_noargs() method')
+#ANNOTATION: raise an NotImplementedError with an argument string 'subclasses of NoArgsCommand must provide a handle_noargs() method'.

@@ -1,0 +1,201 @@
+"""
+Classes representing uploaded files.
+"""
+#ANNOTATION: docstring
+
+import errno
+#ANNOTATION: import module errno.
+import os
+#ANNOTATION: import module os.
+from io import BytesIO
+#ANNOTATION: from io import BytesIO into default name space.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core.files.base import File
+#ANNOTATION: from django.core.files.base import File into default name space.
+from django.core.files import temp as tempfile
+#ANNOTATION: from django.core.files import temp as tempfile into default name space.
+from django.utils.encoding import force_str
+#ANNOTATION: from django.utils.encoding import force_str into default name space.
+
+__all__ = ('UploadedFile', 'TemporaryUploadedFile', 'InMemoryUploadedFile',
+           'SimpleUploadedFile')
+#ANNOTATION: __all__ is a tuple containing strings: 'UploadedFile', 'TemporaryUploadedFile', 'InMemoryUploadedFile' and 'SimpleUploadedFile'.
+
+
+class UploadedFile(File):
+#ANNOTATION: derive the UploadedFile class from the File base class.
+    """
+    A abstract uploaded file (``TemporaryUploadedFile`` and
+    ``InMemoryUploadedFile`` are the built-in concrete subclasses).
+
+    An ``UploadedFile`` object behaves somewhat like a file object and
+    represents some file data that the user submitted with a form.
+    """
+#ANNOTATION: docstring
+    DEFAULT_CHUNK_SIZE = 64 * 2 ** 10
+#ANNOTATION: bring integer 2 to the power of 10, multiply it by integer 64, substitute the result for DEFAULT_CHUNK_SIZE.
+
+    def __init__(self, file=None, name=None, content_type=None, size=None, charset=None, content_type_extra=None):
+#ANNOTATION: define the method __init__ with 7 arguments: self, file set to None, name set to None, content_type set to None, size set to None, charset set to None and content_type_extra set to None.
+        super(UploadedFile, self).__init__(file, name)
+#ANNOTATION: call the __init__ method with arguments file and name, from the base class of the UploadedFile class.
+        self.size = size
+#ANNOTATION: substitute size for self.size.
+        self.content_type = content_type
+#ANNOTATION: substitute content_type for self.content_type.
+        self.charset = charset
+#ANNOTATION: substitute charset for self.charset.
+        self.content_type_extra = content_type_extra
+#ANNOTATION: substitute content_type_extra for self.content_type_extra.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with argument self.
+        return force_str("<%s: %s (%s)>" % (
+            self.__class__.__name__, self.name, self.content_type))
+#ANNOTATION: substitute '%s' from string "<%s: %s (%s)>" with self.__class__.__name__, self.name and self.content_type, respectively, use it as an argument for the call to the function force_str, return the result.  
+
+    def _get_name(self):
+#ANNOTATION: define the method _get_name with argument self.
+        return self._name
+#ANNOTATION: return self._name.
+
+    def _set_name(self, name):
+#ANNOTATION: define the method _set_name with arguments self and name.
+        # Sanitize the file name so that it can't be dangerous.
+        if name is not None:
+#ANNOTATION: if name is not None,
+            # Just use the basename of the file -- anything else is dangerous.
+            name = os.path.basename(name)
+#ANNOTATION: call the function os.path.basename with argument name, substitute the result for name.
+
+            # File names longer than 255 characters can cause problems on older OSes.
+            if len(name) > 255:
+#ANNOTATION: if length of name is greater than integer 255,
+                name, ext = os.path.splitext(name)
+#ANNOTATION: call the os.path.splitex with argument name, assign the result to name and ext, respectively.
+                ext = ext[:255]
+#ANNOTATION: substitute the first 255 elements of ext for ext.
+                name = name[:255 - len(ext)] + ext
+#ANNOTATION: subtract length of the ext from the integer 255, take first elements of the name list up to the previous result index, 
+#ANNOTATION: append ext to the end of it, substitute the resulting list for name. 
+
+        self._name = name
+#ANNOTATION: substitute name for self._name.
+
+    name = property(_get_name, _set_name)
+#ANNOTATION: name is a property object with _get_name as a getter method and _set_name as a setter method.
+
+
+class TemporaryUploadedFile(UploadedFile):
+#ANNOTATION: derive the TemporaryUploadedFile class from the UploadedFile base class.
+    """
+    A file uploaded to a temporary location (i.e. stream-to-disk).
+    """
+#ANNOTATION: docstring
+    def __init__(self, name, content_type, size, charset, content_type_extra=None):
+#ANNOTATION: define the __init__ method with 6 arguments: self, name, content_type, size, charset and content_type_extra set to None.
+        if settings.FILE_UPLOAD_TEMP_DIR:
+#ANNOTATION:  if settings.FILE_UPLOAD_TEMP_DIR is true,
+            file = tempfile.NamedTemporaryFile(suffix='.upload',
+                dir=settings.FILE_UPLOAD_TEMP_DIR)
+#ANNOTATION: call the method tempfile.NamedTemporaryFile with arguments: suffix set to string '.upload' and dir set to settings.FILE_UPLOAD_TEMP_DIR.
+        else:
+#ANNOTATION: if not,
+            file = tempfile.NamedTemporaryFile(suffix='.upload')
+#ANNOTATION: call the method tempfile.NamedTemporaryFile with argument suffix set to string '.upload'.
+        super(TemporaryUploadedFile, self).__init__(file, name, content_type, size, charset, content_type_extra)
+#ANNOTATION: call the method __init__ from the base class of the TemporaryUploadedFile class with arguments: file, name, content_type, size, charset and content_type_extra.
+
+    def temporary_file_path(self):
+#ANNOTATION: define the method temporary_file_path with argument self.
+        """
+        Returns the full path of this file.
+        """
+#ANNOTATION: docstring
+        return self.file.name
+#ANNOTATION: return self.file.name. 
+
+    def close(self):
+#ANNOTATION: define the method close with argument self.
+        try:
+#ANNOTATION: try,
+            return self.file.close()
+#ANNOTATION: call the self.file.close method, return the result.
+        except OSError as e:
+#ANNOTATION: if OSError, renamed to e, exception is caught,
+            if e.errno != errno.ENOENT:
+#ANNOTATION: if e.errno is not equal to errno.ENOENT,
+                # Means the file was moved or deleted before the tempfile
+                # could unlink it.  Still sets self.file.close_called and
+                # calls self.file.file.close() before the exception
+                raise
+#ANNOTATION: raise an exception.
+
+
+class InMemoryUploadedFile(UploadedFile):
+#ANNOTATION: derive the InMemoryUploadedFile class from the UploadedFile base class.
+    """
+    A file uploaded into memory (i.e. stream-to-memory).
+    """
+#ANNOTATION: docstring
+    def __init__(self, file, field_name, name, content_type, size, charset, content_type_extra=None):
+#ANNOTATION: define the method __init__ with 8 arguments: self, file, field_name, name, content_type, size, charset and content_type_extra set to None.
+        super(InMemoryUploadedFile, self).__init__(file, name, content_type, size, charset, content_type_extra)
+#ANNOTATION: call the method __init__ from the base class of the InMemoryUploadedFile base class, with 6 arguments: file, name, content_type,
+#ANNOTATION: size, charset, content_type_extra.
+        self.field_name = field_name
+#ANNOTATION: substitute field_name for self.field_name.
+
+    def open(self, mode=None):
+#ANNOTATION: define the method open with arguments self and mode set to None.
+        self.file.seek(0)
+#ANNOTATION: set the file pointer at the beginning of the self.file file.
+
+    def chunks(self, chunk_size=None):
+#ANNOTATION: define the method chunks with arguments self ad chunk_size set to None.
+        self.file.seek(0)
+#ANNOTATION: set the file pointer at the beginning of the self.file file.
+        yield self.read()
+#ANNOTATION: read the whole self file and yield it as a generator return value. 
+
+    def multiple_chunks(self, chunk_size=None):
+#ANNOTATION: define the method multiple_chunks with arguments self and hunk_size set to None.
+        # Since it's in memory, we'll never have multiple chunks.
+        return False
+#ANNOTATION: return boolean False.
+
+
+class SimpleUploadedFile(InMemoryUploadedFile):
+#ANNOTATION: derive the SimpleUploadedFile class from the InMemoryUploadedFile base class.
+    """
+    A simple representation of a file, which just has content, size, and a name.
+    """
+#ANNOTATION: docstring
+    def __init__(self, name, content, content_type='text/plain'):
+#ANNOTATION: define the method __init__ with 4 arguments: self, name, content and content_type defaulting to a string 'text/plain'.
+        content = content or b''
+#ANNOTATION: if content is empty, substitute it for an empty string.
+        super(SimpleUploadedFile, self).__init__(BytesIO(content), None, name,
+                                                 content_type, len(content), None, None)
+#ANNOTATION: call the __init__ method from the base class of the SimpleUploadedFile class with 7 arguments: BytesIO(content), None, name,
+#ANNOTATION: content_type, length of content, None and None.
+
+    @classmethod
+#ANNOTATION: decorator classmethod.
+    def from_dict(cls, file_dict):
+#ANNOTATION: define the method from_dict with argument cls and file_dict.
+        """
+        Creates a SimpleUploadedFile object from
+        a dictionary object with the following keys:
+           - filename
+           - content-type
+           - content
+        """
+#ANNOTATION: docstring
+        return cls(file_dict['filename'],
+                   file_dict['content'],
+                   file_dict.get('content-type', 'text/plain'))
+#ANNOTATION: call the method cls with 3 arguments: value under the 'filename' key of file_dict, value under the 'content' key of file_dict,
+#ANNOTATION: value under the 'content-type' key of file_dict or string 'text/plain' if the key doesnt exists, return the result.

@@ -1,0 +1,163 @@
+"""
+Tools for sending email.
+"""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.utils.module_loading import import_string
+#ANNOTATION: from django.utils.module_loading import import_string into default name space.
+
+# Imported for backwards compatibility, and for the sake
+# of a cleaner namespace. These symbols used to be in
+# django/core/mail.py before the introduction of email
+# backends and the subsequent reorganization (See #10355)
+from django.core.mail.utils import CachedDnsName, DNS_NAME
+#ANNOTATION: from django.core.mail.utils import CachedDnsName and DNS_NAME into default name space.
+from django.core.mail.message import (
+    EmailMessage, EmailMultiAlternatives,
+    SafeMIMEText, SafeMIMEMultipart,
+    DEFAULT_ATTACHMENT_MIME_TYPE, make_msgid,
+    BadHeaderError, forbid_multi_line_headers)
+#ANNOTATION: from django.core.mail.message import EmailMessage, EmailMultiAlternatives, SafeMIMEText, SafeMIMEMultipart,
+#ANNOTATION: DEFAULT_ATTACHMENT_MIME_TYPE, make_msgid, BadHeaderError and forbid_multi_line_headers into default name space.
+
+__all__ = [
+    'CachedDnsName', 'DNS_NAME', 'EmailMessage', 'EmailMultiAlternatives',
+    'SafeMIMEText', 'SafeMIMEMultipart', 'DEFAULT_ATTACHMENT_MIME_TYPE',
+    'make_msgid', 'BadHeaderError', 'forbid_multi_line_headers',
+    'get_connection', 'send_mail', 'send_mass_mail', 'mail_admins',
+    'mail_managers',
+]
+#ANNOTATION: __all__ is a list of strings, 'CachedDnsName', 'DNS_NAME', 'EmailMessage', 'EmailMultiAlternatives', 'SafeMIMEText', 
+#ANNOTATION: 'SafeMIMEMultipart', 'DEFAULT_ATTACHMENT_MIME_TYPE', 'make_msgid', 'BadHeaderError', 'forbid_multi_line_headers',
+#ANNOTATION: 'get_connection', 'send_mail', 'send_mass_mail', 'mail_admins' and 'mail_managers'.
+
+
+def get_connection(backend=None, fail_silently=False, **kwds):
+#ANNOTATION: define function get_connection with backend set to None, fail_silently set to boolean False and dictionary kwds as arguments.
+    """Load an email backend and return an instance of it.
+
+    If backend is None (default) settings.EMAIL_BACKEND is used.
+
+    Both fail_silently and other keyword arguments are used in the
+    constructor of the backend.
+    """
+#ANNOTATION: docstring
+    klass = import_string(backend or settings.EMAIL_BACKEND)
+#ANNOTATION: call the function import_string with backend if exists or settings.EMAIL_BACKEND if not, store the result into klass.
+    return klass(fail_silently=fail_silently, **kwds)
+#ANNOTATION: call the klass method with fail_silently set to fail_silently and dictionary arguments kwds as arguments, return the result.
+
+
+def send_mail(subject, message, from_email, recipient_list,
+              fail_silently=False, auth_user=None, auth_password=None,
+              connection=None, html_message=None):
+#ANNOTATION: define send_mail funtion with subject, message, from_email, recipient_list, fail_silently set to boolean False,
+#ANNOTATION: auth_user set to None, auth_password set to None, connection set to None and html_message set to None, as arguments.
+    """
+    Easy wrapper for sending a single message to a recipient list. All members
+    of the recipient list will see the other recipients in the 'To' field.
+
+    If auth_user is None, the EMAIL_HOST_USER setting is used.
+    If auth_password is None, the EMAIL_HOST_PASSWORD setting is used.
+
+    Note: The API for this method is frozen. New code wanting to extend the
+    functionality should use the EmailMessage class directly.
+    """
+#ANNOTATION: docstring
+    connection = connection or get_connection(username=auth_user,
+                                    password=auth_password,
+                                    fail_silently=fail_silently)
+#ANNOTATION: if connection exists dont modify it, if not call get_connection function with username set to auth_user, password set to auth_password, fail_silently set to fail_silently as arguments, assign it to connection.
+    mail = EmailMultiAlternatives(subject, message, from_email, recipient_list,
+                                  connection=connection)
+#ANNOTATION: call the EmailMultiAlternatives function with, subject, message, from_email, recipient_list and connection set to connection, as arguments, assign the result to mail.
+    if html_message:
+#ANNOTATION: if html_message is True,
+        mail.attach_alternative(html_message, 'text/html')
+#ANNOTATION: call the mail.attach_alternative method with html_message and string 'text/html' as arguments. 
+
+    return mail.send()
+#ANNOTATION: return the evaluated result of the mail.send method.
+
+
+def send_mass_mail(datatuple, fail_silently=False, auth_user=None,
+                   auth_password=None, connection=None):
+#ANNOTATION: define the function send_mass_mail with, datatuple, fail_silently set to False, auth_user set to None, auth_password set to None,
+#ANNOTATION: and connection set to None as arguments.
+    """
+    Given a datatuple of (subject, message, from_email, recipient_list), sends
+    each message to each recipient list. Returns the number of emails sent.
+
+    If from_email is None, the DEFAULT_FROM_EMAIL setting is used.
+    If auth_user and auth_password are set, they're used to log in.
+    If auth_user is None, the EMAIL_HOST_USER setting is used.
+    If auth_password is None, the EMAIL_HOST_PASSWORD setting is used.
+
+    Note: The API for this method is frozen. New code wanting to extend the
+    functionality should use the EmailMessage class directly.
+    """
+#ANNOTATION: docstring
+    connection = connection or get_connection(username=auth_user,
+                                    password=auth_password,
+                                    fail_silently=fail_silently)
+#ANNOTATION: if connection exists dont change it, if not call the get_connection function with username set to auth_user,
+#ANNOTATION: password set to auth_password, fail_silently set to fail_silently as arguments, assign the result to connection. 
+    messages = [EmailMessage(subject, message, sender, recipient,
+                             connection=connection)
+                for subject, message, sender, recipient in datatuple]
+#ANNOTATION: call the EmailMessage function wit subject, message, sender, recipient and connection set to connection, 
+#ANNOTATION: for every subject, message, sender and recipient in datatuple, store the results in the messages list.
+    return connection.send_messages(messages)
+#ANNOTATION: return evaluated result of the method connection.send_messages with messages as argument.
+
+
+def mail_admins(subject, message, fail_silently=False, connection=None,
+                html_message=None):
+#ANNOTATION: define the function mail_admins with subject, message, fails_silently set to boolean False, connection set to None,
+#ANNOTATION: html_message set to None, as arguments.
+    """Sends a message to the admins, as defined by the ADMINS setting."""
+#ANNOTATION: docstring
+    if not settings.ADMINS:
+#ANNOTATION: if settings.ADMINS is false,
+        return
+#ANNOTATION: return nothing.
+    mail = EmailMultiAlternatives('%s%s' % (settings.EMAIL_SUBJECT_PREFIX, subject),
+                message, settings.SERVER_EMAIL, [a[1] for a in settings.ADMINS],
+                connection=connection)
+#ANNOTATION: call the function EmailMultiAlternatives with settings.EMAIL_SUBJECT_PREFIX and subject converted to strings and concatenated, 
+#ANNOTATION: message, settings.SERVER_EMAIL, list of second elements of a for every a in settings.Managers and connection set to connection,
+#ANNOTATION: as arguments, assign the result to mail.
+    if html_message:
+#ANNOTATION: if html_message is true,
+        mail.attach_alternative(html_message, 'text/html')
+#ANNOTATION: call method mail.attach_alternative as html_message and string 'text/hmtl' as arguments.
+    mail.send(fail_silently=fail_silently)
+#ANNOTATION: call the mail.send method with fail_silently=fail_silently as argument. 
+
+
+def mail_managers(subject, message, fail_silently=False, connection=None,
+                  html_message=None):
+#ANNOTATION: define the function mail_managers with subject, message, fails_silently set to boolean False, connection set to None,
+#ANNOTATION: html_message set to None as arguments.
+    """Sends a message to the managers, as defined by the MANAGERS setting."""
+#ANNOTATION: docstring
+    if not settings.MANAGERS:
+#ANNOTATION: if settings.MANAGERS does not exist,
+        return
+#ANNOTATION: return nothing.
+    mail = EmailMultiAlternatives('%s%s' % (settings.EMAIL_SUBJECT_PREFIX, subject),
+                message, settings.SERVER_EMAIL, [a[1] for a in settings.MANAGERS],
+                connection=connection)
+#ANNOTATION: call the function EmailMultiAlternatives with settings.EMAIL_SUBJECT_PREFIX and subject converted to strings and concatenated, 
+#ANNOTATION: message, settings.SERVER_EMAIL, list of second elements of a for every a in settings.Managers and connection set to connection,
+#ANNOTATION: as arguments, assign the result to mail.
+    if html_message:
+#ANNOTATION: if html_message is true,
+        mail.attach_alternative(html_message, 'text/html')
+#ANNOTATION: call the mail.attach_alternative method with html_message and string 'text/html' as arguments.
+    mail.send(fail_silently=fail_silently)
+#ANNOTATION: call the mail.send method with fail_silently set to fail_silently as argument.

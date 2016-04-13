@@ -1,0 +1,131 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import os
+#ANNOTATION: import module os.
+from subprocess import PIPE, Popen
+#ANNOTATION: from subprocess import PIPE and Popen into default name space.
+import sys
+#ANNOTATION: import module sys.
+
+from django.utils.encoding import force_text, DEFAULT_LOCALE_ENCODING
+#ANNOTATION: from django.utils.encoding import force_text and DEFAULT_LOCALE_ENCODING into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+from .base import CommandError
+#ANNOTATION: from .base import CommandError into default name space.
+
+
+def popen_wrapper(args, os_err_exc_type=CommandError):
+#ANNOTATION: define the function popen_wrapper with 2 arguments: args and os_err_exc_type set to CommandError.
+    """
+    Friendly wrapper around Popen.
+
+    Returns stdout output, stderr output and OS status code.
+    """
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        p = Popen(args, shell=False, stdout=PIPE, stderr=PIPE,
+                close_fds=os.name != 'nt', universal_newlines=True)
+#ANNOTATION: p is a instance of Popen class, created with 6 arguments: args, shell set to boolean False, stdout set to PIPE, 
+#ANNOTATION: stderr set to PIPE, close_fds set to boolean True is os.name is not equal to 'nt', universal_newlines set to boolean True.
+    except OSError as e:
+#ANNOTATION: if OSError, renamed to e, exception is caught,
+        strerror = force_text(e.strerror, DEFAULT_LOCALE_ENCODING,
+                              strings_only=True)
+#ANNOTATION: call the force_text function with 3 arguments: e.strerror, DEFAULT_LOCALE_ENCODING and strings_only set to boolean True.
+        six.reraise(os_err_exc_type, os_err_exc_type('Error executing %s: %s' %
+                    (args[0], strerror)), sys.exc_info()[2])
+#ANNOTATION: call the method six.reraise 3 with arguments: os_err_exc_type, return value of the function os_err_exc_type,
+#ANNOTATION: called with string as an argument 'Error executing %s: %s', where '%s' is replaced by: first element of args and strerror, respective,
+#ANNOTATION: and third element of the result of the function sys.exc_info.
+    output, errors = p.communicate()
+#ANNOTATION: call the method p.communicate, assign the result to output and errors, respectively.
+    return (
+        output,
+        force_text(errors, DEFAULT_LOCALE_ENCODING, strings_only=True),
+        p.returncode
+    )
+#ANNOTATION: return a tuple containing 3 entries: output, result of the function force_text, called with 3 arguments: errors, 
+#ANNOTATION: DEFAULT_LOCALE_ENCODING and strings_only set to boolean True and p.returncode.
+
+
+def handle_extensions(extensions=('html',), ignored=('py',)):
+#ANNOTATION: define the function handle_extensions with 2 arguments: extensions set to tuple containing string 'html' and ignored set to tuple containing string 'py'.
+    """
+    Organizes multiple extensions that are separated with commas or passed by
+    using --extension/-e multiple times. Note that the .py extension is ignored
+    here because of the way non-*.py files are handled in make_messages() (they
+    are copied to file.ext.py files to trick xgettext to parse them as Python
+    files).
+
+    For example: running 'django-admin makemessages -e js,txt -e xhtml -a'
+    would result in an extension list: ['.js', '.txt', '.xhtml']
+
+    >>> handle_extensions(['.html', 'html,js,py,py,py,.py', 'py,.py'])
+    set(['.html', '.js'])
+    >>> handle_extensions(['.html, txt,.tpl'])
+    set(['.html', '.tpl', '.txt'])
+    """
+#ANNOTATION: docstring
+    ext_list = []
+#ANNOTATION: ext_list is an empty list,
+    for ext in extensions:
+#ANNOTATION: for every ext in extensions,
+        ext_list.extend(ext.replace(' ', '').split(','))
+#ANNOTATION: delete all the whitespaces from ext, split it by ',' character, extend ext_list with the result.
+    for i, ext in enumerate(ext_list):
+#ANNOTATION: for every i and ext in enumerated iterable ext_list,
+        if not ext.startswith('.'):
+#ANNOTATION: if ext doesnt start with '.' character,
+            ext_list[i] = '.%s' % ext_list[i]
+#ANNOTATION: prepend '.' to the i-th element of the ext_list.
+    return set(x for x in ext_list if x.strip('.') not in ignored)
+#ANNOTATION: if striped x by '.' character is not contained in ignored, for every x in ext_list put x into a set, return the resulting set.
+
+
+def find_command(cmd, path=None, pathext=None):
+#ANNOTATION: define the function find_command with 3 arguments: cmd, path set to None and pathext set to None.
+    if path is None:
+#ANNOTATION: if path is None,
+        path = os.environ.get('PATH', '').split(os.pathsep)
+#ANNOTATION: call the function os.environ.get with 2 arguments: string 'PATH' and an empty string, split the result at the os.pathsep, substitute the result for path.
+    if isinstance(path, six.string_types):
+#ANNOTATION: if path is an instance of six.string_types,
+        path = [path]
+#ANNOTATION: path is an list containing path.
+    # check if there are funny path extensions for executables, e.g. Windows
+    if pathext is None:
+#ANNOTATION: if pathext is None,
+        pathext = os.environ.get('PATHEXT', '.COM;.EXE;.BAT;.CMD').split(os.pathsep)
+#ANNOTATION: call the method os.environ.get with 2 arguments: strings 'PATHEXT' and '.COM;.EXE;.BAT;.CMD', split the result at os.pathsep, substitute it for pathext.
+    # don't use extensions if the command ends with one of them
+    for ext in pathext:
+#ANNOTATION: for ext in pathext,
+        if cmd.endswith(ext):
+#ANNOTATION: if cmd ends with ext,
+            pathext = ['']
+#ANNOTATION: pathext is an list containing an empty string.
+            break
+#ANNOTATION: break the loop execution.
+    # check if we find the command on PATH
+    for p in path:
+#ANNOTATION:  for every p in path,
+        f = os.path.join(p, cmd)
+#ANNOTATION: join p and cmd into a file path, substitute it for f.
+        if os.path.isfile(f):
+#ANNOTATION: if f is a file, 
+            return f
+#ANNOTATION: return f.
+        for ext in pathext:
+#ANNOTATION: for every ext in pathext,
+            fext = f + ext
+#ANNOTATION: add ext to f, substitute the result for fext.
+            if os.path.isfile(fext):
+#ANNOTATION: if fext is a file,
+                return fext
+#ANNOTATION: return fext.
+    return None
+#ANNOTATION: return None.

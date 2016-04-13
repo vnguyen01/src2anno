@@ -1,0 +1,207 @@
+"""
+A class for storing a tree graph. Primarily used for filter constructs in the
+ORM.
+"""
+#ANNOTATION: docstring
+
+import copy
+#ANNOTATION: import module copy.
+
+
+class Node(object):
+#ANNOTATION: derive the class Node from object base class.
+    """
+    A single internal node in the tree graph. A Node should be viewed as a
+    connection (the root) with the children being either leaf nodes or other
+    Node instances.
+    """
+#ANNOTATION: docstring
+    # Standard connector type. Clients usually won't use this at all and
+    # subclasses will usually override the value.
+    default = 'DEFAULT'
+#ANNOTATION: default is a string 'DEFAULT'.
+
+    def __init__(self, children=None, connector=None, negated=False):
+#ANNOTATION: define the method __init__ with 4 arguments: self, children set to None, connector set to None and negated set to boolean False.
+        """
+        Constructs a new Node. If no connector is given, the default will be
+        used.
+        """
+#ANNOTATION: docstring
+        self.children = children[:] if children else []
+#ANNOTATION: if children is true, copy children list to self.children, otherwise self.children is an empty list.
+        self.connector = connector or self.default
+#ANNOTATION: if connector is true, substitute it for self.connector, otherwise substitute self.default for self.connector.
+        self.negated = negated
+#ANNOTATION: substitute negated for self.negated.
+
+    # We need this because of django.db.models.query_utils.Q. Q. __init__() is
+    # problematic, but it is a natural Node subclass in all other respects.
+    @classmethod
+#ANNOTATION: decorator classmethod,
+    def _new_instance(cls, children=None, connector=None, negated=False):
+#ANNOTATION: define the method _new_instance with 4 arguments: (cls, children set to None, connector set to None and negated set to boolean False.
+        """
+        This is called to create a new instance of this class when we need new
+        Nodes (or subclasses) in the internal code in this class. Normally, it
+        just shadows __init__(). However, subclasses with an __init__ signature
+        that is not an extension of Node.__init__ might need to implement this
+        method to allow a Node to create a new instance of them (if they have
+        any extra setting up to do).
+        """
+#ANNOTATION: docstring
+        obj = Node(children, connector, negated)
+#ANNOTATION: obj is an instance of Node class, created with 3 arguments: children, connector and negated.
+        obj.__class__ = cls
+#ANNOTATION: substitute cls for obj.__class__.
+        return obj
+#ANNOTATION: return obj.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        if self.negated:
+#ANNOTATION: if self.negated,
+            return '(NOT (%s: %s))' % (self.connector, ', '.join([str(c) for c
+                    in self.children]))
+#ANNOTATION: return string '(NOT (%s: %s))', formated with self.connector and string created by joining c into a string, separated by ', ',
+#ANNOTATION: for every c in self.children.
+        return '(%s: %s)' % (self.connector, ', '.join([str(c) for c in
+                self.children]))
+#ANNOTATION: return string '(%s: %s)', formated with self.connector and string created by joining c into a string, separated by ', ',
+#ANNOTATION: for every c in self.children.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return "<%s: %s>" % (self.__class__.__name__, self)
+#ANNOTATION: return string "<%s: %s>", formated with self.__class__.__name__ and self.
+
+    def __deepcopy__(self, memodict):
+#ANNOTATION: define the method __deepcopy__ with 2 arguments: self and memodict.
+        """
+        Utility method used by copy.deepcopy().
+        """
+#ANNOTATION: docstring
+        obj = Node(connector=self.connector, negated=self.negated)
+#ANNOTATION: obj is an instance of Node class, created with 2 arguments: connector set to self.connector and negated set to self.negated.
+        obj.__class__ = self.__class__
+#ANNOTATION: substitute self.__class__ for obj.__class__.
+        obj.children = copy.deepcopy(self.children, memodict)
+#ANNOTATION: call the function copy.deepcopy with 2 arguments: self.children and memodict, substitute the result for obj.children.
+        return obj
+#ANNOTATION: return obj.
+
+    def __len__(self):
+#ANNOTATION: define the method __len__ with an argument self.
+        """
+        The size of a node if the number of children it has.
+        """
+#ANNOTATION: docstring
+        return len(self.children)
+#ANNOTATION: return the length of self.children.
+
+    def __bool__(self):
+#ANNOTATION: define the method __bool__ with an argument self.
+        """
+        For truth value testing.
+        """
+#ANNOTATION: docstring
+        return bool(self.children)
+#ANNOTATION: convert self.children into an boolean, return it.
+
+    def __nonzero__(self):      # Python 2 compatibility
+#ANNOTATION: define the method __nonzero__ with an argument self.
+        return type(self).__bool__(self)
+#ANNOTATION: get the type of the self object, on the result call the __bool__ method with an argument self, return the result.
+
+    def __contains__(self, other):
+#ANNOTATION: define the method __contains__ with 2 arguments: self and other.
+        """
+        Returns True is 'other' is a direct child of this instance.
+        """
+#ANNOTATION: docstring
+        return other in self.children
+#ANNOTATION: if other is contained in self.children, return boolean True, otherwise return boolean False.
+
+    def _prepare_data(self, data):
+#ANNOTATION: define the method _prepare_data with 2 arguments: self and data.
+        """
+        A subclass hook for doing subclass specific transformations of the
+        given data on combine() or add().
+        """
+#ANNOTATION: docstring
+        return data
+#ANNOTATION: return data.
+
+    def add(self, data, conn_type, squash=True):
+#ANNOTATION: define the method add with 4 arguments: self, data, conn_type and squash set to boolean True.
+        """
+        Combines this tree and the data represented by data using the
+        connector conn_type. The combine is done by squashing the node other
+        away if possible.
+
+        This tree (self) will never be pushed to a child node of the
+        combined tree, nor will the connector or negated properties change.
+
+        The function returns a node which can be used in place of data
+        regardless if the node other got squashed or not.
+
+        If `squash` is False the data is prepared and added as a child to
+        this tree without further logic.
+        """
+#ANNOTATION: docstring
+        if data in self.children:
+#ANNOTATION: if data is contained in self.children,
+            return data
+#ANNOTATION: return data.
+        data = self._prepare_data(data)
+#ANNOTATION: call the method self._prepare_data with an argument data, substitute the result for data.
+        if not squash:
+#ANNOTATION: if squash is false,
+            self.children.append(data)
+#ANNOTATION: append data to self.children.
+            return data
+#ANNOTATION: return data.
+        if self.connector == conn_type:
+#ANNOTATION: if self.connector equals conn_type,
+            # We can reuse self.children to append or squash the node other.
+            if (isinstance(data, Node) and not data.negated
+                    and (data.connector == conn_type or len(data) == 1)):
+#ANNOTATION: if data is instance of Node and data.negated is false, and if data.connector equals conn_type or length of data equals integer 1,
+                # We can squash the other node's children directly into this
+                # node. We are just doing (AB)(CD) == (ABCD) here, with the
+                # addition that if the length of the other node is 1 the
+                # connector doesn't matter. However, for the len(self) == 1
+                # case we don't want to do the squashing, as it would alter
+                # self.connector.
+                self.children.extend(data.children)
+#ANNOTATION: extend self.children list with data.children.
+                return self
+#ANNOTATION: return self.
+            else:
+#ANNOTATION: if not,
+                # We could use perhaps additional logic here to see if some
+                # children could be used for pushdown here.
+                self.children.append(data)
+#ANNOTATION: append data to self.children.
+                return data
+#ANNOTATION: return data.
+        else:
+#ANNOTATION: if not,
+            obj = self._new_instance(self.children, self.connector,
+                                     self.negated)
+#ANNOTATION: call the method self._new_instance with 3 arguments: self.children, self.connector and self.negated, substitute the result for obj.
+            self.connector = conn_type
+#ANNOTATION: substitute conn_type for self.connector.
+            self.children = [obj, data]
+#ANNOTATION: self.children is an list with 2 elements: obj and data.
+            return data
+#ANNOTATION: return data.
+
+    def negate(self):
+#ANNOTATION: define the method negate with an argument self.
+        """
+        Negate the sense of the root connector.
+        """
+#ANNOTATION: docstring
+        self.negated = not self.negated
+#ANNOTATION: invert self.negated.

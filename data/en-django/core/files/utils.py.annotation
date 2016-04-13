@@ -1,0 +1,49 @@
+class FileProxyMixin(object):
+#ANNOTATION: derive class FileProxyMixin from the base class object, making it a new-style class. 
+    """
+    A mixin class used to forward file methods to an underlaying file
+    object.  The internal file object has to be called "file"::
+
+        class FileProxy(FileProxyMixin):
+            def __init__(self, file):
+                self.file = file
+    """
+#ANNOTATION: docstring
+
+    encoding = property(lambda self: self.file.encoding)
+#ANNOTATION: define lambda function that returns self.file.encoding field, use it as an argument for property function, put the result in encoding. 
+    fileno = property(lambda self: self.file.fileno)
+#ANNOTATION: define lambda function that returns self.file.fileno field, use it as an argument for property function, put the result in fileno.
+    flush = property(lambda self: self.file.flush)
+#ANNOTATION: define lambda function that returns self.file.flush field, use it as an argument for property function, put the result in flush.
+    isatty = property(lambda self: self.file.isatty)
+#ANNOTATION: define lambda function that returns self.file.isatty field, use it as an argument for property function, put the result in isatty.
+    newlines = property(lambda self: self.file.newlines)
+#ANNOTATION: define lambda function that returns self.file.newlines field, use it as an argument for property function, put the result in newlines.
+    read = property(lambda self: self.file.read)
+#ANNOTATION: define lambda function that returns self.file.read field, use it as an argument for property function, put the result in read.
+    readinto = property(lambda self: self.file.readinto)
+#ANNOTATION: define lambda function that returns self.file.readinto field, use it as an argument for property function, put the result in readinto.
+    readline = property(lambda self: self.file.readline)
+#ANNOTATION: define lambda function that returns self.file.readline field, use it as an argument for property function, put the result in readline.
+    readlines = property(lambda self: self.file.readlines)
+#ANNOTATION: define lambda function that returns self.file.readlines field, use it as an argument for property function, put the result in readlines.
+    seek = property(lambda self: self.file.seek)
+#ANNOTATION: define lambda function that returns self.file.seek field, use it as an argument for property function, put the result in seek.
+    softspace = property(lambda self: self.file.softspace)
+#ANNOTATION: define lambda function that returns self.file.softspace field, use it as an argument for property function, put the result in softspace.
+    tell = property(lambda self: self.file.tell)
+#ANNOTATION: define lambda function that returns self.file.tell field, use it as an argument for property function, put the result in tell.
+    truncate = property(lambda self: self.file.truncate)
+#ANNOTATION: define lambda function that returns self.file.truncate field, use it as an argument for property function, put the result in truncate.
+    write = property(lambda self: self.file.write)
+#ANNOTATION: define lambda function that returns self.file.write field, use it as an argument for property function, put the result in write.
+    writelines = property(lambda self: self.file.writelines)
+#ANNOTATION: define lambda function that returns self.file.writelines field, use it as an argument for property function, put the result in writelines.
+    xreadlines = property(lambda self: self.file.xreadlines)
+#ANNOTATION: define lambda function that returns self.file.xreadlines field, use it as an argument for property function, put the result in xreadlines.
+
+    def __iter__(self):
+#ANNOTATION: define iterator method __iter__ with self as the argument.
+        return iter(self.file)
+#ANNOTATION: return iterator object based on the self.file collection object.

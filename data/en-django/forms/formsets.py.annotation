@@ -1,0 +1,747 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.core.exceptions import ValidationError
+#ANNOTATION: from django.core.exceptions import ValidationError into default name space.
+from django.forms import Form
+#ANNOTATION: from django.forms import Form into default name space.
+from django.forms.fields import IntegerField, BooleanField
+#ANNOTATION: from django.forms.fields import IntegerField and BooleanField into default name space.
+from django.forms.utils import ErrorList
+#ANNOTATION: from django.forms.utils import ErrorList into default name space.
+from django.forms.widgets import HiddenInput
+#ANNOTATION: from django.forms.widgets import HiddenInput into default name space.
+from django.utils.encoding import python_2_unicode_compatible
+#ANNOTATION: from django.utils.encoding import python_2_unicode_compatible into default name space.
+from django.utils.functional import cached_property
+#ANNOTATION: from django.utils.functional import cached_property into default name space.
+from django.utils.safestring import mark_safe
+#ANNOTATION: from django.utils.safestring import mark_safe into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.six.moves import xrange
+#ANNOTATION: from django.utils.six.moves import xrange into default name space.
+from django.utils.translation import ungettext, ugettext as _
+#ANNOTATION: from django.utils.translation import ungettext and ugettext as _ into default name space.
+
+
+__all__ = ('BaseFormSet', 'formset_factory', 'all_valid')
+#ANNOTATION: __all__ is a tuple containing strings 'BaseFormSet', 'formset_factory' and 'all_valid'.
+
+# special field names
+TOTAL_FORM_COUNT = 'TOTAL_FORMS'
+#ANNOTATION: TOTAL_FORM_COUNT is a string 'TOTAL_FORMS'.
+INITIAL_FORM_COUNT = 'INITIAL_FORMS'
+#ANNOTATION: INITIAL_FORM_COUNT is a string 'INITIAL_FORMS'.
+MIN_NUM_FORM_COUNT = 'MIN_NUM_FORMS'
+#ANNOTATION: MIN_NUM_FORM_COUNT is a string 'MIN_NUM_FORMS'.
+MAX_NUM_FORM_COUNT = 'MAX_NUM_FORMS'
+#ANNOTATION: MAX_NUM_FORM_COUNT is a string 'MAX_NUM_FORMS'.
+ORDERING_FIELD_NAME = 'ORDER'
+#ANNOTATION: ORDERING_FIELD_NAME is a string 'ORDER'.
+DELETION_FIELD_NAME = 'DELETE'
+#ANNOTATION: DELETION_FIELD_NAME is a string 'DELETE'.
+
+# default minimum number of forms in a formset
+DEFAULT_MIN_NUM = 0
+#ANNOTATION: DEFAULT_MIN_NUM is an integer 0.
+
+# default maximum number of forms in a formset, to prevent memory exhaustion
+DEFAULT_MAX_NUM = 1000
+#ANNOTATION: DEFAULT_MAX_NUM is an integer 1000.
+
+
+class ManagementForm(Form):
+#ANNOTATION: derive the class ManagementForm from the Form base class.
+    """
+    ``ManagementForm`` is used to keep track of how many form instances
+    are displayed on the page. If adding new forms via javascript, you should
+    increment the count field of this form as well.
+    """
+#ANNOTATION: docstring
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+        self.base_fields[TOTAL_FORM_COUNT] = IntegerField(widget=HiddenInput)
+#ANNOTATION: value under the TOTAL_FORM_COUNT of the self.base_fields dictionary is an instance of IntegerField class, 
+#ANNOTATION: created with an argument widget set to HiddenInput.
+        self.base_fields[INITIAL_FORM_COUNT] = IntegerField(widget=HiddenInput)
+#ANNOTATION: value under the INITIAL_FORM_COUNT of the self.base_fields dictionary is an instance of IntegerField class, 
+#ANNOTATION: created with an argument widget set to HiddenInput.
+        # MIN_NUM_FORM_COUNT and MAX_NUM_FORM_COUNT are output with the rest of
+        # the management form, but only for the convenience of client-side
+        # code. The POST value of them returned from the client is not checked.
+        self.base_fields[MIN_NUM_FORM_COUNT] = IntegerField(required=False, widget=HiddenInput)
+#ANNOTATION: value under the MIN_NUM_FORM_COUNT of the self.base_fields dictionary is an instance of IntegerField class, 
+#ANNOTATION: created with 2 arguments: required as boolean False and widget set to HiddenInput.
+        self.base_fields[MAX_NUM_FORM_COUNT] = IntegerField(required=False, widget=HiddenInput)
+#ANNOTATION: value under the MAX_NUM_FORM_COUNT of the self.base_fields dictionary is an instance of IntegerField class, 
+#ANNOTATION: created with 2 arguments: required as boolean False and widget set to HiddenInput.
+        super(ManagementForm, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class ManagementForm, called with 2 arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+
+
+@python_2_unicode_compatible
+#ANNOTATION: python_2_unicode_compatible decorator,
+class BaseFormSet(object):
+#ANNOTATION: derive the class BaseFormSet from the object base class.
+    """
+    A collection of instances of the same Form class.
+    """
+#ANNOTATION: docstring
+    def __init__(self, data=None, files=None, auto_id='id_%s', prefix=None,
+                 initial=None, error_class=ErrorList):
+#ANNOTATION: define the method __init__ with 7 arguments: self, data set to None, files set to None, auto_id set to an string 'id_%s', 
+#ANNTATION: prefix set to None, initial set to None and error_class set to ErrorList.
+        self.is_bound = data is not None or files is not None
+#ANNOTATION: if data is not None or files is not None, self.is_bound is boolean True, otherwise it is boolean False.
+        self.prefix = prefix or self.get_default_prefix()
+#ANNOTATION: if prefix is true, substitute it for self.prefix, otherwise call the method self.get_default_prefix,
+#ANNOTATION: and substitute the result for self.prefix.
+        self.auto_id = auto_id
+#ANNOTATION: substitute auto_id for self.auto_id.
+        self.data = data or {}
+#ANNOTATION: if data is true, substitute it for self.data, otherwise self.data is an empty dictionary.
+        self.files = files or {}
+#ANNOTATION: if data is true, substitute it for self.files, otherwise self.files is an empty dictionary.
+        self.initial = initial
+#ANNOTATION: substitute initial_id for self.auto_id.
+        self.error_class = error_class
+#ANNOTATION: substitute error_class for self.error_class.
+        self._errors = None
+#ANNOTATION: self._errors is None.
+        self._non_form_errors = None
+#ANNOTATION: self._non_form_errors is None.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        return self.as_table()
+#ANNOTATION: call the method self.as_table, return the result.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        """Yields the forms in the order they should be rendered"""
+#ANNOTATION: docstring
+        return iter(self.forms)
+#ANNOTATION: convert self.forms into an iterable, return it.
+
+    def __getitem__(self, index):
+#ANNOTATION: define the method __getitem__ with an argument self.
+        """Returns the form at the given index, based on the rendering order"""
+#ANNOTATION: docstring
+        return self.forms[index]
+#ANNOTATION: return self.forms element at the index index.
+
+    def __len__(self):
+#ANNOTATION: define the method __len__ with an argument self.
+        return len(self.forms)
+#ANNOTATION: return the length of self.forms.
+
+    def __bool__(self):
+#ANNOTATION: define the method __bool__ with an argument self.
+        """All formsets have a management form which is not included in the length"""
+#ANNOTATION: docstring
+        return True
+#ANNOTATION: return boolean True.
+
+    def __nonzero__(self):      # Python 2 compatibility
+#ANNOTATION: define the method __nonzero__ with an argument self.
+        return type(self).__bool__(self)
+#ANNOTATION: get the type of self object, call the __bool__ method on the result with an argument self, return the result.
+
+    @property
+#ANNOTATION: property decorator,
+    def management_form(self):
+#ANNOTATION: define the method management_form with an argument self.
+        """Returns the ManagementForm instance for this FormSet."""
+#ANNOTATION: docstring
+        if self.is_bound:
+#ANNOTATION: if self.is_bound is true,
+            form = ManagementForm(self.data, auto_id=self.auto_id, prefix=self.prefix)
+#ANNOTATION: form is an instance of ManagementForm class, created with 3 arguments: self.data, auto_id as self.auto_id and prefix as self.prefix.
+            if not form.is_valid():
+#ANNOTATION: call the form.is_valid method, if it evaluates to false,
+                raise ValidationError(
+                    _('ManagementForm data is missing or has been tampered with'),
+                    code='missing_management_form',
+                )
+#ANNOTATION: raise ValidationError with 2 arguments: return value of the function _ called with an argument string,
+#ANNOTATION: 'ManagementForm data is missing or has been tampered with' and code as a string 'missing_management_form'.
+        else:
+#ANNOTATION: if not,
+            form = ManagementForm(auto_id=self.auto_id, prefix=self.prefix, initial={
+                TOTAL_FORM_COUNT: self.total_form_count(),
+                INITIAL_FORM_COUNT: self.initial_form_count(),
+                MIN_NUM_FORM_COUNT: self.min_num,
+                MAX_NUM_FORM_COUNT: self.max_num
+            })
+#ANNOTATION: form is an instance of ManagementForm class, created with 3 arguments: auto_id as self.auto_id, prefix as self.prefix, 
+#ANNOTATION: and initial as a dictionary with 4 entries: result of self.total_form_count method for TOTAL_FORM_COUNT,
+#ANNOTATION: result of self.initial_form_count method for INITIAL_FORM_COUNT, self.min_num for MIN_NUM_FORM_COUNT and self.max_num for MAX_NUM_FORM_COUNT.
+        return form
+#ANNOTATION: return form.
+
+    def total_form_count(self):
+#ANNOTATION: define the method total_form_count with an argument self.
+        """Returns the total number of forms in this FormSet."""
+#ANNOTATION: docstring
+        if self.is_bound:
+#ANNOTATION: if self.is_bound is true,
+            # return absolute_max if it is lower than the actual total form
+            # count in the data; this is DoS protection to prevent clients
+            # from forcing the server to instantiate arbitrary numbers of
+            # forms
+            return min(self.management_form.cleaned_data[TOTAL_FORM_COUNT], self.absolute_max)
+#ANNOTATION: get the element with minimal value between the value under the TOTAL_FORM_COUNT key of self.management_form.cleaned_data dictionary,
+#ANNOTATION: and self.absolute_max, return the result.
+        else:
+#ANNOTATION: if not,
+            initial_forms = self.initial_form_count()
+#ANNOTATION: call the method self.initial_form_count, return the result initial_forms.
+            total_forms = max(initial_forms, self.min_num) + self.extra
+#ANNOTATION: get the element with maximal value between initial_forms and self.min_num, add self.extra to it, substitute the result for total_forms.
+            # Allow all existing related objects/inlines to be displayed,
+            # but don't allow extra beyond max_num.
+            if initial_forms > self.max_num >= 0:
+#ANNOTATION: if initial_forms is grater than self.max_num is grater or equal to integer 0, 
+                total_forms = initial_forms
+#ANNOTATION: substitute initial_forms for total_forms.
+            elif total_forms > self.max_num >= 0:
+#ANNOTATION: otherwise if total_forms is grater than self.max_num is grater or equal to integer 0, 
+                total_forms = self.max_num
+#ANNOTATION: substitute self.max_num for total_forms.
+        return total_forms
+#ANNOTATION: return total_forms.
+
+    def initial_form_count(self):
+#ANNOTATION: define the method initial_form_count with an argument self.
+        """Returns the number of forms that are required in this FormSet."""
+#ANNOTATION: docstring
+        if self.is_bound:
+#ANNOTATION: if self.is_bound is true,
+            return self.management_form.cleaned_data[INITIAL_FORM_COUNT]
+#ANNOTATION: return the value under the INITIAL_FORM_COUNT key of the self.management_form.cleaned_data dictionary.
+        else:
+#ANNOTATION: if not,
+            # Use the length of the initial data if it's there, 0 otherwise.
+            initial_forms = len(self.initial) if self.initial else 0
+#ANNOTATION: if self.initial is true, substitute the length of self.initial for initial_forms, if not, initial_forms is integer 0.
+        return initial_forms
+#ANNOTATION: return initial_forms.
+
+    @cached_property
+#ANNOTATION: cached_property decorator,
+    def forms(self):
+#ANNOTATION: define the method forms with an argument self.
+        """
+        Instantiate forms at first property access.
+        """
+#ANNOTATION: docstring
+        # DoS protection is included in total_form_count()
+        forms = [self._construct_form(i) for i in xrange(self.total_form_count())]
+#ANNOTATION: for every i in sequence of integers from 0 to result of the method self.total_form_count, call the method self._construct_form,
+#ANNOTATION: with an argument i, append the result to a list, substitute the resulting list for forms.
+        return forms
+#ANNOTATION: return forms.
+
+    def _construct_form(self, i, **kwargs):
+#ANNOTATION: define the method _construct_form with 3 arguments: self, i and unpacked dictionary kwargs.
+        """
+        Instantiates and returns the i-th form instance in a formset.
+        """
+#ANNOTATION: docstring
+        defaults = {
+            'auto_id': self.auto_id,
+            'prefix': self.add_prefix(i),
+            'error_class': self.error_class,
+        }
+#ANNOTATION: defaults is an dictionary with 3 initial entries: self.auto_id for 'auto_id', result of the call to the method self.add_prefix,
+#ANNOTATION: with an argument i, for 'prefix' and self.error_class for 'error_class'.
+        if self.is_bound:
+#ANNOTATION: if self.is_bound is true,
+            defaults['data'] = self.data
+#ANNOTATION: substitute self.data for value under the 'data' key of the defaults dictionary.
+            defaults['files'] = self.files
+#ANNOTATION: substitute self.files for value under the 'files' key of the defaults dictionary.
+        if self.initial and 'initial' not in kwargs:
+#ANNOTATION:  if self.initial is true and 'initial' key is not contained in kwargs,
+            try:
+#ANNOTATION: try,
+                defaults['initial'] = self.initial[i]
+#ANNOTATION: substitute i-th element of self.initial for value under the 'initial' key of the defaults dictionary.
+            except IndexError:
+#ANNOTATION: if IndexError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+        # Allow extra forms to be empty, unless they're part of
+        # the minimum forms.
+        if i >= self.initial_form_count() and i >= self.min_num:
+#ANNOTATION: if i is greater than, or equal to the result of the call to the method self.initial_form_count,
+#ANNOTATION: and i is greater than or equal to self.min_num,
+            defaults['empty_permitted'] = True
+#ANNOTATION: value under the 'empty_permitted' key of the defaults dictionary is boolean True.
+        defaults.update(kwargs)
+#ANNOTATION: update defaults dictionary with kwargs.
+        form = self.form(**defaults)
+#ANNOTATION: call the method self.form with unpacked dictionary defaults as an argument, substitute it for form.
+        self.add_fields(form, i)
+#ANNOTATION: call the method self.add_fields with arguments form and i).
+        return form
+#ANNOTATION: return form.
+
+    @property
+#ANNOTATION: property decorator,
+    def initial_forms(self):
+#ANNOTATION: define the method initial_forms with an argument self.
+        """Return a list of all the initial forms in this formset."""
+#ANNOTATION: docstring
+        return self.forms[:self.initial_form_count()]
+#ANNOTATION: call the self.initial_form_count method, return the sublist of self.forms from the beginning to the previous result as the end index.
+
+    @property
+#ANNOTATION: property decorator,
+    def extra_forms(self):
+#ANNOTATION: define the method extra_forms with an argument self.
+        """Return a list of all the extra forms in this formset."""
+#ANNOTATION: docstring
+        return self.forms[self.initial_form_count():]
+#ANNOTATION: call the self.initial_form_count method, return the sublist of self.forms, using previous result as start index to the end.
+
+    @property
+#ANNOTATION: property decorator,
+    def empty_form(self):
+#ANNOTATION: define the method empty_form with an argument self.
+        form = self.form(
+            auto_id=self.auto_id,
+            prefix=self.add_prefix('__prefix__'),
+            empty_permitted=True,
+        )
+#ANNOTATION: call the function empty_form with 3 arguments: auto_id as self.auto_id, prefix set to the return value of the self.add_prefix method,
+#ANNOTATION: called with string '__prefix__' as an argument and empty_permitted as boolean True, substitute the result for form.
+        self.add_fields(form, None)
+#ANNOTATION: call the method self.add_fields with arguments form and None. 
+        return form
+#ANNOTATION: return form.
+
+    @property
+#ANNOTATION: property decorator,
+    def cleaned_data(self):
+#ANNOTATION: define the method cleaned_data with an argument self.
+        """
+        Returns a list of form.cleaned_data dicts for every form in self.forms.
+        """
+#ANNOTATION: docstring
+        if not self.is_valid():
+#ANNOTATION: call the method self.is_valid, if it evaluates to false,
+            raise AttributeError("'%s' object has no attribute 'cleaned_data'" % self.__class__.__name__)
+#ANNOTATION: raise an AttributeError exception with an argument string: "'%s' object has no attribute 'cleaned_data'", 
+#ANNOTATION: where '%s' is replaced with self.__class__.__name__.
+        return [form.cleaned_data for form in self.forms]
+#ANNOTATION: for form in self.forms append form.cleaned_data to a list, return the resulting list.
+
+    @property
+#ANNOTATION: property decorator,
+    def deleted_forms(self):
+#ANNOTATION: define the method deleted_forms with an argument self.
+        """
+        Returns a list of forms that have been marked for deletion.
+        """
+#ANNOTATION: docstring
+        if not self.is_valid() or not self.can_delete:
+#ANNOTATION: if call to the method self.is_valid, evaluates to false or self.can_delete is boolean false,
+            return []
+#ANNOTATION: return an empty list.
+        # construct _deleted_form_indexes which is just a list of form indexes
+        # that have had their deletion widget set to True
+        if not hasattr(self, '_deleted_form_indexes'):
+#ANNOTATION: if self doesnt have an '_deleted_form_indexes' attribute,
+            self._deleted_form_indexes = []
+#ANNOTATION: self._deleted_form_indexes is an empty list.
+            for i in range(0, self.total_form_count()):
+#ANNOTATION: call the method self.total_form_count, for every i in sequence of integers, from 0 to the previous result,
+                form = self.forms[i]
+#ANNOTATION: substitute i-th element of self.forms for form.
+                # if this is an extra form and hasn't changed, don't consider it
+                if i >= self.initial_form_count() and not form.has_changed():
+#ANNOTATION: if i is greater than or equal to the result of the method self.initial_form_count,
+#ANNOTATION: and call to the method form.has_changed evaluates to false,
+                    continue
+#ANNOTATION: skip this loop iteration, 
+                if self._should_delete_form(form):
+#ANNOTATION: call the method self._should_delete_form with an argument form, if it evaluates to true,
+                    self._deleted_form_indexes.append(i)
+#ANNOTATION: call the method self._deleted_form_indexes.append with an argument i.
+        return [self.forms[i] for i in self._deleted_form_indexes]
+#ANNOTATION: for i in self._deleted_form_indexes append i-th element of self.forms into a list, return the resulting list.
+
+    @property
+#ANNOTATION: property decorator,
+    def ordered_forms(self):
+#ANNOTATION: define the method ordered_forms with an argument self.
+        """
+        Returns a list of form in the order specified by the incoming data.
+        Raises an AttributeError if ordering is not allowed.
+        """
+#ANNOTATION: docstring
+        if not self.is_valid() or not self.can_order:
+#ANNOTATION: if call to the self.is_valid method evaluates to false or self.can_order is false,
+            raise AttributeError("'%s' object has no attribute 'ordered_forms'" % self.__class__.__name__)
+#ANNOTATION: raise an AttributeError exception with an argument string: "'%s' object has no attribute 'ordered_forms'", 
+#ANNOTATION: where '%s' is replaced with self.__class__.__name__.
+        # Construct _ordering, which is a list of (form_index, order_field_value)
+        # tuples. After constructing this list, we'll sort it by order_field_value
+        # so we have a way to get to the form indexes in the order specified
+        # by the form data.
+        if not hasattr(self, '_ordering'):
+#ANNOTATION: if self doesnt have an '_ordering' attribute,
+            self._ordering = []
+#ANNOTATION: self._ordering is an empty list.
+            for i in range(0, self.total_form_count()):
+#ANNOTATION: for every i in sequence of integers, from 0 to the result of the method self.total_form_count,
+                form = self.forms[i]
+#ANNOTATION: substitute i-th element of self.forms for form.
+                # if this is an extra form and hasn't changed, don't consider it
+                if i >= self.initial_form_count() and not form.has_changed():
+#ANNOTATION: if i is greater than or equal to the result of the method self.initial_form_count,
+#ANNOTATION: and call to the method form.has_changed evaluates to false,
+                    continue
+#ANNOTATION: skip this loop iteration,
+                # don't add data marked for deletion to self.ordered_data
+                if self.can_delete and self._should_delete_form(form):
+#ANNOTATION: if self.can_delete is true and call to the method self._should_delete_form with an argument form, evaluates to true,
+                    continue
+#ANNOTATION: skip this loop iteration,
+                self._ordering.append((i, form.cleaned_data[ORDERING_FIELD_NAME]))
+#ANNOTATION: append tuple with 2 elements: i and value under the ORDERING_FIELD_NAME key of form.cleaned_data dictionary to self._ordering. 
+            # After we're done populating self._ordering, sort it.
+            # A sort function to order things numerically ascending, but
+            # None should be sorted below anything else. Allowing None as
+            # a comparison value makes it so we can leave ordering fields
+            # blank.
+
+            def compare_ordering_key(k):
+#ANNOTATION: define the function compare_ordering_key with an argument k.
+                if k[1] is None:
+#ANNOTATION: if second element of k is None,
+                    return (1, 0)  # +infinity, larger than any number
+#ANNOTATION: return a tuple with 2 elements: integers 1 and 0.
+                return (0, k[1])
+#ANNOTATION: return a tuple with 2 elements: integer 0 and second element of k.
+            self._ordering.sort(key=compare_ordering_key)
+#ANNOTATION: call the method self._ordering.sort with an argument key as compare_ordering_key.
+        # Return a list of form.cleaned_data dicts in the order specified by
+        # the form data.
+        return [self.forms[i[0]] for i in self._ordering]
+#ANNOTATION: for i in self._ordering append to a list value under the first element of i key of the self.forms dictionary, return resulting list.
+
+    @classmethod
+#ANNOTATION: classmethod decorator,
+    def get_default_prefix(cls):
+#ANNOTATION: define the method get_default_prefix with an argument cls.
+        return 'form'
+#ANNOTATION: return string 'form'.
+
+    def non_form_errors(self):
+#ANNOTATION: define the method non_form_errors with an argument self.
+        """
+        Returns an ErrorList of errors that aren't associated with a particular
+        form -- i.e., from formset.clean(). Returns an empty ErrorList if there
+        are none.
+        """
+#ANNOTATION: docstring
+        if self._non_form_errors is None:
+#ANNOTATION: if self._non_form_errors is None,
+            self.full_clean()
+#ANNOTATION: call the method self.full_clean.
+        return self._non_form_errors
+#ANNOTATION: return self._non_form_errors.
+
+    @property
+#ANNOTATION: property decorator,
+    def errors(self):
+#ANNOTATION: define the method errors with an argument self.
+        """
+        Returns a list of form.errors for every form in self.forms.
+        """
+#ANNOTATION: docstring
+        if self._errors is None:
+#ANNOTATION: if self._errors is None,
+            self.full_clean()
+#ANNOTATION: call the method self.full_clean.
+        return self._errors
+#ANNOTATION: return self._errors.
+
+    def total_error_count(self):
+#ANNOTATION: define the method total_error_count with an argument self.
+        """
+        Returns the number of errors across all forms in the formset.
+        """
+#ANNOTATION: docstring
+        return len(self.non_form_errors()) +\
+            sum(len(form_errors) for form_errors in self.errors)
+#ANNOTATION: for every form_errors in self.errors sum length of return value of the method self.non_form_errors and length of form_errors, return the result.
+
+    def _should_delete_form(self, form):
+#ANNOTATION: define the method _should_delete_form with an argument self.
+        """
+        Returns whether or not the form was marked for deletion.
+        """
+#ANNOTATION: docstring
+        return form.cleaned_data.get(DELETION_FIELD_NAME, False)
+#ANNOTATION: get the value under the DELETION_FIELD_NAME key of the form.cleaned_data dictionary, if it exists return it, if not, return boolean False.
+
+    def is_valid(self):
+#ANNOTATION: define the method is_valid with an argument self.
+        """
+        Returns True if every form in self.forms is valid.
+        """
+#ANNOTATION: docstring
+        if not self.is_bound:
+#ANNOTATION: if self.is_bound is false,
+            return False
+#ANNOTATION: return boolean False.
+        # We loop over every form.errors here rather than short circuiting on the
+        # first failure to make sure validation gets triggered for every form.
+        forms_valid = True
+#ANNOTATION: forms_valid is True.
+        # This triggers a full clean.
+        self.errors
+#ANNOTATION: call self.errors.
+        for i in range(0, self.total_form_count()):
+#ANNOTATION: for every i in sequence of integers, from 0 to the result of the method self.total_form_count,
+            form = self.forms[i]
+#ANNOTATION: substitute i-th element of self.forms for form.
+            if self.can_delete:
+#ANNOTATION: if self.can_delete is true,
+                if self._should_delete_form(form):
+#ANNOTATION: call the method self._should_delete_form with an argument, if it evaluates to true,
+                    # This form is going to be deleted so any of its errors
+                    # should not cause the entire formset to be invalid.
+                    continue
+#ANNOTATION: skip this loop iteration,
+            forms_valid &= form.is_valid()
+#ANNOTATION: call the method form.is_valid, perform bitwise and with the result and forms_valid as operands, substitute the result for forms_valid.
+        return forms_valid and not self.non_form_errors()
+#ANNOTATION: if forms_valid is true and call to the method self.non_form_errors, evaluates to false, return boolean True, otherwise return False.
+
+    def full_clean(self):
+#ANNOTATION: define the method full_clean with an argument self.
+        """
+        Cleans all of self.data and populates self._errors and
+        self._non_form_errors.
+        """
+#ANNOTATION: docstring
+        self._errors = []
+#ANNOTATION: self._errors is an empty list.
+        self._non_form_errors = self.error_class()
+#ANNOTATION: call the method self.error_class, substitute the result for self._non_form_errors.
+
+        if not self.is_bound:  # Stop further processing.
+#ANNOTATION: if self.is_bound is false,
+            return
+#ANNOTATION: return nothing.
+        for i in range(0, self.total_form_count()):
+#ANNOTATION: for every i in sequence of integers, from 0 to the result of the method self.total_form_count,
+            form = self.forms[i]
+#ANNOTATION: substitute i-th element of self.forms for form.
+            self._errors.append(form.errors)
+#ANNOTATION: append form.errors to self._errors.
+        try:
+#ANNOTATION: try,
+            if (self.validate_max and
+                    self.total_form_count() - len(self.deleted_forms) > self.max_num) or \
+                    self.management_form.cleaned_data[TOTAL_FORM_COUNT] > self.absolute_max:
+#ANNOTATION: if self.validate_max is true, and length of self.deleted_forms subtracted from the return value of the method self.total_form_count,
+#ANNOTATION: is greater than self.max_num, or if value under the TOTAL_FORM_COUNT key of the self.management_form.cleaned_data dictionary,
+#ANNOTATION: is grater than self.absolute_max,
+                raise ValidationError(ungettext(
+                    "Please submit %d or fewer forms.",
+                    "Please submit %d or fewer forms.", self.max_num) % self.max_num,
+                    code='too_many_forms',
+                )
+#ANNOTATION: raise an ValidationError with 2 arguments: return value of the function ungettext with 3 arguments: 
+#ANNOTATION: strings "Please submit %d or fewer forms.", "Please submit %d or fewer forms." and self.max_num, 
+#ANNOTATION: where '%d' is replaced with self.max_num, and code as a string 'too_many_forms'.
+            if (self.validate_min and
+                    self.total_form_count() - len(self.deleted_forms) < self.min_num):
+#ANNOTATION: if self.validate_min is true, and length of self.deleted_forms subtracted from the return value of the method self.total_form_count,
+#ANNOTATION: is smaller than self.min_num,
+                raise ValidationError(ungettext(
+                    "Please submit %d or more forms.",
+                    "Please submit %d or more forms.", self.min_num) % self.min_num,
+                    code='too_few_forms')
+#ANNOTATION: raise an ValidationError with 2 arguments: return value of the function ungettext with 3 arguments: 
+#ANNOTATION: strings "Please submit %d or more forms.", "Please submit %d or more forms." and self.min_num, 
+#ANNOTATION: where '%d' is replaced with self.min_num, and code as a string 'too_few_forms'.
+            # Give self.clean() a chance to do cross-form validation.
+            self.clean()
+#ANNOTATION: call the method self.clean.
+        except ValidationError as e:
+#ANNOTATION: if ValidationError, renamed to e, exception is caught,
+            self._non_form_errors = self.error_class(e.error_list)
+#ANNOTATION: call the method self.error_class with an argument e.error_list, substitute the result for self._non_form_errors.
+
+    def clean(self):
+#ANNOTATION: define the method clean with an argument self.
+        """
+        Hook for doing any extra formset-wide cleaning after Form.clean() has
+        been called on every form. Any ValidationError raised by this method
+        will not be associated with a particular form; it will be accessible
+        via formset.non_form_errors()
+        """
+#ANNOTATION: docstring
+        pass
+#ANNOTATION: do nothing.
+
+    def has_changed(self):
+#ANNOTATION: define the method has_changed with an argument self.
+        """
+        Returns true if data in any form differs from initial.
+        """
+#ANNOTATION: docstring
+        return any(form.has_changed() for form in self)
+#ANNOTATION: for every form in self call the method form.has_changed if any of the results evaluates to true, return boolean True,
+#ANNOTATION: if not return boolean False.
+
+    def add_fields(self, form, index):
+#ANNOTATION: define the method add_fields with 3 arguments: self, form and index.
+        """A hook for adding extra fields on to each form instance."""
+#ANNOTATION: docstring
+        if self.can_order:
+#ANNOTATION: if self.can_order is true,
+            # Only pre-fill the ordering field for initial forms.
+            if index is not None and index < self.initial_form_count():
+#ANNOTATION: if index is not None and index is smaller than return value of the method self.initial_form_count,
+                form.fields[ORDERING_FIELD_NAME] = IntegerField(label=_('Order'), initial=index + 1, required=False)
+#ANNOTATION: value under the ORDERING_FIELD_NAME key of the form.fields is an instance of IntegerField class, created with 3 arguments:
+#ANNOTATION: label set to return value of the function _ called with an string 'Order', initial set to index incremented by 1,
+#ANNOTATION: and required as boolean False.
+            else:
+#ANNOTATION: if not,
+                form.fields[ORDERING_FIELD_NAME] = IntegerField(label=_('Order'), required=False)
+#ANNOTATION: value under the ORDERING_FIELD_NAME key of the form.fields is an instance of IntegerField class, created with 2 arguments:
+#ANNOTATION: label set to return value of the function _ called with an string 'Order' and required as boolean False.
+        if self.can_delete:
+#ANNOTATION: if self.can_delete is true, 
+            form.fields[DELETION_FIELD_NAME] = BooleanField(label=_('Delete'), required=False)
+#ANNOTATION: value under the DELETION_FIELD_NAME key of the form.fields is an instance of BooleanField class, created with 2 arguments:
+#ANNOTATION: label set to return value of the function _ called with an string 'Delete' and required as boolean False.
+
+    def add_prefix(self, index):
+#ANNOTATION: define the method add_prefix with an argument self.
+        return '%s-%s' % (self.prefix, index)
+#ANNOTATION: replace '%s' in sting '%s-%s' with self.prefix and index, return the result.
+
+    def is_multipart(self):
+#ANNOTATION: define the method is_multipart with an argument self.
+        """
+        Returns True if the formset needs to be multipart, i.e. it
+        has FileInput. Otherwise, False.
+        """
+#ANNOTATION: docstring
+        if self.forms:
+#ANNOTATION: if self.forms is true,
+            return self.forms[0].is_multipart()
+#ANNOTATION: call the method is_multipart on the first element of self.forms, return it.
+        else:
+#ANNOTATION: if not,
+            return self.empty_form.is_multipart()
+#ANNOTATION: call the method self.empty_form.is_multipart, return the result
+
+    @property
+#ANNOTATION: property decorator,
+    def media(self):
+#ANNOTATION: define the method media with an argument self.
+        # All the forms on a FormSet are the same, so you only need to
+        # interrogate the first form for media.
+        if self.forms:
+#ANNOTATION: if self.forms is true,
+            return self.forms[0].media
+#ANNOTATION: return the media field of the first element of self.forms.
+        else:
+#ANNOTATION: if not,
+            return self.empty_form.media
+#ANNOTATION: return self.empty_form.media.
+
+    def as_table(self):
+#ANNOTATION: define the method as_table with an argument self.
+        "Returns this formset rendered as HTML <tr>s -- excluding the <table></table>."
+#ANNOTATION: docstring
+        # XXX: there is no semantic division between forms here, there
+        # probably should be. It might make sense to render each form as a
+        # table row with each field as a td.
+        forms = ' '.join(form.as_table() for form in self)
+#ANNOTATION: for every form in self call the form.as_table method, join the results in a string, separated by an empty string.
+        return mark_safe('\n'.join([six.text_type(self.management_form), forms]))
+#ANNOTATION: join return value of the function six.text_type called with an argument self.management_form and forms into a string, 
+#ANNOTATION: separated by newline, use it as an argument for the call to the function mark_safe, return the result.
+
+    def as_p(self):
+#ANNOTATION: define the method as_p with an argument self.
+        "Returns this formset rendered as HTML <p>s."
+#ANNOTATION: docstring
+        forms = ' '.join(form.as_p() for form in self)
+#ANNOTATION: for every form in self call the form.as_p method, join the results in a string, separated by an empty string.
+        return mark_safe('\n'.join([six.text_type(self.management_form), forms]))
+#ANNOTATION: join return value of the function six.text_type called with an argument self.management_form and forms into a string, 
+#ANNOTATION: separated by newline, use it as an argument for the call to the function mark_safe, return the result.
+
+    def as_ul(self):
+#ANNOTATION: define the method as_ul with an argument self.
+        "Returns this formset rendered as HTML <li>s."
+#ANNOTATION: docstring 
+        forms = ' '.join(form.as_ul() for form in self)
+#ANNOTATION: for every form in self call the form.as_ul method, join the results in a string, separated by an empty string.
+        return mark_safe('\n'.join([six.text_type(self.management_form), forms]))
+#ANNOTATION: join return value of the function six.text_type called with an argument self.management_form and forms into a string, 
+#ANNOTATION: separated by newline, use it as an argument for the call to the function mark_safe, return the result.
+
+
+def formset_factory(form, formset=BaseFormSet, extra=1, can_order=False,
+                    can_delete=False, max_num=None, validate_max=False,
+                    min_num=None, validate_min=False):
+#ANNOTATION: define the function formset_factory with 9 arguments: form, formset set to BaseFormSet, extra set to integer 1, 
+#ANNOTATION: can_order set to boolean False, can_delete set to boolean False, max_num set to None, validate_max set to boolean False,
+#ANNOTATION: min_num set to None and validate_min set to boolean False.
+    """Return a FormSet for the given form class."""
+#ANNOTATION: docstring
+    if min_num is None:
+#ANNOTATION: if min_num is None,
+        min_num = DEFAULT_MIN_NUM
+#ANNOTATION: substitute DEFAULT_MIN_NUM for min_num,
+    if max_num is None:
+#ANNOTATION: if max_num is None,
+        max_num = DEFAULT_MAX_NUM
+#ANNOTATION: substitute DEFAULT_MAX_NUM for max_num,
+    # hard limit on forms instantiated, to prevent memory-exhaustion attacks
+    # limit is simply max_num + DEFAULT_MAX_NUM (which is 2*DEFAULT_MAX_NUM
+    # if max_num is None in the first place)
+    absolute_max = max_num + DEFAULT_MAX_NUM
+#ANNOTATION: sum max_num and DEFAULT_MAX_NUM, substitute the result for absolute_max.
+    attrs = {'form': form, 'extra': extra,
+             'can_order': can_order, 'can_delete': can_delete,
+             'min_num': min_num, 'max_num': max_num,
+             'absolute_max': absolute_max, 'validate_min': validate_min,
+             'validate_max': validate_max}
+#ANNOTATION: attrs is an dictionary with 9 initial entries: form for 'form', extra for 'extra', can_order for 'can_order', 
+#ANNOTATION: can_delete for 'can_delete', min_num for 'min_num', max_num for 'max_num', absolute_max for 'absolute_max',
+#ANNOTATION: validate_min for 'validate_min' for validate_max for 'validate_max'.
+    return type(form.__name__ + str('FormSet'), (formset,), attrs)
+#ANNOTATION: create a class class which name is generated by converting 'FormSet' into a string and appending it to form.__name__, 
+#ANNOTATION: is derived from the formset base class and with fields contained in attrs, return an instance of the obtained class.
+
+
+def all_valid(formsets):
+#ANNOTATION: define the function all_valid with an argument formsets.
+    """Returns true if every formset in formsets is valid."""
+#ANNOTATION: docstring
+    valid = True
+#ANNOTATION: valid is boolean True.
+    for formset in formsets:
+#ANNOTATION: for every formset in formsets,
+        if not formset.is_valid():
+#ANNOTATION: call the function formset.is_valid, if it evaluates to false,
+            valid = False
+#ANNOTATION: valid is boolean False.
+    return valid
+#ANNOTATION: return valid.

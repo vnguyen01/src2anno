@@ -1,0 +1,40 @@
+"""
+Common checksum routines.
+"""
+#ANNOTATION: docstring
+
+__all__ = ['luhn']
+#ANNOTATION: __all__ is an list with an element 'luhn'.
+
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+LUHN_ODD_LOOKUP = (0, 2, 4, 6, 8, 1, 3, 5, 7, 9)  # sum_of_digits(index * 2)
+#ANNOTATION: LUHN_ODD_LOOKUP is a tuple with 10 elements: integers 0, 2, 4, 6, 8, 1, 3, 5, 7 and 9.
+
+
+def luhn(candidate):
+#ANNOTATION: define the function luhn with an argument candidate.
+    """
+    Checks a candidate number for validity according to the Luhn
+    algorithm (used in validation of, for example, credit cards).
+    Both numeric and string candidates are accepted.
+    """
+#ANNOTATION: docstring
+    if not isinstance(candidate, six.string_types):
+#ANNOTATION: if candidate is not an instance of six.string_types,
+        candidate = str(candidate)
+#ANNOTATION: convert candidate to a string.
+    try:
+#ANNOTATION: try,
+        evens = sum(int(c) for c in candidate[-1::-2])
+#ANNOTATION: for every c in reversed order of candidate, convert c into an integer, sum all the results and substitute the result for evens.
+        odds = sum(LUHN_ODD_LOOKUP[int(c)] for c in candidate[-2::-2])
+#ANNOTATION: for every c in candidate without the last element and in reversed order, convert c into an integer, 
+#ANNOTATION: use the result as an key to get the value from the LUHN_ODD_LOOKUP dictionary, sum all the results and substitute the result for odds.
+        return ((evens + odds) % 10 == 0)
+#ANNOTATION: sum evens and odds, if the result is divisible by integer 10, return boolean True, if not return boolean False.
+    except ValueError:  # Raised if an int conversion fails
+#ANNOTATION: if ValueError exception is caught,
+        return False
+#ANNOTATION: return boolean False.

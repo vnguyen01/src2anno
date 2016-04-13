@@ -1,0 +1,737 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import re
+#ANNOTATION: import module re.
+import unicodedata
+#ANNOTATION: import module unicodedata.
+from gzip import GzipFile
+#ANNOTATION: from gzip import GzipFile into default name space.
+from io import BytesIO
+#ANNOTATION: from io import BytesIO into default name space.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+from django.utils.functional import allow_lazy, SimpleLazyObject
+#ANNOTATION: from django.utils.functional import allow_lazy and SimpleLazyObject into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.six.moves import html_entities
+#ANNOTATION: from django.utils.six.moves import html_entities into default name space.
+from django.utils.translation import ugettext_lazy, ugettext as _, pgettext
+#ANNOTATION: from django.utils.translation import ugettext_lazy,  ugettext as _ and pgettext into default name space.
+from django.utils.safestring import mark_safe
+#ANNOTATION: from django.utils.safestring import mark_safe into default name space.
+
+if six.PY2:
+#ANNOTATION: if six.PY2 is true,
+    # Import force_unicode even though this module doesn't use it, because some
+    # people rely on it being here.
+    from django.utils.encoding import force_unicode  # NOQA
+#ANNOTATION: from django.utils.encoding import force_unicode.
+
+
+# Capitalizes the first letter of a string.
+capfirst = lambda x: x and force_text(x)[0].upper() + force_text(x)[1:]
+#ANNOTATION: if identity lambda function returns false, substitute the x for capfirst, if not call the function force_text with an argument x,
+#ANNOTATION: convert the first element of the result to uppercase, append to it the rest of the result, substitute it for capfirst.
+capfirst = allow_lazy(capfirst, six.text_type)
+#ANNOTATION: call the function allow_lazy with 3 arguments: capfirst and six.text_type.
+
+# Set up regular expressions
+re_words = re.compile(r'<.*?>|((?:\w[-\w]*|&.*?;)+)', re.U | re.S)
+#ANNOTATION: call the function re.compile with 2 arguments: raw string '<.*?>|((?:\w[-\w]*|&.*?;)+)' and bitwise OR performed with 2 operands,
+#ANNOTATION: re.U and re.S, substitute the result for re_words.
+re_chars = re.compile(r'<.*?>|(.)', re.U | re.S)
+#ANNOTATION: call the function re.compile with 2 arguments: raw string '<.*?>|(.)' and bitwise OR performed with 2 operands,
+#ANNOTATION: re.U and re.S, substitute the result for re_chars.
+re_tag = re.compile(r'<(/)?([^ ]+?)(?:(\s*/)| .*?)?>', re.S)
+#ANNOTATION: call the function re.compile with 2 arguments: raw string '<(/)?([^ ]+?)(?:(\s*/)| .*?)?>' and bitwise OR performed with 2 operands,
+#ANNOTATION: re.U and re.S, substitute the result for re_chars.
+re_newlines = re.compile(r'\r\n|\r')  # Used in normalize_newlines
+#ANNOTATION: call the function re.compile with an argument raw string '\r\n|\r', substitute the result for re_newlines.
+re_camel_case = re.compile(r'(((?<=[a-z])[A-Z])|([A-Z](?![A-Z]|$)))')
+#ANNOTATION: call the function re.compile with an argument raw string '(((?<=[a-z])[A-Z])|([A-Z](?![A-Z]|$)))', substitute the result for re_camel_case.
+
+
+def wrap(text, width):
+#ANNOTATION: define the function wrap with 2 arguments text and width.
+    """
+    A word-wrap function that preserves existing line breaks. Expects that
+    existing line breaks are posix newlines.
+
+    All white space is preserved except added line breaks consume the space on
+    which they break the line.
+
+    Long words are not wrapped, so the output text may have lines longer than
+    ``width``.
+    """
+#ANNOTATION: docstring
+    text = force_text(text)
+#ANNOTATION: call the function force_text with an argument text, substitute the result for text.
+
+    def _generator():
+#ANNOTATION: define the function _generator.
+        for line in text.splitlines(True):  # True keeps trailing linebreaks
+#ANNOTATION: call the method text.splitlines with an argument boolean True, for every line in the result,
+            max_width = min((line.endswith('\n') and width + 1 or width), width)
+#ANNOTATION: if line ends with a new line character substitute width incremented by integer 1 for max_width, if not substitute width for max_width.
+            while len(line) > max_width:
+#ANNOTATION: while length of line is grater than max_width,
+                space = line[:max_width + 1].rfind(' ') + 1
+#ANNOTATION: get fist max_width incremented by 1 elements from line, find index of the first occurrenece of whitespace from the right side,
+#ANNOTATION: add integer 1 to it, substitute the result for space.
+                if space == 0:
+#ANNOTATION: if space equals integer 0,
+                    space = line.find(' ') + 1
+#ANNOTATION: find first index of whitespace occurrence in line, add integer 1 to it, substitute the result for space.
+                    if space == 0:
+#ANNOTATION: if space equals integer 0,
+                        yield line
+#ANNOTATION: yield line.
+                        line = ''
+#ANNOTATION: line is an empty string.
+                        break
+#ANNOTATION: break from the loop execution
+                yield '%s\n' % line[:space - 1]
+#ANNOTATION: get the first space decremented with integer 1 elements from string line, append newline character to it, and yield the result.
+                line = line[space:]
+#ANNOTATION: remove all the elements from space index of line.
+                max_width = min((line.endswith('\n') and width + 1 or width), width)
+#ANNOTATION: if line ends with a new line character substitute width incremented by integer 1 for max_width, if not substitute width for max_width.
+            if line:
+#ANNOTATION: if line is true,
+                yield line
+#ANNOTATION: yield line.
+    return ''.join(_generator())
+#ANNOTATION: call the function _generator, join the result into a string, return the result. 
+wrap = allow_lazy(wrap, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: wrap and six.text_type, substitute the result for wrap.
+
+
+class Truncator(SimpleLazyObject):
+#ANNOTATION: derive the class Truncator form the SimpleLazyObject class.
+    """
+    An object used to truncate text, either by characters or words.
+    """
+#ANNOTATION: docstring
+    def __init__(self, text):
+#ANNOTATION: define the method __init__ with 2 arguments: self and text.
+        super(Truncator, self).__init__(lambda: force_text(text))
+#ANNOTATION: call the method __init__ from the base class of the class Truncator, 
+#ANNOTATION: called with with an argument lambda function which returns result of the force_text function called with an argument text.
+
+    def add_truncation_text(self, text, truncate=None):
+#ANNOTATION: define the method add_truncation_text with 3 arguments: self, text and truncate set to None.
+        if truncate is None:
+#ANNOTATION: if truncate is None,
+            truncate = pgettext(
+                'String to return when truncating text',
+                '%(truncated_text)s...')
+#ANNOTATION: call the function pgettext with an argument 'String to return when truncating text', '%(truncated_text)s...', substitute the result for truncate.
+        truncate = force_text(truncate)
+#ANNOTATION: call the function force_text with an argument truncate, substitute the result for truncate.
+        if '%(truncated_text)s' in truncate:
+#ANNOTATION: if string '%(truncated_text)s' is contained in truncate,
+            return truncate % {'truncated_text': text}
+#ANNOTATION: format truncate with a dictionary with an element: text for 'truncated_text', return the result.
+        # The truncation text didn't contain the %(truncated_text)s string
+        # replacement argument so just append it to the text.
+        if text.endswith(truncate):
+#ANNOTATION: if text ends with truncate,
+            # But don't append the truncation text if the current text already
+            # ends in this.
+            return text
+#ANNOTATION: return text.
+        return '%s%s' % (text, truncate)
+#ANNOTATION: append truncate to text, return the result.
+
+    def chars(self, num, truncate=None, html=False):
+#ANNOTATION: define the method chars with 4 arguments: self, num, truncate set to None, html set to boolean False.
+        """
+        Returns the text truncated to be no longer than the specified number
+        of characters.
+
+        Takes an optional argument of what should be used to notify that the
+        string has been truncated, defaulting to a translatable string of an
+        ellipsis (...).
+        """
+#ANNOTATION: docstring
+        length = int(num)
+#ANNOTATION: convert num to an integer, substitute it for length.
+        text = unicodedata.normalize('NFC', self._wrapped)
+#ANNOTATION: call the function unicodedata.normalize with 2 arguments: string 'NFC' and self._wrapped, substitute the result for text.
+
+        # Calculate the length to truncate to (max length - end_text length)
+        truncate_len = length
+#ANNOTATION: substitute length for truncate_len.
+        for char in self.add_truncation_text('', truncate):
+#ANNOTATION: for every char in result of the self.add_truncation_text, called with 2 arguments: an empty string and truncate.
+            if not unicodedata.combining(char):
+#ANNOTATION: call the method unicodedata.combining with an argument char, if it evaluates to false,
+                truncate_len -= 1
+#ANNOTATION: decrement truncate_len by integer 1.
+                if truncate_len == 0:
+#ANNOTATION: if truncate_len equals integer 0.
+                    break
+#ANNOTATION: break from the loop execution.
+        if html:
+#ANNOTATION: if html is true,
+            return self._truncate_html(length, truncate, text, truncate_len, False)
+#ANNOTATION: call the function self._truncate_html with 5 arguments: length, truncate, text, truncate_len and boolean False, return the result.
+        return self._text_chars(length, truncate, text, truncate_len)
+#ANNOTATION: call the method self._text_chars with 4 arguments: length, truncate, text and truncate_len, return the result.
+    chars = allow_lazy(chars)
+#ANNOTATION: call the function allow_lazy with an argument chars, substitute the result for chars.
+
+    def _text_chars(self, length, truncate, text, truncate_len):
+#ANNOTATION: define the method _text_chars with 5 arguments: self, length, truncate, text and truncate_len.
+        """
+        Truncates a string after a certain number of chars.
+        """
+#ANNOTATION: docstring
+        s_len = 0
+#ANNOTATION: s_len is integer 0.
+        end_index = None
+#ANNOTATION: end_index is None.
+        for i, char in enumerate(text):
+#ANNOTATION: for every i and char in enumerated text,
+            if unicodedata.combining(char):
+#ANNOTATION: call the function unicodedata.combining with an argument char, if it evaluates to true,
+                # Don't consider combining characters
+                # as adding to the string length
+                continue
+#ANNOTATION: skip this loop iteration,s
+            s_len += 1
+#ANNOTATION: increment s_len by integer 1,
+            if end_index is None and s_len > truncate_len:
+#ANNOTATION: if end_index is None and s_len is greater than truncate_len,
+                end_index = i
+#ANNOTATION: substitute i for end_index.
+            if s_len > length:
+#ANNOTATION: if s_len is greater than length,
+                # Return the truncated string
+                return self.add_truncation_text(text[:end_index or 0],
+                                                truncate)
+#ANNOTATION: call the method self.add_truncation_text with 2 arguments: if end_index is greater than zero, first end_index elements of text, 
+#ANNOTATION: if not an empty string, and truncate, return the result.
+
+        # Return the original string since no truncation was necessary
+        return text
+#ANNOTATION: return text.
+
+    def words(self, num, truncate=None, html=False):
+#ANNOTATION: define the method words with 4 arguments: self, num, truncate set to None, html set to boolean False.
+        """
+        Truncates a string after a certain number of words. Takes an optional
+        argument of what should be used to notify that the string has been
+        truncated, defaulting to ellipsis (...).
+        """
+#ANNOTATION: docstring
+        length = int(num)
+#ANNOTATION: convert num to an integer, substitute the result for length.
+        if html:
+#ANNOTATION: if html is true,
+            return self._truncate_html(length, truncate, self._wrapped, length, True)
+#ANNOTATION: call the method self._truncate_html with 5 arguments: length, truncate, self._wrapped, length and boolean True, return the result.
+        return self._text_words(length, truncate)
+#ANNOTATION: call the method self._text_words with 2 arguments length and truncate, return the result.
+    words = allow_lazy(words)
+#ANNOTATION: call the function allow_lazy with an argument words, substitute the result for words.
+
+    def _text_words(self, length, truncate):
+#ANNOTATION: define the method _text_words with 3 arguments: self, length and truncate.
+        """
+        Truncates a string after a certain number of words.
+
+        Newlines in the string will be stripped.
+        """
+#ANNOTATION: docstring
+        words = self._wrapped.split()
+#ANNOTATION: split self._wrapped into words, substitute the result for words.
+        if len(words) > length:
+#ANNOTATION: if length of words is greater than length,
+            words = words[:length]
+#ANNOTATION: substitute first length elements of words for words.
+            return self.add_truncation_text(' '.join(words), truncate)
+#ANNOTATION: call the method self.add_truncation_text with 2 arguments: elements of words joined in a string, separated with whitespaces, 
+#ANNOTATION: and truncate, return the result.
+        return ' '.join(words)
+#ANNOTATION: return elements of words joined in a string, separated with whitespaces.
+
+    def _truncate_html(self, length, truncate, text, truncate_len, words):
+#ANNOTATION: define the method _truncate_html with 6 arguments: self, length, truncate, text, truncate_len and words.
+        """
+        Truncates HTML to a certain number of chars (not counting tags and
+        comments), or, if words is True, then to a certain number of words.
+        Closes opened tags if they were correctly closed in the given HTML.
+
+        Newlines in the HTML are preserved.
+        """
+#ANNOTATION: docstring
+        if words and length <= 0:
+#ANNOTATION: if words is not empty and length is smaller than or equal to integer 0,
+            return ''
+#ANNOTATION: return an empty string.
+
+        html4_singlets = (
+            'br', 'col', 'link', 'base', 'img',
+            'param', 'area', 'hr', 'input'
+        )
+#ANNOTATION: html4_singlets is a tuple with 9 elements: strings 'br', 'col', 'link', 'base', 'img', 'param', 'area', 'hr' and 'input'.
+
+        # Count non-HTML chars/words and keep note of open tags
+        pos = 0
+#ANNOTATION: pos is equal to integer 0.
+        end_text_pos = 0
+#ANNOTATION: end_text_pos is equal to integer 0.
+        current_len = 0
+#ANNOTATION: current_len is equal to integer 0.
+        open_tags = []
+#ANNOTATION: open_tags is an empty list.
+
+        regex = re_words if words else re_chars
+#ANNOTATION: if words is true, substitute re_words for regex, if not substitute re_chars for regex.
+
+        while current_len <= length:
+#ANNOTATION: while current_len is smaller than or equal to length,
+            m = regex.search(text, pos)
+#ANNOTATION: call the method regex.search with 2 arguments: text and pos. 
+            if not m:
+#ANNOTATION: if m is false,
+                # Checked through whole string
+                break
+#ANNOTATION: break from the loop execution,
+            pos = m.end(0)
+#ANNOTATION: call the method m.end with an argument integer 0, substitute the result for pos.
+            if m.group(1):
+#ANNOTATION: call the function m.group, if the result evaluates to true,
+                # It's an actual non-HTML word or char
+                current_len += 1
+#ANNOTATION: increment current_len by integer 1,
+                if current_len == truncate_len:
+#ANNOTATION: if current_len equals truncate_len,
+                    end_text_pos = pos
+#ANNOTATION: substitute pos for end_text_pos.
+                continue
+#ANNOTATION: skip this loop iteration.
+            # Check for tag
+            tag = re_tag.match(m.group(0))
+#ANNOTATION: call the method m.group with an argument integer 0, use it as an argument for the call to the re_tag.match function, 
+#ANNOTATION: substitute the result for tag.
+            if not tag or current_len >= truncate_len:
+#ANNOTATION: if tag is false or current_len is greater or equal to truncate_len,
+                # Don't worry about non tags or tags after our truncate point
+                continue
+#ANNOTATION: skip this loop iteration.
+            closing_tag, tagname, self_closing = tag.groups()
+#ANNOTATION: call the method tag.groups, substitute the result for closing_tag, tagname and self_closing, respectively.
+            # Element names are always case-insensitive
+            tagname = tagname.lower()
+#ANNOTATION: convert tagname to lowercase, substitute it for tagname.
+            if self_closing or tagname in html4_singlets:
+#ANNOTATION: if self_closing is true or tagname is contained in html4_singlets,
+                pass
+#ANNOTATION: do nothing.
+            elif closing_tag:
+#ANNOTATION: otherwise if closing_tag is true,
+                # Check for match in open tags list
+                try:
+#ANNOTATION: try,
+                    i = open_tags.index(tagname)
+#ANNOTATION: get the index of the first occurrence of tagname, substitute it for i.
+                except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+                    pass
+#ANNOTATION: do nothing.
+                else:
+#ANNOTATION: if not,
+                    # SGML: An end tag closes, back to the matching start tag,
+                    # all unclosed intervening start tags with omitted end tags
+                    open_tags = open_tags[i + 1:]
+#ANNOTATION: create a list out of open_tags elements form (i+1)-th index to the end, substitute it for open_tags.
+            else:
+#ANNOTATION: if not,
+                # Add it to the start of the open tags list
+                open_tags.insert(0, tagname)
+#ANNOTATION: insert tagname at the beginning of open_tags.
+
+        if current_len <= length:
+#ANNOTATION: if current_len is smaller than or equal to length,
+            return text
+#ANNOTATION: return text.
+        out = text[:end_text_pos]
+#ANNOTATION: create a list out of fist end_text_pos text elemnts, substitue it for out.
+        truncate_text = self.add_truncation_text('', truncate)
+#ANNOTATION: call the method self.add_truncation_text with 2 arguments: an empty string and truncate, substitute it for truncate_text.
+        if truncate_text:
+#ANNOTATION: if truncate_text is true,
+            out += truncate_text
+#ANNOTATION: append truncate_text to out.
+        # Close any tags still open
+        for tag in open_tags:
+#ANNOTATION: for every tag in open_tags,
+            out += '</%s>' % tag
+#ANNOTATION: replace '%s' in string '</%s>' with tag, append the result to out.
+        # Return string
+        return out
+#ANNOTATION: return out.
+
+
+def get_valid_filename(s):
+#ANNOTATION: define the function get_valid_filename with an argument s.
+    """
+    Returns the given string converted to a string that can be used for a clean
+    filename. Specifically, leading and trailing spaces are removed; other
+    spaces are converted to underscores; and anything that is not a unicode
+    alphanumeric, dash, underscore, or dot, is removed.
+    >>> get_valid_filename("john's portrait in 2004.jpg")
+    'johns_portrait_in_2004.jpg'
+    """
+#ANNOTATION: docstring
+    s = force_text(s).strip().replace(' ', '_')
+#ANNOTATION: call the function force_text with an argument s, strip the result of whitespaces from both ends, 
+#ANNOTATION: replace every occurrence of whitespaces in the previous result for '_', substitute the result for s.
+    return re.sub(r'(?u)[^-\w.]', '', s)
+#ANNOTATION: call the function re.sub with 3 arguments: raw string '(?u)[^-\w.]', an empty string and s, return the result.
+get_valid_filename = allow_lazy(get_valid_filename, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: get_valid_filename and six.text_type, substitute the result for get_valid_filename. 
+
+
+def get_text_list(list_, last_word=ugettext_lazy('or')):
+#ANNOTATION: define the function get_text_list with 2 arguments: list_ and last_word set to result of the function ugettext_lazy called with an argument string 'or'.
+    """
+    >>> get_text_list(['a', 'b', 'c', 'd'])
+    'a, b, c or d'
+    >>> get_text_list(['a', 'b', 'c'], 'and')
+    'a, b and c'
+    >>> get_text_list(['a', 'b'], 'and')
+    'a and b'
+    >>> get_text_list(['a'])
+    'a'
+    >>> get_text_list([])
+    ''
+    """
+#ANNOTATION: docstring
+    if len(list_) == 0:
+#ANNOTATION: is length of list_ equals integer 0,
+        return ''
+#ANNOTATION: return an empty string.
+    if len(list_) == 1:
+#ANNOTATION: if length of list_ equals integer 1,
+        return force_text(list_[0])
+#ANNOTATION: call the function force_text with first element of list_ as an argument, return the result.
+    return '%s %s %s' % (
+        # Translators: This string is used as a separator between list elements
+        _(', ').join(force_text(i) for i in list_[:-1]),
+        force_text(last_word), force_text(list_[-1]))
+#ANNOTATION: return a string '%s %s %s' formated with 3 elements: result of the function force_text called with an argument i, 
+#ANNOTATION: separated by result of the function _ called with an argument string ', ', for every i in list_ without last element,
+#ANNOTATION: result of the function force_text called with an argument last_word, result of the function force_text called with an argument:
+#ANNOTATION: last element of list_.
+get_text_list = allow_lazy(get_text_list, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: get_text_list and six.text_type, substitute the result for get_text_list.
+
+
+def normalize_newlines(text):
+#ANNOTATION: define the function normalize_newlines with an argument text.
+    """Normalizes CRLF and CR newlines to just LF."""
+#ANNOTATION: docstring
+    text = force_text(text)
+#ANNOTATION: call the function force_text with an argument text, substitute the result for text.
+    return re_newlines.sub('\n', text)
+#ANNOTATION: call the method re_newlines.sub with 2 arguments: '\n' and text, return the result.
+normalize_newlines = allow_lazy(normalize_newlines, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: normalize_newlines and six.text_type, substitute the result for normalize_newlines.
+
+
+def phone2numeric(phone):
+#ANNOTATION: define the function phone2numeric with an argument phone.
+    """Converts a phone number with letters into its numeric equivalent."""
+#ANNOTATION: docstring
+    char2number = {'a': '2', 'b': '2', 'c': '2', 'd': '3', 'e': '3', 'f': '3',
+         'g': '4', 'h': '4', 'i': '4', 'j': '5', 'k': '5', 'l': '5', 'm': '6',
+         'n': '6', 'o': '6', 'p': '7', 'q': '7', 'r': '7', 's': '7', 't': '8',
+         'u': '8', 'v': '8', 'w': '9', 'x': '9', 'y': '9', 'z': '9'}
+#ANNOTATION: char2number is an dictionary, with 26 elements: 2 for 'a', 2 for 'b', 2 for 'c', 3 for 'd', 3 for 'e', 3 for 'f', 4 for 'g',
+#ANNOTATION: 4 for 'h', 4 for 'i', 4 for 'j', 5 for 'k', 5 for 'l', 5 for 'm', 6 for 'n', 6 for 'o', 6 for 'p', 7 for 'q', 7 for 'r', 7 for 'r',
+#ANNOTATION: 7 for 's', 7 for 't', 8 for 't', 8 for 'u', 8 for 'v', 9 for 'w', 9 for 'x', 9 for 'y' and 9 for 'z'.
+    return ''.join(char2number.get(c, c) for c in phone.lower())
+#ANNOTATION: for every c in phone converted to lowercase, join the value under the c key of the char2number dictionary into a string, return it.
+phone2numeric = allow_lazy(phone2numeric)
+#ANNOTATION: call the function allow_lazy with an argument phone2numeric, substitute the result for phone2numeric.
+
+
+# From http://www.xhaus.com/alan/python/httpcomp.html#gzip
+# Used with permission.
+def compress_string(s):
+#ANNOTATION: define the function compress_string with an argument s.
+    zbuf = BytesIO()
+#ANNOTATION: zbuf is an instance of BytesIO class.
+    zfile = GzipFile(mode='wb', compresslevel=6, fileobj=zbuf)
+#ANNOTATION: zfile is an instance of GzipFile class, created with 3 arguments: mode set to string 'wb', compresslevel set to integer 6,
+#ANNOTATION: and fileobj set to zbuf.
+    zfile.write(s)
+#ANNOTATION: call the method zfile.write with an argument s. 
+    zfile.close()
+#ANNOTATION: call the method zfile.close.
+    return zbuf.getvalue()
+#ANNOTATION: call the method zbuf.getvalue, return the result.
+
+
+class StreamingBuffer(object):
+#ANNOTATION: derive the class StreamingBuffer from the object base class.
+    def __init__(self):
+#ANNOTATION: define the method __init__ with an argument self.
+        self.vals = []
+#ANNOTATION: self.vals is an empty list.
+
+    def write(self, val):
+#ANNOTATION: define the method write with 2 arguments: self and val.
+        self.vals.append(val)
+#ANNOTATION: append val to self.vals.
+
+    def read(self):
+#ANNOTATION: define the method read with an argument self.
+        ret = b''.join(self.vals)
+#ANNOTATION: join elements of self.vals into a bytes string, substitute the result for ret.
+        self.vals = []
+#ANNOTATION: self.vals is an empty list.
+        return ret
+#ANNOTATION: return ret.
+
+    def flush(self):
+#ANNOTATION: define the method flush with an argument self.
+        return
+#ANNOTATION: return nothing.
+
+    def close(self):
+#ANNOTATION: define the method close with an argument self.
+        return
+#ANNOTATION: return nothing.
+
+
+# Like compress_string, but for iterators of strings.
+def compress_sequence(sequence):
+#ANNOTATION: define the function compress_sequence with an argument sequence.
+    buf = StreamingBuffer()
+#ANNOTATION: buf is an instance of StreamingBuffer class.
+    zfile = GzipFile(mode='wb', compresslevel=6, fileobj=buf)
+#ANNOTATION: zfile is an instance of GzipFile class, created with 3 arguments: mode set to string 'wb', compresslevel set to integer 6,
+#ANNOTATION: and fileobj set to buf.
+    # Output headers...
+    yield buf.read()
+#ANNOTATION: read data from buf file stream, yield the result.
+    for item in sequence:
+#ANNOTATION: for every item in sequence,
+        zfile.write(item)
+#ANNOTATION: write item to zfile stream.
+        zfile.flush()
+#ANNOTATION: flush zfile stream buffer.
+        yield buf.read()
+#ANNOTATION: read data from buf, yield the result.
+    zfile.close()
+#ANNOTATION: close zfile stream.
+    yield buf.read()
+#ANNOTATION: read data from buf, yield the result.
+
+ustring_re = re.compile("([\u0080-\uffff])")
+#ANNOTATION: call the function re.compile with an argument string "([\u0080-\uffff])", substitute the result for ustring_re.
+
+
+def javascript_quote(s, quote_double_quotes=False):
+#ANNOTATION: define the function javascript_quote with 2 arguments: s and quote_double_quotes set to boolean False.
+    msg = (
+        "django.utils.text.javascript_quote() is deprecated. "
+        "Use django.utils.html.escapejs() instead."
+    )
+#ANNOTATION: msg is an string "django.utils.text.javascript_quote() is deprecated. Use django.utils.html.escapejs() instead.".
+    warnings.warn(msg, RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the function warnings.warn with 3 arguments: msg, RemovedInDjango19Warning and stacklevel as integer 2.
+
+    def fix(match):
+#ANNOTATION: define the function fix with an argument match.
+        return "\\u%04x" % ord(match.group(1))
+#ANNOTATION: get the unicode representation of result of the method match.group called with an integer 1, format with in a string "\\u%04x",
+#ANNOTATION: return the result.
+
+    if type(s) == bytes:
+#ANNOTATION: if type of s equals bytes,
+        s = s.decode('utf-8')
+#ANNOTATION: call the method s.decode with an argument string 'utf-8', substitute the result for s.
+    elif type(s) != six.text_type:
+#ANNOTATION: otherwise if, type of s doesnt equal to six.text_type,
+        raise TypeError(s)
+#ANNOTATION: raise an TypeError with an argument s.
+    s = s.replace('\\', '\\\\')
+#ANNOTATION: replace every occurrence of '\\' in s with '\\\\'.
+    s = s.replace('\r', '\\r')
+#ANNOTATION: replace every occurrence of '\r' in s with '\\r'.
+    s = s.replace('\n', '\\n')
+#ANNOTATION: replace every occurrence of '\n' in s with '\\n'.
+    s = s.replace('\t', '\\t')
+#ANNOTATION: replace every occurrence of '\t' in s with '\\t'.
+    s = s.replace("'", "\\'")
+#ANNOTATION: replace every occurrence of "'" in s with "\\'".
+    s = s.replace('</', '<\\/')
+#ANNOTATION: replace every occurrence of '</' in s with '<\\/'.
+    if quote_double_quotes:
+#ANNOTATION: if quote_double_quotes is true,
+        s = s.replace('"', '&quot;')
+#ANNOTATION: replace every occurrence of '"' in s with '&quot;'.
+    return ustring_re.sub(fix, s)
+#ANNOTATION: call the method ustring_re.sub with 2 arguments: fix and s, return the result.
+javascript_quote = allow_lazy(javascript_quote, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: javascript_quote and six.text_type, substitute the result for javascript_quote.
+
+# Expression to match some_token and some_token="with spaces" (and similarly
+# for single-quoted strings).
+smart_split_re = re.compile(r"""
+    ((?:
+        [^\s'"]*
+        (?:
+            (?:"(?:[^"\\]|\\.)*" | '(?:[^'\\]|\\.)*')
+            [^\s'"]*
+        )+
+    ) | \S+)
+""", re.VERBOSE)
+#ANNOTATION: call the function re.compile with 2 arguments: raw string "((?:[^\s'"]*(?:(?:"(?:[^"\\]|\\.)*" | '(?:[^'\\]|\\.)*')[^\s'"]*)+) | \+)",
+#ANNOTATION: and re.VERBOSE, substitute the result for smart_split_re.
+
+
+def smart_split(text):
+#ANNOTATION: define the function smart_split with an argument text.
+    r"""
+    Generator that splits a string by spaces, leaving quoted phrases together.
+    Supports both single and double quotes, and supports escaping quotes with
+    backslashes. In the output, strings will keep their initial and trailing
+    quote marks and escaped quotes will remain escaped (the results can then
+    be further processed with unescape_string_literal()).
+
+    >>> list(smart_split(r'This is "a person\'s" test.'))
+    ['This', 'is', '"a person\\\'s"', 'test.']
+    >>> list(smart_split(r"Another 'person\'s' test."))
+    ['Another', "'person\\'s'", 'test.']
+    >>> list(smart_split(r'A "\"funky\" style" test.'))
+    ['A', '"\\"funky\\" style"', 'test.']
+    """
+#ANNOTATION: docstring
+    text = force_text(text)
+#ANNOTATION: call the function force_text with an argument text, substitute the result for text.
+    for bit in smart_split_re.finditer(text):
+#ANNOTATION: call the method smart_split_re.finditer with an argument text, for every bit in result,
+        yield bit.group(0)
+#ANNOTATION: call the method bit.group with an argument integer 0, yield the result.
+
+
+def _replace_entity(match):
+#ANNOTATION: define the function _replace_entity with an argument match.
+    text = match.group(1)
+#ANNOTATION: call the method match.group with an argument integer 1, substitute the result for text.
+    if text[0] == '#':
+#ANNOTATION: if first element of text equals '#',
+        text = text[1:]
+#ANNOTATION: remove first element of text.
+        try:
+#ANNOTATION: try,
+            if text[0] in 'xX':
+#ANNOTATION: if first element of text is contained in 'xX'.
+                c = int(text[1:], 16)
+#ANNOTATION: convert text without first element to hexadecimal integer, substitute it for c.
+            else:
+#ANNOTATION: if nor,
+                c = int(text)
+#ANNOTATION: convert text to an integer, substitute it for c.
+            return six.unichr(c)
+#ANNOTATION: call the method six.unichr with an argument c, return the result.
+        except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+            return match.group(0)
+#ANNOTATION: call the method match.group with an argument integer 0, return the result.
+    else:
+#ANNOTATION: if not,
+        try:
+#ANNOTATION: try,
+            return six.unichr(html_entities.name2codepoint[text])
+#ANNOTATION: call the function six.unichr with value under the text key of the html_entities.name2codepoint dictionary, return the result.
+        except (ValueError, KeyError):
+#ANNOTATION: if OverflowError or ValueError exceptions are caught,
+            return match.group(0)
+#ANNOTATION: call the method match.group with an argument integer 0, return the result.
+
+_entity_re = re.compile(r"&(#?[xX]?(?:[0-9a-fA-F]+|\w{1,8}));")
+#ANNOTATION: call the method re.compile with an argument raw string "&(#?[xX]?(?:[0-9a-fA-F]+|\w{1,8}));", substitute the result for _entity_re.
+
+
+def unescape_entities(text):
+#ANNOTATION: define the function unescape_entities with an argument text.
+    return _entity_re.sub(_replace_entity, text)
+#ANNOTATION: call the method _entity_re.sub with 2 arguments: _replace_entity and text, return the result.
+unescape_entities = allow_lazy(unescape_entities, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: unescape_entities and six.text_type, substitute the result for unescape_entities.
+
+
+def unescape_string_literal(s):
+#ANNOTATION: define the function unescape_string_literal with an argument s.
+    r"""
+    Convert quoted string literals to unquoted strings with escaped quotes and
+    backslashes unquoted::
+
+        >>> unescape_string_literal('"abc"')
+        'abc'
+        >>> unescape_string_literal("'abc'")
+        'abc'
+        >>> unescape_string_literal('"a \"bc\""')
+        'a "bc"'
+        >>> unescape_string_literal("'\'ab\' c'")
+        "'ab' c"
+    """
+#ANNOTATION: docstring
+    if s[0] not in "\"'" or s[-1] != s[0]:
+#ANNOTATION: if first element of s is not contained in "\"'" or last element of s is not equal to first element of s,
+        raise ValueError("Not a string literal: %r" % s)
+#ANNOTATION: raise an ValueError exception wit an argument string "Not a string literal: %r", where "%r" is replaced with s.
+    quote = s[0]
+#ANNOTATION: substitute first element of s for quote.
+    return s[1:-1].replace(r'\%s' % quote, quote).replace(r'\\', '\\')
+#ANNOTATION: remove first and last elements of s, replace every occurrence of string '\%s' formated with quote with quote,
+#ANNOTATION: replace every occurrence of raw string '\\' in the result with string '\\', return the result.
+unescape_string_literal = allow_lazy(unescape_string_literal)
+#ANNOTATION: call the function allow_lazy with an argument unescape_string_literal, substitute the result for unescape_string_literal.
+
+
+def slugify(value):
+#ANNOTATION: define the function slugify with an argument value.
+    """
+    Converts to lowercase, removes non-word characters (alphanumerics and
+    underscores) and converts spaces to hyphens. Also strips leading and
+    trailing whitespace.
+    """
+#ANNOTATION: docstring
+    value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+#ANNOTATION: call the method unicodedata.normalize with 2 arguments: string 'NFKD' and value, encode the result with 2 arguments: string 'ascii',
+#ANNOTATION: and string 'ignore', call the method decode on the result with an argument string 'ascii', substitute the result for value. 
+    value = re.sub('[^\w\s-]', '', value).strip().lower()
+#ANNOTATION: call the method re.sub with 3 arguments: string '[^\w\s-]', empty string and value, strip the result of whitespaces from both ends,
+#ANNOTATION: and convert it to lowercase, substitute the result for value. 
+    return mark_safe(re.sub('[-\s]+', '-', value))
+#ANNOTATION: call the function re.sub with 3 arguments: string '[-\s]+', string '-' and value, use the result as an argument for the call to the,
+#ANNOTATION: mark_safe function, return the result.
+slugify = allow_lazy(slugify, six.text_type)
+#ANNOTATION: call the function allow_lazy with 2 arguments: slugify and six.text_type, substitute the result slugify.
+
+
+def camel_case_to_spaces(value):
+#ANNOTATION: define the function camel_case_to_spaces with an argument value.
+    """
+    Splits CamelCase and converts to lower case. Also strips leading and
+    trailing whitespace.
+    """
+#ANNOTATION: docstring
+    return re_camel_case.sub(r' \1', value).strip().lower()
+#ANNOTATION: call the method re_camel_case.sub with 2 arguments: raw string ' \1' and value, strip the result of whitespaces from both ends,
+#ANNOTATION: and convert it to lowercase, return the result. 

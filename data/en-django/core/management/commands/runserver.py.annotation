@@ -1,0 +1,279 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from datetime import datetime
+#ANNOTATION: from datetime import datetime into default name space.
+import errno
+#ANNOTATION: import module errno.
+import os
+#ANNOTATION: import module os.
+import re
+#ANNOTATION: import module re.
+import sys
+#ANNOTATION: import module sys.
+import socket
+#ANNOTATION: import module socket.
+
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+from django.core.servers.basehttp import run, get_internal_wsgi_application
+#ANNOTATION: from django.core.servers.basehttp import run and get_internal_wsgi_application into default name space.
+from django.db import connections, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import connections and DEFAULT_DB_ALIAS into default name space.
+from django.db.migrations.executor import MigrationExecutor
+#ANNOTATION: from django.db.migrations.executor import MigrationExecutor into default name space.
+from django.utils import autoreload
+#ANNOTATION: from django.utils import autoreload into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.core.exceptions import ImproperlyConfigured
+#ANNOTATION: from django.core.exceptions import ImproperlyConfigured into default name space.
+
+naiveip_re = re.compile(r"""^(?:
+(?P<addr>
+    (?P<ipv4>\d{1,3}(?:\.\d{1,3}){3}) |         # IPv4 address
+    (?P<ipv6>\[[a-fA-F0-9:]+\]) |               # IPv6 address
+    (?P<fqdn>[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*) # FQDN
+):)?(?P<port>\d+)$""", re.X)
+#ANNOTATION: call the method re.compile with 2 arguments: raw string """^(?: (?P<addr> (?P<ipv4>\d{1,3}(?:\.\d{1,3}){3}) |""" 
+#ANNOTATION: """(?P<ipv6>\[[a-fA-F0-9:]+\]) | (?P<fqdn>[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*) ):)?(?P<port>\d+)$""", re.X
+DEFAULT_PORT = "8000"
+#ANNOTATION: DEFAULT_PORT is a string "8000".
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand class.
+    help = "Starts a lightweight Web server for development."
+#ANNOTATION: help is a string "Starts a lightweight Web server for development.".
+
+    # Validation is called explicitly each time the server is reloaded.
+    requires_system_checks = False
+#ANNOTATION: requires_system_checks is boolean False.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with 2 arguments self and parser.
+        parser.add_argument('addrport', nargs='?',
+            help='Optional port number, or ipaddr:port')
+#ANNOTATION: call the method parser.add_argument with 3 arguments: string 'addrport', nargs='?' and help as a string 'Optional port number, or ipaddr:port'.
+        parser.add_argument('--ipv6', '-6', action='store_true', dest='use_ipv6', default=False,
+            help='Tells Django to use an IPv6 address.')
+#ANNOTATION: call the method parser.add_argument with 6 arguments: string '--ipv6', string '-6', action set to string 'store_true',
+#ANNOTATION: dest set to string 'use_ipv6', default set to boolean False and help set to string 'Tells Django to use an IPv6 address.'.
+        parser.add_argument('--nothreading', action='store_false', dest='use_threading', default=True,
+            help='Tells Django to NOT use threading.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--nothreading', action set to string 'store_false',
+#ANNOTATION: dest set to string 'use_threading', default set to boolean True and help set to 'Tells Django to NOT use threading.'.
+        parser.add_argument('--noreload', action='store_false', dest='use_reloader', default=True,
+            help='Tells Django to NOT use the auto-reloader.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--noreload', action set to string 'store_false', 
+#ANNOTATION: dest set to string 'use_reloader', default set to boolean True and help is a string 'Tells Django to NOT use the auto-reloader.'.
+
+    def get_handler(self, *args, **options):
+#ANNOTATION: def get_handler with 3 arguments: self, unpacked list args and unpacked dictionary options.
+        """
+        Returns the default WSGI handler for the runner.
+        """
+#ANNOTATION: docstring
+        return get_internal_wsgi_application()
+#ANNOTATION: call the function get_internal_wsgi_application, return the result.
+
+    def handle(self, *args, **options):
+#ANNOTATION: define the method handle with 3 arguments: self, unpacked list args and unpacked dictionary options.
+        from django.conf import settings
+#ANNOTATION: from django.conf import settings into default namespace.
+
+        if not settings.DEBUG and not settings.ALLOWED_HOSTS:
+#ANNOTATION: if not settings.DEBUG is true and settings.ALLOWED_HOSTS is false,
+            raise CommandError('You must set settings.ALLOWED_HOSTS if DEBUG is False.')
+#ANNOTATION: raise an CommandError exception with an argument string 'You must set settings.ALLOWED_HOSTS if DEBUG is False.'.
+
+        self.use_ipv6 = options.get('use_ipv6')
+#ANNOTATION: substitute value under the 'use_ipv6' key of the options dictionary for self.use_ipv6.
+        if self.use_ipv6 and not socket.has_ipv6:
+#ANNOTATION: if self.use_ipv6 is true and socket.has_ipv6 is false,
+            raise CommandError('Your Python does not support IPv6.')
+#ANNOTATION: raise an CommandError exception with an argument string 'Your Python does not support IPv6.'.
+        self._raw_ipv6 = False
+#ANNOTATION: self._raw_ipv6 is boolean False.
+        if not options.get('addrport'):
+#ANNOTATION: get the value under the 'addrport' key of the options dictionary, if it is false,
+            self.addr = ''
+#ANNOTATION: self.addr is an empty string.
+            self.port = DEFAULT_PORT
+#ANNOTATION: substitute DEFAULT_PORT for self.port.
+        else:
+#ANNOTATION: if not,
+            m = re.match(naiveip_re, options['addrport'])
+#ANNOTATION: call the method re.match with 2 arguments: naiveip_re and value under the 'addrport' key of the options dictionary, substitute the result for m.
+            if m is None:
+#ANNOTATION: if m is None,
+                raise CommandError('"%s" is not a valid port number '
+                                   'or address:port pair.' % options['addrport'])
+#ANNOTATION: raise an CommandError exception with an argument string '"%s" is not a valid port number or address:port pair.',
+#ANNOTATION: where '%s' is replaced with value under the 'addrport' key of the options dictionary.
+            self.addr, _ipv4, _ipv6, _fqdn, self.port = m.groups()
+#ANNOTATION: call the method m.groups, assign the result to self.addr, _ipv4, _ipv6, _fqdn and self.port, respectively.
+            if not self.port.isdigit():
+#ANNOTATION: call the method self.port.isdigit, if it evaluates to false,
+                raise CommandError("%r is not a valid port number." % self.port)
+#ANNOTATION: raise an CommandError exception with an argument string "%r is not a valid port number.", where '%r' is repaced with self.port.
+            if self.addr:
+#ANNOTATION: if self.addr is true,
+                if _ipv6:
+#ANNOTATION: if _ipv6 is true,
+                    self.addr = self.addr[1:-1]
+#ANNOTATION: substitute self.addr without the first and last element for self.addr.
+                    self.use_ipv6 = True
+#ANNOTATION: self.use_ipv6 is boolean True.
+                    self._raw_ipv6 = True
+#ANNOTATION: self._raw_ipv6 is boolean True.
+                elif self.use_ipv6 and not _fqdn:
+#ANNOTATION: otherwise if self.use_ipv6 is true and _fqdn is false, 
+                    raise CommandError('"%s" is not a valid IPv6 address.' % self.addr)
+#ANNOTATION: raise an CommandError exception with an argument string '"%s" is not a valid IPv6 address.' where '%s' is replaced with self.addr.
+        if not self.addr:
+#ANNOTATION: if self.addr is false,
+            self.addr = '::1' if self.use_ipv6 else '127.0.0.1'
+#ANNOTATION: if self.use_ipv6 substitute string '::1' for self.addr, if not substitute '127.0.0.1' for self.addr.
+            self._raw_ipv6 = bool(self.use_ipv6)
+#ANNOTATION: convert self.use_ipv6 to boolean, substitute it for self._raw_ipv6.
+        self.run(**options)
+#ANNOTATION: call the self.run method with unpacked dictionary options as an argument.
+
+    def run(self, **options):
+#ANNOTATION: define the method run with 3 arguments: self and unpacked dictionary options.
+        """
+        Runs the server, using the autoreloader if needed
+        """
+#ANNOTATION: docstring
+        use_reloader = options.get('use_reloader')
+#ANNOTATION: substitute value under the 'use_reloader' key of the options dictionary for use_reloader.
+
+        if use_reloader:
+#ANNOTATION: if use_reloader is true,
+            autoreload.main(self.inner_run, None, options)
+#ANNOTATION: call the method autoreload.main with 3 arguments: self.inner_run, None and options.
+        else:
+#ANNOTATION: if not,
+            self.inner_run(None, **options)
+#ANNOTATION: call the method self.inner_run with 2 arguments: None and unpacked dictionary options.
+
+    def inner_run(self, *args, **options):
+#ANNOTATION: define the method inner_run with 3 arguments: self, unpacked list args and unpacked dictionary options.
+        from django.conf import settings
+#ANNOTATION: from django.conf import settings into default namespace.
+        from django.utils import translation
+#ANNOTATION: django.utils import translation into default namespace.
+
+        threading = options.get('use_threading')
+#ANNOTATION: substitute value under the 'use_threading' key of the options dictionary for threading.
+        shutdown_message = options.get('shutdown_message', '')
+#ANNOTATION: get the value under the 'shutdown_message' key of the options dictionary, if it exists substitute it for shutdown_message, 
+#ANNOTATION: if not, shutdown_message is an empty string.
+        quit_command = 'CTRL-BREAK' if sys.platform == 'win32' else 'CONTROL-C'
+#ANNOTATION: if sys.platform equals string win32', substitute string 'CTRL-BREAK' for quit_command, if not substitute string 'CONTROL-C' for quit_command.
+
+        self.stdout.write("Performing system checks...\n\n")
+#ANNOTATION: write string "Performing system checks...\n\n" to self.stdout stream.
+        self.validate(display_num_errors=True)
+#ANNOTATION: call the method self.validate with an argument display_num_errors set to boolean True.
+        try:
+#ANNOTATION: try,
+            self.check_migrations()
+#ANNOTATION: call the method self.check_migrations.
+        except ImproperlyConfigured:
+#ANNOTATION: if ImproperlyConfigured exception is caught,
+            pass
+#ANNOTATION: do nothing.
+        now = datetime.now().strftime('%B %d, %Y - %X')
+#ANNOTATION: call the function datetime.now, on the result call the method strftime with an argument string '%B %d, %Y - %X', substitute the result for now.
+        if six.PY2:
+#ANNOTATION: if six.PY2 is true,
+            now = now.decode('utf-8')
+#ANNOTATION: call the method now.decode with an argument string 'utf-8', substitute the result for now.
+        self.stdout.write((
+            "%(started_at)s\n"
+            "Django version %(version)s, using settings %(settings)r\n"
+            "Starting development server at http://%(addr)s:%(port)s/\n"
+            "Quit the server with %(quit_command)s.\n"
+        ) % {
+            "started_at": now,
+            "version": self.get_version(),
+            "settings": settings.SETTINGS_MODULE,
+            "addr": '[%s]' % self.addr if self._raw_ipv6 else self.addr,
+            "port": self.port,
+            "quit_command": quit_command,
+        })
+#ANNOTATION: call the method self.stdout.write with an argument: string "%(started_at)s\nDjango version %(version)s, using settings %(settings)r\n"
+#ANNOTATION: "Starting development server at http://%(addr)s:%(port)s/\n Quit the server with %(quit_command)s.\n", 
+#ANNOTATION: where '"%(started_at)s' is replaced with now, '%(version)s' is replaced with return value of the method self.get_version,
+#ANNOTATION: '%(settings)r' is replaced with settings.SETTINGS_MODULE, '%(addr)s' is replaced with self.addr if self._raw_ipv6 is true,
+#ANNOTATION: or with self.addr if it is false, '%(port)s' is replaced with self.port and '%(quit_command)s' is replaced with quit_command.
+        # django.core.management.base forces the locale to en-us. We should
+        # set it up correctly for the first request (particularly important
+        # in the "--noreload" case).
+        translation.activate(settings.LANGUAGE_CODE)
+#ANNOTATION: call the method translation.activate with an argument settings.LANGUAGE_CODE.
+
+        try:
+#ANNOTATION: try,
+            handler = self.get_handler(*args, **options)
+#ANNOTATION: call the method self.get_handler with 2 arguments unpacked list args and unpacked dictionary options, substitute the result for handler.
+            run(self.addr, int(self.port), handler,
+                ipv6=self.use_ipv6, threading=threading)
+#ANNOTATION: call the function run with 5 arguments: self.addr, self.port converted to an integer, handler, ipv6 set to self.use_ipv6, #ANNOTATION: and threading set to threading.
+        except socket.error as e:
+#ANNOTATION: if socket.error, renamed to e, exception is caught,
+            # Use helpful error messages instead of ugly tracebacks.
+            ERRORS = {
+                errno.EACCES: "You don't have permission to access that port.",
+                errno.EADDRINUSE: "That port is already in use.",
+                errno.EADDRNOTAVAIL: "That IP address can't be assigned-to.",
+            }
+#ANNOTATION: ERRORS is a dictionary with 3 initial entries: string "You don't have permission to access that port." for errno.EACCES,
+#ANNOTATION: "That port is already in use." for errno.EADDRINUSE and "That IP address can't be assigned-to." for errno.EADDRNOTAVAIL.
+            try:
+#ANNOTATION: try,
+                error_text = ERRORS[e.errno]
+#ANNOTATION: get the value under the e.errno key of the ERRORS dictionary, substitute it for error_text.
+            except KeyError:
+#ANNOTATION: if KeyError exception is caught.
+                error_text = str(e)
+#ANNOTATION: convert e to a string, substitute it for error_text.
+            self.stderr.write("Error: %s" % error_text)
+#ANNOTATION: replace '%s' in a string "Error: %s" with error_text, write it to self.stderr.
+            # Need to use an OS exit because sys.exit doesn't work in a thread
+            os._exit(1)
+#ANNOTATION: exit the program with the code integer 1.
+        except KeyboardInterrupt:
+#ANNOTATION: if KeyboardInterrupt exception is caught,
+            if shutdown_message:
+#ANNOTATION: if shutdown_message is true,
+                self.stdout.write(shutdown_message)
+#ANNOTATION: write shutdown_message to self.stdout file stream.
+            sys.exit(0)
+#ANNOTATION: exit program with code integer 0.
+
+    def check_migrations(self):
+#ANNOTATION: define the method check_migrations with an argument self.
+        """
+        Checks to see if the set of migrations on disk matches the
+        migrations in the database. Prints a warning if they don't match.
+        """
+#ANNOTATION: docstring
+        executor = MigrationExecutor(connections[DEFAULT_DB_ALIAS])
+#ANNOTATION: executor is an instance of the class MigrationExecutor created with an argument: value under the DEFAULT_DB_ALIAS key of the connections dictionary.
+        plan = executor.migration_plan(executor.loader.graph.leaf_nodes())
+#ANNOTATION: call the method executor.migration_plan wiht return value of te method executor.loader.graph.leaf_nodes as argument, substitute it for plan.
+        if plan:
+#ANNOTATION: if plan is true,
+            self.stdout.write(self.style.NOTICE("\nYou have unapplied migrations; your app may not work properly until they are applied."))
+#ANNOTATION: call the method self.style.NOTICE with an argument: 
+#ANNOTATION: string: "\nYou have unapplied migrations; your app may not work properly until they are applied.", write it to self.stdout.
+            self.stdout.write(self.style.NOTICE("Run 'python manage.py migrate' to apply them.\n"))
+#ANNOTATION: call the method self.style.NOTICE with an argument string "Run 'python manage.py migrate' to apply them.\n", 
+#ANNOTATION: write it to self.stdout.
+
+# Kept for backward compatibility
+BaseRunserverCommand = Command
+#ANNOTATION: substitute Command for BaseRunserverCommand.

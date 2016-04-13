@@ -1,0 +1,714 @@
+"""
+Syndication feed generation library -- used for generating RSS, etc.
+
+Sample usage:
+
+>>> from django.utils import feedgenerator
+>>> feed = feedgenerator.Rss201rev2Feed(
+...     title="Poynter E-Media Tidbits",
+...     link="http://www.poynter.org/column.asp?id=31",
+...     description="A group Weblog by the sharpest minds in online media/journalism/publishing.",
+...     language="en",
+... )
+>>> feed.add_item(
+...     title="Hello",
+...     link="http://www.holovaty.com/test/",
+...     description="Testing."
+... )
+>>> with open('test.rss', 'w') as fp:
+...     feed.write(fp, 'utf-8')
+
+For definitions of the different versions of RSS, see:
+http://web.archive.org/web/20110718035220/http://diveintomark.org/archives/2004/02/04/incompatible-rss
+"""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import datetime
+#ANNOTATION: import module datetime.
+from django.utils.xmlutils import SimplerXMLGenerator
+#ANNOTATION: from django.utils.xmlutils import SimplerXMLGenerator into default name space.
+from django.utils.encoding import force_text, iri_to_uri
+#ANNOTATION: from django.utils.encoding import force_text and iri_to_uri into default name space.
+from django.utils import datetime_safe
+#ANNOTATION: from django.utils import datetime_safe into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.six import StringIO
+#ANNOTATION: from django.utils.six import StringIO into default name space.
+from django.utils.six.moves.urllib.parse import urlparse
+#ANNOTATION: from django.utils.six.moves.urllib.parse import urlparse into default name space.
+from django.utils.timezone import is_aware
+#ANNOTATION: from django.utils.timezone import is_aware into default name space.
+
+
+def rfc2822_date(date):
+#ANNOTATION: define the function rfc2822_date with an argument date.
+    # We can't use strftime() because it produces locale-dependent results, so
+    # we have to map english month and day names manually
+    months = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',)
+#ANNOTATION: months is a tuple with 12 elements: strings 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov' and 'Dec'.
+    days = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
+#ANNOTATION: days is a tuple with 7 elements: strings 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat' and 'Sun'.
+    # Support datetime objects older than 1900
+    date = datetime_safe.new_datetime(date)
+#ANNOTATION: call the method datetime_safe.new_datetime with an argument date, substitute the result for date.
+    # We do this ourselves to be timezone aware, email.Utils is not tz aware.
+    dow = days[date.weekday()]
+#ANNOTATION: call the method date.weekday, use the result as an key to obtain the value from the days dictionary, substitute it for dow.
+    month = months[date.month - 1]
+#ANNOTATION: decrement date.month by integer 1, use the result as an key to obtain the value from the months dictionary, substitute it for month.
+    time_str = date.strftime('%s, %%d %s %%Y %%H:%%M:%%S ' % (dow, month))
+#ANNOTATION: call the function date.strftime with an argument string '%s, %%d %s %%Y %%H:%%M:%%S ' formated with dow and month, 
+#ANNOTATION: substitute the result for time_str.
+    if six.PY2:             # strftime returns a byte string in Python 2
+#ANNOTATION: if six.PY2 is true,
+        time_str = time_str.decode('utf-8')
+#ANNOTATION: call the method time_str.decode with an argument string 'utf-8', substitute the result for time_str.
+    if is_aware(date):
+#ANNOTATION: call the function is_aware with an argument date, if it evaluates to true,
+        offset = date.tzinfo.utcoffset(date)
+#ANNOTATION: call the method date.tzinfo.utcoffset with an argument date, substitute the result for offset.
+        timezone = (offset.days * 24 * 60) + (offset.seconds // 60)
+#ANNOTATION: multiply offset.days, integer 24 and integer 60, sum the result with floored result of dividing offset.seconds by integer 60,
+#ANNOTATION: substitute the result for timezone.
+        hour, minute = divmod(timezone, 60)
+#ANNOTATION: divide timezone by integer 60, substitute the quotient of the division for hour and reminder for minute.
+        return time_str + '%+03d%02d' % (hour, minute)
+#ANNOTATION: format string '%+03d%02d' with hour and minute, append it to time_str, return the result.
+    else:
+#ANNOTATION: if not,
+        return time_str + '-0000'
+#ANNOTATION: append string '-0000' to time_str, return the result.
+
+
+def rfc3339_date(date):
+#ANNOTATION: define the function rfc3339_date with an argument date.
+    # Support datetime objects older than 1900
+    date = datetime_safe.new_datetime(date)
+#ANNOTATION: call the function datetime_safe.new_datetime with an argument date, substitute the result for date.
+    time_str = date.strftime('%Y-%m-%dT%H:%M:%S')
+#ANNOTATION: call the function date.strftime with an argument string '%Y-%m-%dT%H:%M:%S', substitute the result for time_str.
+    if six.PY2:             # strftime returns a byte string in Python 2
+#ANNOTATION: if six.PY2,
+        time_str = time_str.decode('utf-8')
+#ANNOTATION: call the method time_str.decode with an argument string 'utf-8', substitute the result for time_str.
+    if is_aware(date):
+#ANNOTATION: call the function is_aware with an argument date, if it evaluates to true,
+        offset = date.tzinfo.utcoffset(date)
+#ANNOTATION: call the method date.tzinfo.utcoffset with an argument date, substitute the result for offset.
+        timezone = (offset.days * 24 * 60) + (offset.seconds // 60)
+#ANNOTATION: multiply offset.days, integer 24 and integer 60, sum the result with floored result of division of offset.seconds,
+#ANNOTATION: and integer 60, substitute the result for timezone.
+        hour, minute = divmod(timezone, 60)
+#ANNOTATION: divide timezone by integer 60, substitute the quotient of the division for hour and reminder for minute.
+        return time_str + '%+03d:%02d' % (hour, minute)
+#ANNOTATION: format string '%+03d:%02d' with hour and minute, append it to time_str, return the result.
+    else:
+#ANNOTATION: if not,
+        return time_str + 'Z'
+#ANNOTATION: append 'Z' to time_str, return the result.
+
+
+def get_tag_uri(url, date):
+#ANNOTATION: define the function get_tag_uri with 2 arguments: url and date.
+    """
+    Creates a TagURI.
+
+    See http://web.archive.org/web/20110514113830/http://diveintomark.org/archives/2004/05/28/howto-atom-id
+    """
+#ANNOTATION: docstring
+    bits = urlparse(url)
+#ANNOTATION: call the method urlparse with an argument url, substitute the result for bits.
+    d = ''
+#ANNOTATION: d is an empty string.
+    if date is not None:
+#ANNOTATION: if date is not None,
+        d = ',%s' % datetime_safe.new_datetime(date).strftime('%Y-%m-%d')
+#ANNOTATION: call the function datetime_safe.new_datetime with an argument date, on the result call the method strftime with an argument,
+#ANNOTATION: string '%Y-%m-%d', convert the result into a string and append it to ',', substitute the result for d.
+    return 'tag:%s%s:%s/%s' % (bits.hostname, d, bits.path, bits.fragment)
+#ANNOTATION: format string 'tag:%s%s:%s/%s' with bits.hostname, d, bits.path and bits.fragment, return it.
+
+
+class SyndicationFeed(object):
+#ANNOTATION: derive the class SyndicationFeed from the object base class.
+    "Base class for all syndication feeds. Subclasses should provide write()"
+#ANNOTATION: docstring
+    def __init__(self, title, link, description, language=None, author_email=None,
+            author_name=None, author_link=None, subtitle=None, categories=None,
+            feed_url=None, feed_copyright=None, feed_guid=None, ttl=None, **kwargs):
+#ANNOTATION: define the method __init__ with 15 elements: self, title, link, description, language set to None, author_email set to None,
+#ANNOTATION: author_name set to None, author_link set to None, subtitle set to None, categories set to None, feed_url set to None,
+#ANNOTATION: feed_copyright set to None, feed_guid set to None, ttl set to None and unpacked dictionary kwargs.
+        to_unicode = lambda s: force_text(s, strings_only=True)
+#ANNOTATION: to_unicode is an lambda function with an argument s, result is the result of the function force_text,
+#ANNOTATION: called with 2 arguments: s and string_only as boolean True.
+        if categories:
+#ANNOTATION: if categories is true,
+            categories = [force_text(c) for c in categories]
+#ANNOTATION: categories is a list containing the results of the function force_text, called with an argument c, for every c in categories.
+        if ttl is not None:
+#ANNOTATION: if ttl is not None,
+            # Force ints to unicode
+            ttl = force_text(ttl)
+#ANNOTATION: call the function force_text with an argument ttl, substitute the result for ttl.
+        self.feed = {
+            'title': to_unicode(title),
+            'link': iri_to_uri(link),
+            'description': to_unicode(description),
+            'language': to_unicode(language),
+            'author_email': to_unicode(author_email),
+            'author_name': to_unicode(author_name),
+            'author_link': iri_to_uri(author_link),
+            'subtitle': to_unicode(subtitle),
+            'categories': categories or (),
+            'feed_url': iri_to_uri(feed_url),
+            'feed_copyright': to_unicode(feed_copyright),
+            'id': feed_guid or link,
+            'ttl': ttl,
+        }
+#ANNOTATION: self.feed is an dictionary with 13 initial entries, result of the function to_unicode called with an argument title for 'title',
+#ANNOTATION: result of the function iri_to_uri called with an argument link for 'link', 
+#ANNOTATION: result of the function to_unicode called with an argument description for 'description',
+#ANNOTATION: result of the function to_unicode called with an argument language for 'language',
+#ANNOTATION: result of the function to_unicode called with an author_email description for 'author_email',
+#ANNOTATION: result of the function to_unicode called with an argument author_name for 'author_name',
+#ANNOTATION: result of the function iri_to_uri called with an argument author_link for 'author_link', 
+#ANNOTATION: result of the function to_unicode called with an argument subtitle for 'subtitle',
+#ANNOTATION: if true, categories is value for 'categories' key, if not, empty tuple is value for 'categories' key,
+#ANNOTATION: result of the function iri_to_uri called with an argument feed_url for 'feed_url', 
+#ANNOTATION: result of the function to_unicode called with an argument feed_copyright for 'feed_copyright',
+#ANNOTATION: if true, feed_guid is value for 'id' key, if not, lik is value for 'id' key and ttl for 'ttl'.
+
+        self.feed.update(kwargs)
+#ANNOTATION: update self.feed dictionary with kwargs.
+        self.items = []
+#ANNOTATION: self.items is an empty list.
+
+    def add_item(self, title, link, description, author_email=None,
+            author_name=None, author_link=None, pubdate=None, comments=None,
+            unique_id=None, unique_id_is_permalink=None, enclosure=None,
+            categories=(), item_copyright=None, ttl=None, updateddate=None, **kwargs):
+#ANNOTATION: define the method add_item with 17 arguments: self, title, link, description, author_email set to None, author_name set to None,
+#ANNOTATION: author_link set to None, pubdate set to None, comments set to None, unique_id set to None, unique_id_is_permalink set to None,
+#ANNOTATION: enclosure set to None, categories set to an empty tuple, item_copyright set to None, ttl set to None, updateddate set to None,
+#ANNOTATION: unpacked dictionary kwargs.
+        """
+        Adds an item to the feed. All args are expected to be Python Unicode
+        objects except pubdate and updateddate, which are datetime.datetime
+        objects, and enclosure, which is an instance of the Enclosure class.
+        """
+#ANNOTATION: docstring
+        to_unicode = lambda s: force_text(s, strings_only=True)
+#ANNOTATION: to_unicode is an lambda function with an argument s, result is the result of the function force_text,
+#ANNOTATION: called with 2 arguments: s and string_only as boolean True.
+        if categories:
+#ANNOTATION: if categories is true,
+            categories = [(c) for c in categories]
+#ANNOTATION: categories is a list containing the results of the function to_unicode, called with an argument c, for every c in categories.
+        if ttl is not None:
+#ANNOTATION: if ttl is not None,
+            # Force ints to unicode
+            ttl = force_text(ttl)
+#ANNOTATION: call the function force_text with an argument ttl, substitute the result for ttl.
+        item = {
+            'title': to_unicode(title),
+            'link': iri_to_uri(link),
+            'description': to_unicode(description),
+            'author_email': to_unicode(author_email),
+            'author_name': to_unicode(author_name),
+            'author_link': iri_to_uri(author_link),
+            'pubdate': pubdate,
+            'updateddate': updateddate,
+            'comments': to_unicode(comments),
+            'unique_id': to_unicode(unique_id),
+            'unique_id_is_permalink': unique_id_is_permalink,
+            'enclosure': enclosure,
+            'categories': categories or (),
+            'item_copyright': to_unicode(item_copyright),
+            'ttl': ttl,
+        }
+#ANNOTATION: item is a dictionary with 15 initial entries: result of the function to_unicode called with an argument title for 'title',
+#ANNOTATION: result of the function iri_to_uri called with an argument link for 'link', 
+#ANNOTATION: result of the function to_unicode called with an argument description for 'description',
+#ANNOTATION: result of the function to_unicode called with an argument author_email for 'author_email',
+#ANNOTATION: result of the function to_unicode called with an argument author_name for 'author_name',
+#ANNOTATION: result of the function iri_to_uri called with an author_link link for 'author_link', pubdate for 'pubdate', 
+#ANNOTATION: updateddate for 'updateddate', result of the function to_unicode called with an comments author_name for 'comments',
+#ANNOTATION: result of the function to_unicode called with an argument unique_id) for 'unique_id)',
+#ANNOTATION: unique_id_is_permalink for 'unique_id_is_permalink', enclosure for 'enclosure', 
+#ANNOTATION: #ANNOTATION: if true, categories is value for 'categories' key, if not, empty tuple is value for 'categories' key,
+#ANNOTATION: result of the function to_unicode called with an argument item_copyright for 'item_copyright', ttl for 'ttl'.
+        item.update(kwargs)
+#ANNOTATION: update dictionary item with an argument kwargs.
+        self.items.append(item)
+#ANNOTATION: append item to self.items.
+
+    def num_items(self):
+#ANNOTATION: define the method num_items with an argument self.
+        return len(self.items)
+#ANNOTATION: return length of self.items. 
+
+    def root_attributes(self):
+#ANNOTATION: define the method root_attributes with an argument self.
+        """
+        Return extra attributes to place on the root (i.e. feed/channel) element.
+        Called from write().
+        """
+#ANNOTATION: docstring
+        return {}
+#ANNOTATION: return an empty dictionary.
+
+    def add_root_elements(self, handler):
+#ANNOTATION: define the method add_root_elements with 2 arguments self and handler.
+        """
+        Add elements in the root (i.e. feed/channel) element. Called
+        from write().
+        """
+#ANNOTATION: docstring
+        pass
+#ANNOTATION: do nothing.
+
+    def item_attributes(self, item):
+#ANNOTATION: define the method item_attributes with 2 arguments self and item.
+        """
+        Return extra attributes to place on each item (i.e. item/entry) element.
+        """
+#ANNOTATION: docstring
+        return {}
+#ANNOTATION: return an empty dictionary.
+
+    def add_item_elements(self, handler, item):
+#ANNOTATION: define the method add_item_elements with 2 arguments, handler self and item.
+        """
+        Add elements on each item (i.e. item/entry) element.
+        """
+#ANNOTATION: docstring
+        pass
+#ANNOTATION: do nothing.
+
+    def write(self, outfile, encoding):
+#ANNOTATION: define the method write with 3 arguments self, outfile and encoding.
+        """
+        Outputs the feed in the given encoding to outfile, which is a file-like
+        object. Subclasses should override this.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of SyndicationFeed must provide a write() method')
+#ANNOTATION: raise an NotImplementedError with an argument string 'subclasses of SyndicationFeed must provide a write() method'.
+
+    def writeString(self, encoding):
+#ANNOTATION: define the method writeString with 2 arguments self and encoding.
+        """
+        Returns the feed in the given encoding as a string.
+        """
+#ANNOTATION: docstring
+        s = StringIO()
+#ANNOTATION: s is an instance of StringIO class. 
+        self.write(s, encoding)
+#ANNOTATION: call the method self.write with 2 arguments: s and encoding.
+        return s.getvalue()
+#ANNOTATION: call the method s.getvalue, return the result.
+
+    def latest_post_date(self):
+#ANNOTATION: define the method latest_post_date with an argument self.
+        """
+        Returns the latest item's pubdate or updateddate. If no items
+        have either of these attributes this returns the current date/time.
+        """
+#ANNOTATION: docstring
+        latest_date = None
+#ANNOTATION: latest_date is None.
+        date_keys = ('updateddate', 'pubdate')
+#ANNOTATION: date_keys is a tuple with 2 arguments: strings 'updateddate' and 'pubdate'.
+
+        for item in self.items:
+#ANNOTATION: for every item in self.items,
+            for date_key in date_keys:
+#ANNOTATION: for every date_key in date_keys,
+                item_date = item.get(date_key)
+#ANNOTATION: get the value under the date_key key of the item dictionary, substitute it for item_date.
+                if item_date:
+#ANNOTATION: if item_date is true,
+                    if latest_date is None or item_date > latest_date:
+#ANNOTATION: if latest_date is None or item_date is greater than latest_date,
+                        latest_date = item_date
+#ANNOTATION: substitute item_date for latest_date.
+
+        return latest_date or datetime.datetime.now()
+#ANNOTATION: if latest_date is true, return it, if not, call the method datetime.datetime.now and return the result.
+
+
+class Enclosure(object):
+#ANNOTATION: derive the class Enclosure from the object base class.
+    "Represents an RSS enclosure"
+#ANNOTATION: docstring
+    def __init__(self, url, length, mime_type):
+#ANNOTATION: define the method __init__ with 4 arguments: self, url, length and mime_type.
+        "All args are expected to be Python Unicode objects"
+#ANNOTATION: docstring
+        self.length, self.mime_type = length, mime_type
+#ANNOTATION: substitute length and mime_type for self.length and self.mime_type.
+        self.url = iri_to_uri(url)
+#ANNOTATION: call the function iri_to_uri with an argument url, substitute the result for self.url.
+
+
+class RssFeed(SyndicationFeed):
+#ANNOTATION: derive the class RssFeed from the SyndicationFeed base class.
+    mime_type = 'application/rss+xml; charset=utf-8'
+#ANNOTATION: mime_type is a string 'application/rss+xml; charset=utf-8'.
+
+    def write(self, outfile, encoding):
+#ANNOTATION: define the method write with 3 arguments: self, outfile and encoding.
+        handler = SimplerXMLGenerator(outfile, encoding)
+#ANNOTATION: handler is an instance of SimplerXMLGenerator class, created with 2 arguments: outfile and encoding.
+        handler.startDocument()
+#ANNOTATION: call the method handler.startDocument.
+        handler.startElement("rss", self.rss_attributes())
+#ANNOTATION: call the method handler.startElement with 2 arguments: string "rss" and result of the method self.rss_attributes.
+        handler.startElement("channel", self.root_attributes())
+#ANNOTATION: call the method handler.startElement with 2 arguments: string "channel" and result of the method self.root_attributes.
+        self.add_root_elements(handler)
+#ANNOTATION: call the method self.add_root_elements with an argument handler.
+        self.write_items(handler)
+#ANNOTATION: call the method self.write_items with an argument handler.
+        self.endChannelElement(handler)
+#ANNOTATION: call the method self.endChannelElement with an argument handler.
+        handler.endElement("rss")
+#ANNOTATION: call the method handler.endElement with an argument string 'rss'.
+
+    def rss_attributes(self):
+#ANNOTATION: define the method rss_attributes with an argument self.
+        return {"version": self._version,
+                "xmlns:atom": "http://www.w3.org/2005/Atom"}
+#ANNOTATION: return a dictionary with 2 elements: self._version for "version" and "http://www.w3.org/2005/Atom" for "xmlns:atom".
+
+    def write_items(self, handler):
+#ANNOTATION: define the method write_items with 2 arguments: self and handler.
+        for item in self.items:
+#ANNOTATION: for every item in self.items,
+            handler.startElement('item', self.item_attributes(item))
+#ANNOTATION: call the method handler.startElement with 2 arguments: string "item" and result of the method self.item_attributes with an argument item.
+            self.add_item_elements(handler, item)
+#ANNOTATION: call the method self.add_item_elements with 2 arguments: handler and item.
+            handler.endElement("item")
+#ANNOTATION: call the method handler.endElement with an argument string 'item'.
+
+    def add_root_elements(self, handler):
+#ANNOTATION: define the method add_root_elements with 2 arguments: self and handler.
+        handler.addQuickElement("title", self.feed['title'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'title' and value under the 'title' key of the self.feed dictionary.
+        handler.addQuickElement("link", self.feed['link'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'link' and value under the 'link' key of the self.feed dictionary.
+        handler.addQuickElement("description", self.feed['description'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'description' and value under the 'description' key of the self.feed dictionary.
+        if self.feed['feed_url'] is not None:
+#ANNOTATION: if value under the 'feed_url' key of the self.feed dictionary is not None,
+            handler.addQuickElement("atom:link", None,
+                    {"rel": "self", "href": self.feed['feed_url']})
+#ANNOTATION: call the method handler.addQuickElement with 3 arguments: string 'atom:link', None and dictionary with 2 entries: 'self' for 'rel',
+#ANNOTATION: value under the 'feed_url' key of the self.feed dictionary for 'href'.
+        if self.feed['language'] is not None:
+#ANNOTATION: if value under the 'language' key of the self.feed dictionary is not None,
+            handler.addQuickElement("language", self.feed['language'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'language' and value under the 'language' key of the self.feed dictionary.
+        for cat in self.feed['categories']:
+#ANNOTATION: for every cat in value under the 'categories' key of the self.feed dictionary.
+            handler.addQuickElement("category", cat)
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string "category" and cat.
+        if self.feed['feed_copyright'] is not None:
+#ANNOTATION: if value under the 'feed_copyright' key of the self.feed dictionary is not None,
+            handler.addQuickElement("copyright", self.feed['feed_copyright'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'copyright' and value under the 'feed_copyright' key of the self.feed dictionary.
+        handler.addQuickElement("lastBuildDate", rfc2822_date(self.latest_post_date()))
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'lastBuildDate' and result of the function rfc2822_date,
+#ANNOTATION: called with an argument result of the method self.latest_post_date.
+        if self.feed['ttl'] is not None:
+#ANNOTATION: if value under the 'ttl' key of the self.feed dictionary is not None,
+            handler.addQuickElement("ttl", self.feed['ttl'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'ttl' and value under the 'ttl' key of the self.feed dictionary.
+
+    def endChannelElement(self, handler):
+#ANNOTATION: define the method endChannelElement with 2 arguments: self and handler.
+        handler.endElement("channel")
+#ANNOTATION: call the method handler.endElement with an argument string 'channel'.
+
+
+class RssUserland091Feed(RssFeed):
+#ANNOTATION: derive the class RssUserland091Feed from the RssFeed base class.
+    _version = "0.91"
+#ANNOTATION: _version is a string "0.91".
+
+    def add_item_elements(self, handler, item):
+#ANNOTATION: define the method add_item_elements with 3 arguments: self, handler and item.
+        handler.addQuickElement("title", item['title'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'title' and value under the 'title' key of the item dictionary.
+        handler.addQuickElement("link", item['link'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'link' and value under the 'link' key of the item dictionary.
+        if item['description'] is not None:
+#ANNOTATION: if value under the 'description' key of the item dictionary is not None,
+            handler.addQuickElement("description", item['description'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'description' and value under the 'description' key of item dictionary.
+
+
+class Rss201rev2Feed(RssFeed):
+#ANNOTATION: derive the class Rss201rev2Feed from the RssFeed base class.
+    # Spec: http://blogs.law.harvard.edu/tech/rss
+    _version = "2.0"
+#ANNOTATION: _version is a string "2.0".
+
+    def add_item_elements(self, handler, item):
+#ANNOTATION: define the method add_item_elements with 3 arguments: self, handler and item.
+        handler.addQuickElement("title", item['title'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'title' and value under the 'title' key of the item dictionary.
+        handler.addQuickElement("link", item['link'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'link' and value under the 'link' key of the item dictionary.
+        if item['description'] is not None:
+#ANNOTATION: if value under the 'description' key of the item dictionary is not None,
+            handler.addQuickElement("description", item['description'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'description' and value under the 'description' key of the item dictionary.
+
+        # Author information.
+        if item["author_name"] and item["author_email"]:
+#ANNOTATION: if values under "author_name" and "author_email" keys of the item dictionary are both true,
+            handler.addQuickElement("author", "%s (%s)" %
+                (item['author_email'], item['author_name']))
+#ANNOTATION: call the method handler.addQuickElement with an argument string "author", "%s (%s)", 
+#ANNOTATION: formated with values under the 'author_email' and 'author_name' keys of item dictionary.
+        elif item["author_email"]:
+#ANNOTATION: otherwise if value under the "author_email" key of the item dictionary is true,
+            handler.addQuickElement("author", item["author_email"])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'author' and value under the 'author_email' key of the item dictionary.
+        elif item["author_name"]:
+#ANNOTATION: otherwise if value under the "author_name" key of the item dictionary is true,
+            handler.addQuickElement("dc:creator", item["author_name"], {"xmlns:dc": "http://purl.org/dc/elements/1.1/"})
+#ANNOTATION: call the method handler.addQuickElement with 3 arguments: string 'dc:creator', 
+#ANNOTATION: value under the 'author_name' key of the item dictionary and dictionary with an entry: "http://purl.org/dc/elements/1.1/" for "xmlns:dc".
+
+        if item['pubdate'] is not None:
+#ANNOTATION: if value under the 'pubdate' key of the item dictionary is not None,
+            handler.addQuickElement("pubDate", rfc2822_date(item['pubdate']))
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'pubDate' and result of the function rfc2822_date,
+#ANNOTATION: called with value under the 'pubdate' key of the item dictionary.
+        if item['comments'] is not None:
+#ANNOTATION: if value under the 'comments' key of the item dictionary is not None,
+            handler.addQuickElement("comments", item['comments'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'comments' and value under the 'comments' key of the item dictionary.
+        if item['unique_id'] is not None:
+#ANNOTATION: if value under the 'unique_id' key of the item dictionary is not None,
+            guid_attrs = {}
+#ANNOTATION: guid_attrs is an empty dictionary.
+            if isinstance(item.get('unique_id_is_permalink'), bool):
+#ANNOTATION: if value object the 'unique_id_is_permalink' key of the item dictionary is an instance of bool type, 
+                guid_attrs['isPermaLink'] = str(
+                    item['unique_id_is_permalink']).lower()
+#ANNOTATION: covert to string value under the 'unique_id_is_permalink' key of the item dictionary, convert it to lowercase, 
+#ANNOTATION: substitute the result for value under the 'isPermaLink' key of the guid_attrs dictionary.
+            handler.addQuickElement("guid", item['unique_id'], guid_attrs)
+#ANNOTATION: call the method handler.addQuickElement with 3 arguments: string 'guid', value under the 'unique_id' key of the item dictionary,
+#ANNOTATION: and guid_attrs.
+        if item['ttl'] is not None:
+#ANNOTATION: if value under the 'ttl' key of the item dictionary is not None,
+            handler.addQuickElement("ttl", item['ttl'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'ttl' and value under the 'ttl' key of the item dictionary.
+
+        # Enclosure.
+        if item['enclosure'] is not None:
+#ANNOTATION: if value under the 'enclosure' key of the item dictionary is not None,
+            handler.addQuickElement("enclosure", '',
+                {"url": item['enclosure'].url, "length": item['enclosure'].length,
+                    "type": item['enclosure'].mime_type})
+#ANNOTATION: call the method handler.addQuickElement with 3 arguments: string 'title', an empty string and a dictionary with 3 entries:
+#ANNOTATION: field url of the value under the 'enclosure' key of the item dictionary for 'url',
+#ANNOTATION: field length of the value under the 'enclosure' key of the item dictionary for 'length',
+#ANNOTATION: and field mime_type of the value under the 'enclosure' key of the item dictionary for 'type'.
+        # Categories.
+        for cat in item['categories']:
+#ANNOTATION: for every cat in value under the 'categories' key of the item dictionary,
+            handler.addQuickElement("category", cat)
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'category' and cat.
+
+
+class Atom1Feed(SyndicationFeed):
+#ANNOTATION: derive the class Atom1Feed from the SyndicationFeed base class.
+    # Spec: http://atompub.org/2005/07/11/draft-ietf-atompub-format-10.html
+    mime_type = 'application/atom+xml; charset=utf-8'
+#ANNOTATION: mime_type is a string 'application/atom+xml; charset=utf-8'.
+    ns = "http://www.w3.org/2005/Atom"
+#ANNOTATION: ns is a string "http://www.w3.org/2005/Atom".
+
+    def write(self, outfile, encoding):
+#ANNOTATION: define the method write with 3 arguments: self, outfile and encoding.
+        handler = SimplerXMLGenerator(outfile, encoding)
+#ANNOTATION: handler is an instance of SimplerXMLGenerator class, created with 2 arguments: outfile and encoding.
+        handler.startDocument()
+#ANNOTATION: call the method handler.startDocument.
+        handler.startElement('feed', self.root_attributes())
+#ANNOTATION: call the method handler.startElement with 2 arguments: string 'feed' and result of the method self.root_attributes.
+        self.add_root_elements(handler)
+#ANNOTATION: call the method self.add_root_elements with an argument handler.
+        self.write_items(handler)
+#ANNOTATION: call the method self.write_items with an argument handler.
+        handler.endElement("feed")
+#ANNOTATION: call the method handler.endElement with an argument string 'feed'.
+
+    def root_attributes(self):
+#ANNOTATION: define the method root_attributes with an argument self.
+        if self.feed['language'] is not None:
+#ANNOTATION: if value under the 'language' key of the self.feed dictionary is not None,
+            return {"xmlns": self.ns, "xml:lang": self.feed['language']}
+#ANNOTATION: return a dictionary with 2 entries: value under the 'language' key of the self.feed dictionary for "xml:lang",
+#ANNOTATION: and self.ns for "xmlns".
+        else:
+#ANNOTATION: if not,
+            return {"xmlns": self.ns}
+#ANNOTATION: return a dictionary with an entry: self.ns for "xmlns".
+
+    def add_root_elements(self, handler):
+#ANNOTATION: define the method add_root_elements with 2 arguments: self and handler.
+        handler.addQuickElement("title", self.feed['title'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'title' and value under the 'title' key of the self.feed dictionary.
+        handler.addQuickElement("link", "", {"rel": "alternate", "href": self.feed['link']})
+#ANNOTATION: call the method handler.addQuickElement with 3 arguments: string 'link', an empty string and a dictionary with 2 entries:
+#ANNOTATION: 'alternate' for 'rel' and value under the 'link' key of self.feed dictionary for 'href'.
+        if self.feed['feed_url'] is not None:
+#ANNOTATION: if value under the 'feed_url' key of the self.feed dictionary is not None,
+            handler.addQuickElement("link", "", {"rel": "self", "href": self.feed['feed_url']})
+#ANNOTATION: call the method handler.addQuickElement with 3 arguments: string 'link', an empty string and a dictionary with 2 entries:
+#ANNOTATION: 'self' for 'rel' and value under the 'feed_url' key of self.feed dictionary for 'href'.
+        handler.addQuickElement("id", self.feed['id'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'title' and value under the 'title' key of the self.feed dictionary.
+        handler.addQuickElement("updated", rfc3339_date(self.latest_post_date()))
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'updated' and result of the function rfc3339_date,
+#ANNOTATION: called with an argument result of the method self.latest_post_date.
+        if self.feed['author_name'] is not None:
+#ANNOTATION: if value under the 'author_name' key of the self.feed dictionary is not None,
+            handler.startElement("author", {})
+#ANNOTATION: call the method handler.startElement with 2 arguments: string 'author' and an empty dictionary.
+            handler.addQuickElement("name", self.feed['author_name'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'name' and value under the 'author_name' key of the self.feed dictionary.
+            if self.feed['author_email'] is not None:
+#ANNOTATION: if value under the 'author_email' key of the self.feed dictionary is not None,
+                handler.addQuickElement("email", self.feed['author_email'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'email' and value under the 'author_email' key of the self.feed dictionary.
+            if self.feed['author_link'] is not None:
+#ANNOTATION: if value under the 'author_link' key of the self.feed dictionary is not None,
+                handler.addQuickElement("uri", self.feed['author_link'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'uri' and value under the 'author_link' key of the self.feed dictionary.
+            handler.endElement("author")
+#ANNOTATION: call the method handler.endElement with an argument string 'author'.
+        if self.feed['subtitle'] is not None:
+#ANNOTATION: if value under the 'subtitle' key of the self.feed dictionary is not None,
+            handler.addQuickElement("subtitle", self.feed['subtitle'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'subtitle' and value under the 'subtitle' key of the self.feed dictionary.
+        for cat in self.feed['categories']:
+#ANNOTATION: for every cat in value under the 'categories' key of the self.feed dictionary.
+            handler.addQuickElement("category", "", {"term": cat})
+#ANNOTATION: call the method handler.addQuickElement with 3 arguments: string 'category', an empty string and a dictionary with an entry:
+#ANNOTATION: cat for 'term'.
+        if self.feed['feed_copyright'] is not None:
+#ANNOTATION: if value under the 'feed_copyright' key of the self.feed dictionary is not None,
+            handler.addQuickElement("rights", self.feed['feed_copyright'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'rights' and value under the 'feed_copyright' key of the self.feed dictionary.
+
+    def write_items(self, handler):
+#ANNOTATION: define the method write_items with 2 arguments: self and handler.
+        for item in self.items:
+#ANNOTATION: for every item in self.items,
+            handler.startElement("entry", self.item_attributes(item))
+#ANNOTATION: call the method handler.startElement with 2 arguments: string 'entry' and result of the function self.item_attributes,
+#ANNOTATION: called with an argument item.
+            self.add_item_elements(handler, item)
+#ANNOTATION: call the method self.add_item_elements with 2 arguments: handler and item.
+            handler.endElement("entry")
+#ANNOTATION: call the method handler.endElement with an argument string 'entry'.
+
+    def add_item_elements(self, handler, item):
+#ANNOTATION: define the method add_item_elements with 3 arguments: self, handler and item.
+        handler.addQuickElement("title", item['title'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'title' and value under the 'title' key of the item dictionary.
+        handler.addQuickElement("link", "", {"href": item['link'], "rel": "alternate"})
+#ANNOTATION: call the method handler.addQuickElement with 3 arguments: string 'link', an empty string and a dictionary with 2 entries:
+#ANNOTATION: value under the 'link' key of item dictionary for 'href' and "alternate" for "rel".
+
+        if item['pubdate'] is not None:
+#ANNOTATION: if value under the 'pubdate' key of the item dictionary is not None,
+            handler.addQuickElement('published', rfc3339_date(item['pubdate']))
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'published' and result of the function rfc3339_date,
+#ANNOTATION: called with an argument value under the 'pubdate' key of the item dictionary.
+
+        if item['updateddate'] is not None:
+#ANNOTATION: if value under the 'updateddate' key of the item dictionary is not None,
+            handler.addQuickElement('updated', rfc3339_date(item['updateddate']))
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'updated' and result of the function rfc3339_date,
+#ANNOTATION: called with an argument value under the 'updateddate' key of the item dictionary.
+
+        # Author information.
+        if item['author_name'] is not None:
+#ANNOTATION: if value under the 'author_name' key of the item dictionary is not None,
+            handler.startElement("author", {})
+#ANNOTATION: call the method handler.endElement with 2 arguments: string 'author' and an empty dictionary.
+            handler.addQuickElement("name", item['author_name'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'name' and value under the 'author_name' key of the item dictionary.
+            if item['author_email'] is not None:
+#ANNOTATION: if value under the 'author_email' key of the item dictionary is not None,
+                handler.addQuickElement("email", item['author_email'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'email' and value under the 'author_email' key of the item dictionary.
+            if item['author_link'] is not None:
+#ANNOTATION: if value under the 'author_link' key of the item dictionary is not None,
+                handler.addQuickElement("uri", item['author_link'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'uri' and value under the 'author_link' key of the item dictionary.
+            handler.endElement("author")
+#ANNOTATION: call the method handler.endElement with an argument string 'author'.
+
+        # Unique ID.
+        if item['unique_id'] is not None:
+#ANNOTATION: if value under the 'unique_id' key of the item dictionary is not None,
+            unique_id = item['unique_id']
+#ANNOTATION: substitute value under 'unique_id' key of item dictionary for unique_id.
+        else:
+#ANNOTATION: if not,
+            unique_id = get_tag_uri(item['link'], item['pubdate'])
+#ANNOTATION: call the function get_tag_uri with 2 arguments: values under 'link' and 'pubdate' keys of item dictionary, substitute the result for unique_id.
+        handler.addQuickElement("id", unique_id)
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'id' and unique_id.
+
+        # Summary.
+        if item['description'] is not None:
+#ANNOTATION: if value under the 'description' key of the item dictionary is not None,
+            handler.addQuickElement("summary", item['description'], {"type": "html"})
+#ANNOTATION: call the method handler.addQuickElement with 3 arguments: string 'summary', value under the 'description' key of item dictionary,
+#ANNOTATION: and dictionary with an entry: 'html' for 'type'.
+
+        # Enclosure.
+        if item['enclosure'] is not None:
+#ANNOTATION: if value under the 'enclosure' key of the item dictionary is not None,
+            handler.addQuickElement("link", '',
+                {"rel": "enclosure",
+                 "href": item['enclosure'].url,
+                 "length": item['enclosure'].length,
+                 "type": item['enclosure'].mime_type})
+#ANNOTATION: call the method handler.addQuickElement with 3 arguments: string 'link', an empty string and a dictionary with 4 entries:
+#ANNOTATION: "enclosure" for 'rel', field url of value under the "enclosure" key of item dictionary for 'href',
+#ANNOTATION: field length of value under the "enclosure" key of item dictionary for 'length', 
+#ANNOTATION: and field mime_type of value under the "enclosure" key of item dictionary for 'type'.
+
+        # Categories.
+        for cat in item['categories']:
+#ANNOTATION: for every cat in value under 'categories' key of item dictionary,
+            handler.addQuickElement("category", "", {"term": cat})
+#ANNOTATION: call the method handler.addQuickElement with 3 arguments: string 'link', an empty string and a dictionary with an entry:
+#ANNOTATION: cat for 'term'.
+
+        # Rights.
+        if item['item_copyright'] is not None:
+#ANNOTATION: if value under the 'item_copyright' key of the item dictionary is not None,
+            handler.addQuickElement("rights", item['item_copyright'])
+#ANNOTATION: call the method handler.addQuickElement with 2 arguments: string 'rights' and value under the 'item_copyright' key of the item dictionary.
+
+# This isolates the decision of what the system default is, so calling code can
+# do "feedgenerator.DefaultFeed" instead of "feedgenerator.Rss201rev2Feed".
+DefaultFeed = Rss201rev2Feed
+#ANNOTATION: substitute Rss201rev2Feed for DefaultFeed.

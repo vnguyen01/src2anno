@@ -1,0 +1,124 @@
+"""
+The temp module provides a NamedTemporaryFile that can be reopened in the same
+process on any platform. Most platforms use the standard Python
+tempfile.NamedTemporaryFile class, but Windows users are given a custom class.
+
+This is needed because the Python implementation of NamedTemporaryFile uses the
+O_TEMPORARY flag under Windows, which prevents the file from being reopened
+if the same flag is not provided [1][2]. Note that this does not address the
+more general issue of opening a file for writing and reading in multiple
+processes in a manner that works across platforms.
+
+Also note that the custom version of NamedTemporaryFile does not support the
+full range of keyword arguments available in Python 2.6+ and 3.0+.
+
+1: https://mail.python.org/pipermail/python-list/2005-December/336958.html
+2: http://bugs.python.org/issue14243
+"""
+#ANNOTATION: docstring 
+
+import os
+#ANNOTATION: import module os.
+import tempfile
+#ANNOTATION: import module tempfile.
+from django.core.files.utils import FileProxyMixin
+#ANNOTATION: from django.core.files.utils import FileProxyMixin into default name space.
+
+__all__ = ('NamedTemporaryFile', 'gettempdir',)
+#ANNOTATION: __all__ is a tuple, containing strings 'NamedTemporaryFile' and 'gettempdir'.
+
+
+if os.name == 'nt':
+#ANNOTATION: if module os field name equals to string 'nt', 
+    class TemporaryFile(FileProxyMixin):
+#ANNOTATION: derive class TemporaryFile from the base class FileProxyMixin.
+        """
+        Temporary file object constructor that supports reopening of the
+        temporary file in Windows.
+
+        Note that __init__() does not support the 'delete' keyword argument in
+        Python 2.6+, or the 'delete', 'buffering', 'encoding', or 'newline'
+        keyword arguments in Python 3.0+.
+        """
+#ANNOTATION: docstring
+        def __init__(self, mode='w+b', bufsize=-1, suffix='', prefix='',
+                dir=None):
+#ANNOTATION: define method __init__ with self class instance, mode string 'w+b', bufsize set to integer -1, suffix and prefix set to empty strig,
+#ANNOTATION: dir set to None as the arguments.
+            fd, name = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=dir)
+#ANNOTATION: call the method tmpfile.mkstemp with suffix set to suffix, prefix set to prefix and dir set to dir, store the result in the fd and name, respective. 
+            self.name = name
+#ANNOTATION: substitute name for self.name.
+            self.file = os.fdopen(fd, mode, bufsize)
+#ANNOTATION: call the os.fdopen function with fd, mode and bufsize as the arguments, assign the file handle object to self.file.
+            self.close_called = False
+#ANNOTATION: substitute False for self.close_called.
+
+        # Because close can be called during shutdown
+        # we need to cache os.unlink and access it
+        # as self.unlink only
+        unlink = os.unlink
+#ANNOTATION: substitute os.unlink for unlink.
+
+        def close(self):
+#ANNOTATION: define the method close with self class instance as the argument.
+            if not self.close_called:
+#ANNOTATION: if self.close_called is False,
+                self.close_called = True
+#ANNOTATION: substitute True for self.close_called.
+                try:
+#ANNOTATION: try,
+                    self.file.close()
+#ANNOTATION: close the file object.
+                except (OSError, IOError):
+#ANNOTATION: if OSError or IOError exceptions were raised,
+                    pass
+#ANNOTATION: do nothing.
+                try:
+#ANNOTATION: try,
+                    self.unlink(self.name)
+#ANNOTATION: call the method unlink on self with self.name as the argument.
+                except (OSError):
+#ANNOTATION: if OSError exception was raised,
+                    pass
+#ANNOTATION: do nothing.
+
+        @property
+#ANNOTATION: property decorator, to be called by property built-in function.
+        def closed(self):
+#ANNOTATION: define the method closed with self as the argument.
+            """
+            This attribute needs to be accessible in certain situations,
+            because this class is supposed to mock the API of the class
+            tempfile.NamedTemporaryFile in the Python standard library.
+            """
+#ANNOTATION: docstring
+            return self.file.closed
+#ANNOTATION: return self.file.closed.
+
+        def __del__(self):
+#ANNOTATION: define __del__ method with self as the argument.
+            self.close()
+#ANNOTATION: call the method close on self.
+
+        def __enter__(self):
+#ANNOTATION: define __enter__ method with self as the argument.
+            self.file.__enter__()
+#ANNOTATION: call the file.__enter__ method on self.
+            return self
+#ANNOTATION: return self.
+
+        def __exit__(self, exc, value, tb):
+#ANNOTATION: define method __exit__ with self, exc, value and tb as the arguments.
+            self.file.__exit__(exc, value, tb)
+#ANNOTATION: call the file.__exit__ method on self with exc, value and tb as the arguments.
+
+    NamedTemporaryFile = TemporaryFile
+#ANNOTATION: substitute TemporaryFile for NamedTemporaryFile.
+else:
+#ANNOTATION: if not,
+    NamedTemporaryFile = tempfile.NamedTemporaryFile
+#ANNOTATION: substitute tempfile.NamedTemporaryFile for NamedTemporaryFile.
+
+gettempdir = tempfile.gettempdir
+#ANNOTATION: substitute tempfile.gettempdir for gettempdir.

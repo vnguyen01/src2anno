@@ -1,0 +1,378 @@
+import sys
+#ANNOTATION: import module sys.
+import os
+#ANNOTATION: import module os.
+import operator
+#ANNOTATION: import module operator.
+
+from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+from django.db.migrations import Migration
+#ANNOTATION: from django.db.migrations import Migration into default name space.
+from django.db.migrations.loader import MigrationLoader
+#ANNOTATION: from django.db.migrations.loader import MigrationLoader into default name space.
+from django.db.migrations.autodetector import MigrationAutodetector
+#ANNOTATION: from django.db.migrations.autodetector import MigrationAutodetector into default name space.
+from django.db.migrations.questioner import MigrationQuestioner, InteractiveMigrationQuestioner
+#ANNOTATION: from django.db.migrations.questioner import MigrationQuestioner and InteractiveMigrationQuestioner into default name space.
+from django.db.migrations.state import ProjectState
+#ANNOTATION: from django.db.migrations.state import ProjectState into default name space.
+from django.db.migrations.writer import MigrationWriter
+#ANNOTATION: from django.db.migrations.writer import MigrationWriter into default name space.
+from django.utils.six.moves import reduce
+#ANNOTATION: from django.utils.six.moves import reduce into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand class.
+    help = "Creates new migration(s) for apps."
+#ANNOTATION:  help is a string "Creates new migration(s) for apps.".
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with 2 arguments self and parser.
+        parser.add_argument('args', metavar='app_label', nargs='*',
+            help='Specify the app label(s) to create migrations for.')
+#ANNOTATION: call the method parser.add_argument with 4 arguments: string 'args', metavar set to string 'app_label', nargs set to character'*',
+#ANNOTATION: and help as a string 'Specify the app label(s) to create migrations for.'.
+        parser.add_argument('--dry-run', action='store_true', dest='dry_run', default=False,
+            help="Just show what migrations would be made; don't actually write them.")
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--dry-run', action as a string 'store_true', dest as string 'dry_run',
+#ANNOTATION: default set to boolean False, help as a string "Just show what migrations would be made; don't actually write them.".
+        parser.add_argument('--merge', action='store_true', dest='merge', default=False,
+            help="Enable fixing of migration conflicts.")
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--merge', action as a string 'store_true', dest as a string 'merge',
+#ANNOTATION: default set to boolean False and help set to a string "Enable fixing of migration conflicts.".
+        parser.add_argument('--empty', action='store_true', dest='empty', default=False,
+            help="Create an empty migration.")
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--empty', action as a string 'store_true', dest as a string 'empty',
+#ANNOTATION: default set to boolean False and help as a string "Create an empty migration.".
+        parser.add_argument('--noinput', action='store_false', dest='interactive', default=True,
+            help='Tells Django to NOT prompt the user for input of any kind.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--noinput', action as a string 'store_false', 
+#ANNOTATION: dest as a string 'interactive', default set to boolean True,
+#ANNOTATION: and help as a string 'Tells Django to NOT prompt the user for input of any kind.'.
+
+    def handle(self, *app_labels, **options):
+#ANNOTATION: define the method handle with 3 arguments: self, unpacked list app_labels and unpacked dictionary options.
+
+        self.verbosity = options.get('verbosity')
+#ANNOTATION: get the value under the 'verbosity' key of the options dictionary, substitute it for self.verbosity.
+        self.interactive = options.get('interactive')
+#ANNOTATION: get the value under the 'interactive' key of the options dictionary, substitute it for self.interactive.
+        self.dry_run = options.get('dry_run', False)
+#ANNOTATION: get the value under the 'dry_run' key of the options dictionary, if the key exists substitute it for self.dry_run,
+#ANNOTATION: if not, self.dry_run is boolean False.
+        self.merge = options.get('merge', False)
+#ANNOTATION: get the value under the 'merge' key of the options dictionary, if the key exists substitute it for self.merge,
+#ANNOTATION: if not, self.merge is boolean False.
+        self.empty = options.get('empty', False)
+#ANNOTATION: get the value under the 'empty' key of the options dictionary, if the key exists substitute it for self.empty,
+#ANNOTATION: if not, self.empty is boolean False.
+
+        # Make sure the app they asked for exists
+        app_labels = set(app_labels)
+#ANNOTATION: crate a set containing of app_labels elements, substitute it for app_labels.
+        bad_app_labels = set()
+#ANNOTATION: bad_app_labels is an empty set.
+        for app_label in app_labels:
+#ANNOTATION: for every app_label in app_labels,
+            try:
+#ANNOTATION: try,
+                apps.get_app_config(app_label)
+#ANNOTATION: call the method apps.get_app_config with an argument app_label.
+            except LookupError:
+#ANNOTATION: if LookupError exception is caught,
+                bad_app_labels.add(app_label)
+#ANNOTATION: call the method bad_app_labels with an argument app_label,
+        if bad_app_labels:
+#ANNOTATION: if bad_app_labels is true,
+            for app_label in bad_app_labels:
+#ANNOTATION: for every app_label in bad_app_labels,
+                self.stderr.write("App '%s' could not be found. Is it in INSTALLED_APPS?" % app_label)
+#ANNOTATION: write string "App '%s' could not be found. Is it in INSTALLED_APPS?" with '%s' where '%s' is replaced with app_label,
+#ANNOTATION: write it for self.stderr.
+            sys.exit(2)
+#ANNOTATION: exit the program with the integer 2 as exit code.
+
+        # Load the current graph state. Pass in None for the connection so
+        # the loader doesn't try to resolve replaced migrations from DB.
+        loader = MigrationLoader(None, ignore_no_migrations=True)
+#ANNOTATION: loader is an instance of MigrationLoader class, created with 2 arguments: None and ignore_no_migrations set to boolean True.
+
+        # Before anything else, see if there's conflicting apps and drop out
+        # hard if there are any and they don't want to merge
+        conflicts = loader.detect_conflicts()
+#ANNOTATION: call the method loader.detect_conflicts, substitute the result for conflicts.
+        if conflicts and not self.merge:
+#ANNOTATION: if conflicts is true and self.merge is false,
+            name_str = "; ".join(
+                "%s in %s" % (", ".join(names), app)
+                for app, names in conflicts.items()
+            )
+#ANNOTATION: for every app and names in result of the method conflicts.items, join names into a string, separated by ', ', 
+#ANNOTATION: join it with app into a string, separated with string '; ', substitute it for name_str.
+            raise CommandError("Conflicting migrations detected (%s).\nTo fix them run 'python manage.py makemigrations --merge'" % name_str)
+#ANNOTATION: substitute '%s\ in string "Conflicting migrations detected (%s).\nTo fix them run 'python manage.py makemigrations --merge'", 
+#ANNOTATION: with name_str, use it as an argument to throw an CommandError exception.
+
+        # If they want to merge and there's nothing to merge, then politely exit
+        if self.merge and not conflicts:
+#ANNOTATION: if self.merge is true and conflicts is false,
+            self.stdout.write("No conflicts detected to merge.")
+#ANNOTATION: write string "No conflicts detected to merge." to self.stdout stream.
+            return
+#ANNOTATION: return nothing.
+
+        # If they want to merge and there is something to merge, then
+        # divert into the merge code
+        if self.merge and conflicts:
+#ANNOTATION: if self.merge and conflicts are both true,
+            return self.handle_merge(loader, conflicts)
+#ANNOTATION: call the method self.handle_merge with 2 arguments: loader and conflicts, return the result.
+
+        # Set up autodetector
+        autodetector = MigrationAutodetector(
+            loader.project_state(),
+            ProjectState.from_apps(apps),
+            InteractiveMigrationQuestioner(specified_apps=app_labels, dry_run=self.dry_run),
+        )
+#ANNOTATION: autodetector is an instance of the MigrationAutodetector class, created with 3 arguments: result of the method loader.project_state,
+#ANNOTATION: result of the method ProjectState.from_apps with an argument apps and result of the method InteractiveMigrationQuestioner,
+#ANNOTATION: called with 2 arguments specified_apps set to app_labels and dry_run set to self.dry_run. 
+
+        # If they want to make an empty migration, make one for each app
+        if self.empty:
+#ANNOTATION: if self.empty is true,
+            if not app_labels:
+#ANNOTATION: if app_labels is false,
+                raise CommandError("You must supply at least one app label when using --empty.")
+#ANNOTATION: raise an CommandError with an argument string "You must supply at least one app label when using --empty.".
+            # Make a fake changes() result we can pass to arrange_for_graph
+            changes = dict(
+                (app, [Migration("custom", app)])
+                for app in app_labels
+            )
+#ANNOTATION: crate a dictionary with app mapping and from the class Migration, created with arguments: string 'custom' and app, 
+#ANNOTATION: for every app in app_labels.
+            changes = autodetector.arrange_for_graph(changes, loader.graph)
+#ANNOTATION: call the method autodetector.arrange_for_graph with 2 arguments: changes, loader.graph, substitute the result for changes.
+            self.write_migration_files(changes)
+#ANNOTATION: call the method self.write_migration_files with an argument changes.
+            return
+#ANNOTATION: return nothing.
+
+        # Detect changes
+        changes = autodetector.changes(
+            graph=loader.graph,
+            trim_to_apps=app_labels or None,
+            convert_apps=app_labels or None,
+        )
+#ANNOTATION: call the method autodetector.changes with 3 arguments: graph set to loader.graph, trim_to_apps set to app_labels, 
+#ANNOTATION: if it exists or None if not and convert_apps set to app_labels, if it exists or None if not, substitute the result for changes.
+
+        # No changes? Tell them.
+        if not changes and self.verbosity >= 1:
+#ANNOTATION: if changes is false and self.verbosity is greater than, or equal to iteger 1,
+            if len(app_labels) == 1:
+#ANNOTATION: if length of app_labels is equal to integer 1,
+                self.stdout.write("No changes detected in app '%s'" % app_labels.pop())
+#ANNOTATION: substitute '%s' in string "No changes detected in app '%s'" with the result of the method app_labels.pop, write it to self.stdout.
+            elif len(app_labels) > 1:
+#ANNOTATION: otherwise if length of app_labels is greater than integer 1,
+                self.stdout.write("No changes detected in apps '%s'" % ("', '".join(app_labels)))
+#ANNOTATION: substitute '%s' in string "No changes detected in apps '%s'" with the app_labels joined into a string, separated by string "', '",
+#ANNOTATION: write it to self.stdout.
+            else:
+#ANNOTATION: if not, 
+                self.stdout.write("No changes detected")
+#ANNOTATION: write string "No changes detected" to self.stdout stream.
+            return
+#ANNOTATION: return nothing.
+
+        self.write_migration_files(changes)
+#ANNOTATION: call the method self.write_migration_files with an argument changes.
+
+    def write_migration_files(self, changes):
+#ANNOTATION: define the method write_migration_files with arguments self and changes.
+        """
+        Takes a changes dict and writes them out as migration files.
+        """
+#ANNOTATION: docstring
+        directory_created = {}
+#ANNOTATION: directory_created is an empty dictionary.
+        for app_label, app_migrations in changes.items():
+#ANNOTATION: for every app_label and app_migrations in result of the method changes.items,
+            if self.verbosity >= 1:
+#ANNOTATION: if self.verbosity is greater or equal to integer 1,
+                self.stdout.write(self.style.MIGRATE_HEADING("Migrations for '%s':" % app_label) + "\n")
+#ANNOTATION: substitute '%s' in a string "Migrations for '%s':" with app_label, append newline to it, 
+#ANNOTATION: use it as an argument for the call to the method self.style.MIGRATE_HEADING, write the result to self.stdout.
+            for migration in app_migrations:
+#ANNOTATION: for every migration in app_migrations,
+                # Describe the migration
+                writer = MigrationWriter(migration)
+#ANNOTATION: writer is an instance of MigrationWriter class, created with an argument migration.
+                if self.verbosity >= 1:
+#ANNOTATION: if self.verbosity is greater or equal to integer 1,
+                    self.stdout.write("  %s:\n" % (self.style.MIGRATE_LABEL(writer.filename),))
+#ANNOTATION: substitute '%s' in a string "  %s:\n" with return value of the self.style.MIGRATE_LABEL method called with argument writer.filename,
+#ANNOTATION: write the result to self.stdout.
+                    for operation in migration.operations:
+#ANNOTATION: for every operation in migration.operations,
+                        self.stdout.write("    - %s\n" % operation.describe())
+#ANNOTATION: substitute '%s' in a string "    - %s\n" with return value of the operation.describe method, write the result to self.stdout.
+                if not self.dry_run:
+#ANNOTATION: if self.dry_run is false,
+                    # Write the migrations file to the disk.
+                    migrations_directory = os.path.dirname(writer.path)
+#ANNOTATION: call the function os.path.dirname with an argument writer.path, substitute the result for migrations_directory.
+                    if not directory_created.get(app_label, False):
+#ANNOTATION: get the value under the app_label key of the directory_created dictionary, if exists and it is false, 
+                        if not os.path.isdir(migrations_directory):
+#ANNOTATION: if migrations_directory is not a directory,
+                            os.mkdir(migrations_directory)
+#ANNOTATION: make a directory migrations_directory.
+                        init_path = os.path.join(migrations_directory, "__init__.py")
+#ANNOTATION: join migrations_directory and string "__init__.py" into a file path, substitute it for init_path.
+                        if not os.path.isfile(init_path):
+#ANNOTATION: if init_path is not a file,
+                            open(init_path, "w").close()
+#ANNOTATION: crate a file named init_path.
+                        # We just do this once per app
+                        directory_created[app_label] = True
+#ANNOTATION: value under the all_label key of the directory_created dictionary is boolean True.
+                    migration_string = writer.as_string()
+#ANNOTATION: call the method writer.as_string, substitute the result for migration_string.
+                    with open(writer.path, "wb") as fh:
+#ANNOTATION: open writer.path file in write mode, with the file descriptor as fh, perform,
+                        fh.write(migration_string)
+#ANNOTATION: write migration_string to file fh.
+                elif self.verbosity == 3:
+#ANNOTATION: otherwise if self.verbosity equals integer 3,
+                    # Alternatively, makemigrations --dry-run --verbosity 3
+                    # will output the migrations to stdout rather than saving
+                    # the file to the disk.
+                    self.stdout.write(self.style.MIGRATE_HEADING("Full migrations file '%s':" % writer.filename) + "\n")
+#ANNOTATION: substitute '%s' in a string "Full migrations file '%s':" with writer.filename, append newline to it, 
+#ANNOTATION: use it as an argument for the call to the method self.style.MIGRATE_HEADING, write the result to self.stdout.
+                    self.stdout.write("%s\n" % writer.as_string())
+#ANNOTATION: call the method writer.as_string, append newline to the result, write it to self.stdout.
+
+    def handle_merge(self, loader, conflicts):
+#ANNOTATION: define the method handle_merge with arguments self, loader and conflicts.
+        """
+        Handles merging together conflicted migrations interactively,
+        if it's safe; otherwise, advises on how to fix it.
+        """
+#ANNOTATION: docstring
+        if self.interactive:
+#ANNOTATION: if self.interactive is true,
+            questioner = InteractiveMigrationQuestioner()
+#ANNOTATION: questioner is an instance of a InteractiveMigrationQuestioner class.
+        else:
+#ANNOTATION: if not,
+            questioner = MigrationQuestioner(defaults={'ask_merge': True})
+#ANNOTATION: questioner is an instance of a InteractiveMigrationQuestioner class, created with an argument: defaults set to dictionary with entry:
+#ANNOTATION: boolean True for 'ask_merge'.
+        for app_label, migration_names in conflicts.items():
+#ANNOTATION: for every app_label and migration_names in result of the method conflicts.items,
+            # Grab out the migrations in question, and work out their
+            # common ancestor.
+            merge_migrations = []
+#ANNOTATION: merge_migrations is an empty list.
+            for migration_name in migration_names:
+#ANNOTATION: for every migration_name in migration_names,
+                migration = loader.get_migration(app_label, migration_name)
+#ANNOTATION: call the method loader.get_migration with arguments app_label and migration_name, substitute the result for migration.
+                migration.ancestry = loader.graph.forwards_plan((app_label, migration_name))
+#ANNOTATION: call the method loader.graph.forwards_plan with argument a tuple, with 2 elements: app_label and migration_name, 
+#ANNOTATION: substitute the result for migration.ancestry.
+                merge_migrations.append(migration)
+#ANNOTATION: append migration to merge_migrations.
+            common_ancestor = None
+#ANNOTATION: common_ancestor is None.
+            for level in zip(*[m.ancestry for m in merge_migrations]):
+#ANNOTATION: for m in merge_migrations append m.ancestry to a list, zip the resulting list into tuples of pairs, for every level in result,
+                if reduce(operator.eq, level):
+#ANNOTATION: apply operator.eq function to elements of level iterable, until level is reduced to a single value, if the result is true,
+                    common_ancestor = level[0]
+#ANNOTATION: substitute first element of level for common_ancestor.
+                else:
+#ANNOTATION: if not,
+                    break
+#ANNOTATION: break the loop execution,
+            if common_ancestor is None:
+#ANNOTATION: if common_ancestor is None,
+                raise ValueError("Could not find common ancestor of %s" % migration_names)
+#ANNOTATION: raise an ValueError with an argument string "Could not find common ancestor of %s", where '%s' is replaced with migration_names.
+            # Now work out the operations along each divergent branch
+            for migration in merge_migrations:
+#ANNOTATION: for every migration in merge_migrations,
+                migration.branch = migration.ancestry[
+                    (migration.ancestry.index(common_ancestor) + 1):
+                ]
+#ANNOTATION: call the method migration.ancestry.index with an argument common_ancestor, increment the result by one, 
+#ANNOTATION: slice migration.ancestry list from the last result as an starting index to the end, substitute the slice for migration.branch.  
+                migration.merged_operations = []
+#ANNOTATION: migration.merged_operations is an empty list.
+                for node_app, node_name in migration.branch:
+#ANNOTATION: for every node_app and node_name in migration.branch,
+                    migration.merged_operations.extend(
+                        loader.get_migration(node_app, node_name).operations
+                    )
+#ANNOTATION: call the method loader.get_migration with arguments node_app and node_name, extend the migration.merged_operations with the operations field of the result.
+            # In future, this could use some of the Optimizer code
+            # (can_optimize_through) to automatically see if they're
+            # mergeable. For now, we always just prompt the user.
+            if self.verbosity > 0:
+#ANNOTATION: if self.verbosity is greater than integer 1,
+                self.stdout.write(self.style.MIGRATE_HEADING("Merging %s" % app_label))
+#ANNOTATION: substitute '%s' in a string "Merging %s" with app_label,  
+#ANNOTATION: use it as an argument for the call to the method self.style.MIGRATE_HEADING, write the result to self.stdout.
+                for migration in merge_migrations:
+#ANNOTATION: for every migration in merge_migrations,
+                    self.stdout.write(self.style.MIGRATE_LABEL("  Branch %s" % migration.name))
+#ANNOTATION: substitute '%s' in a string "  Branch %s" with migration.name, 
+#ANNOTATION: use it as an argument for the call to the method self.style.MIGRATE_HEADING, write the result to self.stdout.
+                    for operation in migration.merged_operations:
+#ANNOTATION: for every operation in migration.merged_operations,
+                        self.stdout.write("    - %s\n" % operation.describe())
+#ANNOTATION: substitute '%s' in a string "    - %s\n" with return value of the operation.describe method, write the result to self.stdout.
+            if questioner.ask_merge(app_label):
+#ANNOTATION: call the method questioner.ask_merge with an argument app_label, if it evaluates to true,
+                # If they still want to merge it, then write out an empty
+                # file depending on the migrations needing merging.
+                numbers = [
+                    MigrationAutodetector.parse_number(migration.name)
+                    for migration in merge_migrations
+                ]
+#ANNOTATION: numbers is a list containing return value of the MigrationAutodetector.parse_number method called with an argument migration.name,
+#ANNOTATION: for every migration in merge_migrations.
+                try:
+#ANNOTATION: try,
+                    biggest_number = max([x for x in numbers if x is not None])
+#ANNOTATION: biggest_number is maximum numbers element.
+                except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+                    biggest_number = 1
+#ANNOTATION: biggest_number is integer 1.
+                subclass = type("Migration", (Migration, ), {
+                    "dependencies": [(app_label, migration.name) for migration in merge_migrations],
+                })
+#ANNOTATION: subclass is a instance of a class named Migration, derived from the base class Migration, with 1 field:
+#ANNOTATION: dependencies set to a list of tuples with 2 elements: app_label and migration.name for every migration in merge_migrations.
+                new_migration = subclass("%04i_merge" % (biggest_number + 1), app_label)
+#ANNOTATION: call the method subsclass with 2 arguments: string "%04i_merge", replace '%04i' with biggest_number incremented by one,
+#ANNOTATION: that occupies minimum 4 places within a string, and app_label, substitute the result for new_migration.
+                writer = MigrationWriter(new_migration)
+#ANNOTATION: writer is instance of MigrationWriter class, created with new_migration argument.
+                with open(writer.path, "wb") as fh:
+#ANNOTATION: open writer.path file in write mode, with the file descriptor as fh, perform the following,
+                    fh.write(writer.as_string())
+#ANNOTATION: call the method writer.as_string, write the result to fh file.
+                if self.verbosity > 0:
+#ANNOTATION: if self.verbosity is greater than integer 0,
+                    self.stdout.write("\nCreated new merge migration %s" % writer.path)
+#ANNOTATION: substitute '%s' in a string "\nCreated new merge migration %s" with writer path, write it to self.stdout.

@@ -1,0 +1,82 @@
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+from django.contrib.auth import get_user_model
+#ANNOTATION: from django.contrib.auth import get_user_model into default name space.
+from django.db import DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import DEFAULT_DB_ALIAS into default name space.
+from django.core.management import call_command
+#ANNOTATION: from django.core.management import call_command into default name space.
+from django.core.management.base import BaseCommand
+#ANNOTATION: from django.core.management.base import BaseCommand into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+from django.utils.six.moves import input
+#ANNOTATION: from django.utils.six.moves import input into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive class Command from the BaseCommand base class.
+    help = "Deprecated - use 'migrate' instead."
+#ANNOTATION: help is a string "Deprecated - use 'migrate' instead.".
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with self and parser as arguments.
+        parser.add_argument('--noinput', action='store_false', dest='interactive', default=True,
+            help='Tells Django to NOT prompt the user for input of any kind.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--noinput', action set to string 'store_false', 
+#ANNOTATION: dest set to string 'interactive', default set to boolean True and help as 'Tells Django to NOT prompt the user for input of any kind.'
+        parser.add_argument('--no-initial-data', action='store_false', dest='load_initial_data', default=True,
+            help='Tells Django not to load any initial data after database synchronization.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--no-initial-data', action set to string 'store_false',
+#ANNOTATION: dest set to string 'load_initial_data', default set to boolean True,
+#ANNOTATION: and help as a string 'Tells Django not to load any initial data after database synchronization.'
+        parser.add_argument('--database', default=DEFAULT_DB_ALIAS,
+            help='Nominates a database to synchronize. Defaults to the "default" database.')
+#ANNOTATION: call the method parser.add_argument with 3 arguments: string '--database', default set to DEFAULT_DB_ALIAS,
+#ANNOTATION: and help set to string 'Nominates a database to synchronize. Defaults to the "default" database.'.
+
+    def handle(self, **options):
+#ANNOTATION: define the method handle with 2 arguments: self and unpacked dictionary options.
+        warnings.warn("The syncdb command will be removed in Django 1.9", RemovedInDjango19Warning)
+#ANNOTATION: call the method warnings.warn with 2 arguments: string "The syncdb command will be removed in Django 1.9" and RemovedInDjango19Warning. 
+        call_command("migrate", **options)
+#ANNOTATION: call the function call_command with 2 arguments: string migrate and unpacked dictionary options. 
+
+        try:
+#ANNOTATION: try,
+            apps.get_model('auth', 'Permission')
+#ANNOTATION: call the method apps.get_model with 2 arguments: string 'auth' and string 'Permission'.
+        except LookupError:
+#ANNOTATION: if LookupError exception is caught.
+            return
+#ANNOTATION: return nothing.
+
+        UserModel = get_user_model()
+#ANNOTATION: call the function get_user_model, substitute the result for UserModel.
+
+        if not UserModel._default_manager.exists() and options.get('interactive'):
+#ANNOTATION: if return value of the method UserModel._default_manager.exists is false and value under the 'interactive' key of the options dictionary is true,
+            msg = ("\nYou have installed Django's auth system, and "
+                "don't have any superusers defined.\nWould you like to create one "
+                "now? (yes/no): ")
+#ANNOTATION: msg is a tuple containing string "\nYou have installed Django's auth system, and don't have any superusers defined.\nWould you like to create one now? (yes/no): ". 
+            confirm = input(msg)
+#ANNOTATION: call the method input with an argument msg and store the result in confirm.
+            while 1:
+#ANNOTATION: endless loop,
+                if confirm not in ('yes', 'no'):
+#ANNOTATION: if confirm is not equal to string 'yes' or string 'no',
+                    confirm = input('Please enter either "yes" or "no": ')
+#ANNOTATION: query a string 'Please enter either "yes" or "no": ' and store the result in confirm.
+                    continue
+#ANNOTATION: skip this loop iteration.
+                if confirm == 'yes':
+#ANNOTATION: if confirm equals string 'yes',
+                    call_command("createsuperuser", interactive=True, database=options['database'])
+#ANNOTATION: call the function call_command with 3 arguments: string "createsuperuser", interactive is boolean True,
+#ANNOTATION: and database set to value under the 'database' key of the options dictionary. 
+                break
+#ANNOTATION: break the loop execution.

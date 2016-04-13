@@ -1,0 +1,27 @@
+"""
+Utilities for XML generation/parsing.
+"""
+#ANNOTATION: docstring
+
+from xml.sax.saxutils import XMLGenerator
+#ANNOTATION: from xml.sax.saxutils import XMLGenerator into default name space.
+
+
+class SimplerXMLGenerator(XMLGenerator):
+#ANNOTATION: derive the class SimplerXMLGenerator form the XMLGenerator base class.
+    def addQuickElement(self, name, contents=None, attrs=None):
+#ANNOTATION: define the method addQuickElement with 4 arguments: self, name, contents set to None and attrs set to None.
+        "Convenience method for adding an element with no children"
+#ANNOTATION: docstring
+        if attrs is None:
+#ANNOTATION: if attrs is None,
+            attrs = {}
+#ANNOTATION: attrs is an empty dictionary.
+        self.startElement(name, attrs)
+#ANNOTATION: cal the method self.startElement with 2 arguments: name and attrs. 
+        if contents is not None:
+#ANNOTATION: if contents is not None,
+            self.characters(contents)
+#ANNOTATION: call the method self.characters with an argument contents.
+        self.endElement(name)
+#ANNOTATION: call the method self.endElement with an argument name.

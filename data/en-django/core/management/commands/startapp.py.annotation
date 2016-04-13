@@ -1,0 +1,44 @@
+from importlib import import_module
+#ANNOTATION: from importlib import import_module into default name space.
+
+from django.core.management.base import CommandError
+#ANNOTATION: from django.core.management.base import CommandError into default name space.
+from django.core.management.templates import TemplateCommand
+#ANNOTATION: from django.core.management.templates import TemplateCommand into default name space.
+
+
+class Command(TemplateCommand):
+#ANNOTATION: derive the class Command from the TemplateCommand base class.
+    help = ("Creates a Django app directory structure for the given app "
+            "name in the current directory or optionally in the given "
+            "directory.")
+#ANNOTATION: help is a tuple containing a string "Creates a Django app directory structure for the given app name in the current directory or optionally in the given directory.".
+    missing_args_message = "You must provide an application name."
+#ANNOTATION: missing_args_message is a string "You must provide an application name.".
+
+    def handle(self, **options):
+#ANNOTATION: define the method handle with 2 arguments: self and unpacked dictionary options.
+        app_name, target = options.pop('name'), options.pop('directory')
+#ANNOTATION: remove values under the keys 'name' and 'directory' of the options dictionary and substitute it for app_name and target, respectively.
+        self.validate_name(app_name, "app")
+#ANNOTATION: call the method self.validate_name with 2 arguments: app_name and string 'app'. 
+
+        # Check that the app_name cannot be imported.
+        try:
+#ANNOTATION: try,
+            import_module(app_name)
+#ANNOTATION: call the function import_module with an argument app_name. 
+        except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+            pass
+#ANNOTATION: do nothing.
+        else:
+#ANNOTATION: in not,
+            raise CommandError("%r conflicts with the name of an existing "
+                               "Python module and cannot be used as an app "
+                               "name. Please try another name." % app_name)
+#ANNOTATION: raise an CommandError exception with an argument string "%r conflicts with the name of an existing Python module and cannot be used "
+#ANNOTATION: "as an app name. Please try another name.", where '%r' is replaced with app_name.
+
+        super(Command, self).handle('app', app_name, target, **options)
+#ANNOTATION: call the method handle from the base class of Command class, with 4 arguments: string 'app', app_name, target and unpacked dictionary options.

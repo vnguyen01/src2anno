@@ -1,0 +1,82 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+from django.db import connections, DEFAULT_DB_ALIAS
+#ANNOTATION: from django.db import connections and DEFAULT_DB_ALIAS into default name space.
+from django.db.migrations.executor import MigrationExecutor
+#ANNOTATION: from django.db.migrations.executor import MigrationExecutor into default name space.
+from django.db.migrations.loader import AmbiguityError
+#ANNOTATION: from django.db.migrations.loader import AmbiguityError into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive class Command from the base class BaseCommand. 
+    help = "Prints the SQL statements for the named migration."
+#ANNOTATION: help is a string "Prints the SQL statements for the named migration."
+
+    def add_arguments(self, parser):
+#ANNOTATION: def method add_arguments with self class instance and parser as the arguments.
+        parser.add_argument('app_label',
+            help='App label of the application containing the migration.')
+#ANNOTATION: call the add_argument method on the parser object, with string 'app_label', and help set to string 'App label of the application containing the migration.' as arguments.
+        parser.add_argument('migration_name',
+            help='Migration name to print the SQL for.')
+#ANNOTATION: call the add_argument method on the parser object, with string 'migration_name', and help set to string 'Migration name to print the SQL for.' as arguments.
+        parser.add_argument('--database', default=DEFAULT_DB_ALIAS,
+            help='Nominates a database to create SQL for. Defaults to the '
+                 '"default" database.')
+#ANNOTATION: call the add_argument method on the parser object, with string '--database', default set to DEFAULT_DB_ALIAS and help set to string 'Nominates a database to create SQL for. Defaults to the default" database.' as arguments.
+        parser.add_argument('--backwards', action='store_true', dest='backwards',
+            default=False, help='Creates SQL to unapply the migration, rather than to apply it')
+#ANNOTATION: call the add_argument method on the parser object with string '--backwards', asction set to 'store_true', dest set to 'backwards',
+#ANNOTATION: default set to False and help set to string'Creates SQL to unapply the migration, rather than to apply it' as arguments.
+
+    def handle(self, *args, **options):
+#ANNOTATION: define the method handle with self class instance, list of arguments args and options dictionary as the arguments.
+        # Get the database we're operating from
+        connection = connections[options['database']]
+#ANNOTATION: get the value under the key 'database' of the options dictionary, use it as a index to get an element from connections, substitute it for connection.
+
+        # Load up an executor to get all the migration data
+        executor = MigrationExecutor(connection)
+#ANNOTATION: call the MigrationExecutor with the connection as the argument, substitute it for executor.
+
+        # Resolve command-line arguments into a migration
+        app_label, migration_name = options['app_label'], options['migration_name']
+#ANNOTATION: get the values under the keys 'app_label' and 'migration_name' of the options dictionary, substitute the results for app_label and migration_name, respectively.
+        if app_label not in executor.loader.migrated_apps:
+#ANNOTATION: if app_label is not contained in executor.loader.migrated_apps,
+            raise CommandError("App '%s' does not have migrations" % app_label)
+#ANNOTATION: raise a exception of CommandError class, with string "App '%s' does not have migrations" with '%s' replaced with app_label as the argument.
+        try:
+#ANNOTATION: try,
+            migration = executor.loader.get_migration_by_prefix(app_label, migration_name)
+#ANNOTATION: call the executor.loader.get_migration_by_prefix with app_label and migration_name with arguments, substitute the result fr migration. 
+        except AmbiguityError:
+#ANNOTATION: if AmbiguityError exception is raised,
+            raise CommandError("More than one migration matches '%s' in app '%s'. Please be more specific." % (
+                migration_name, app_label))
+#ANNOTATION: raise a exception of ComandError class with string "More than one migration matches '%s' in app '%s'. Please be more specific.",
+#ANNOTATION: with all '%s' strings replaced with migration_name and app_label, respectively, as an argument.
+        except KeyError:
+#ANNOTATION: if KeyError exception is raised,
+            raise CommandError("Cannot find a migration matching '%s' from app '%s'. Is it in INSTALLED_APPS?" % (
+                migration_name, app_label))
+#ANNOTATION: raise a exception of CommandError class, with string "Cannot find a migration matching '%s' from app '%s'. Is it in INSTALLED_APPS?",
+#ANNOTATION: replace all the '%s' occurrences with migration_name and app_label, respectively. 
+        targets = [(app_label, migration.name)]
+#ANNOTATION: target is a list containing tuple with two elements app_label and migration.name.
+
+        # Make a plan that represents just the requested migrations and show SQL
+        # for it
+        plan = [(executor.loader.graph.nodes[targets[0]], options['backwards'])]
+#ANNOTATION: get executor.loader.graph.nodes list item at the index of the first element of targets list, get the value under the 'backwards' key of options dictionary, put previous two elements is a tuple, tuple is contained in a plan list.
+        sql_statements = executor.collect_sql(plan)
+#ANNOTATION: call method executor.collect_sql with plan as the argument, substitute the result for sql_statements.
+        for statement in sql_statements:
+#ANNOTATION: for every statements in sql_statements:
+            self.stdout.write(statement)
+#ANNOTATION: call method self.stdout.write with statement as an argument.

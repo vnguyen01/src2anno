@@ -1,0 +1,46 @@
+"""
+Backend for test environment.
+"""
+#ANNOTATION: docstring
+
+from django.core import mail
+#ANNOTATION: from django.core import mail into default name space.
+from django.core.mail.backends.base import BaseEmailBackend
+#ANNOTATION: from django.core.mail.backends.base import BaseEmailBackend into default name space.
+
+
+class EmailBackend(BaseEmailBackend):
+#ANNOTATION: derive the class EmailBackend from the BaseEmailBackend base class.
+    """A email backend for use during test sessions.
+
+    The test connection stores email messages in a dummy outbox,
+    rather than sending them out on the wire.
+
+    The dummy outbox is accessible through the outbox instance attribute.
+    """
+#ANNOTATION: docstring
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with arguments: self, unpacked list args and unpacked dictionary kwargs.
+        super(EmailBackend, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of EmailBackend class, with arguments: unpacked list args and unpacked dictionary kwargs.
+        if not hasattr(mail, 'outbox'):
+#ANNOTATION: if mail doesnt have an 'outbox' attribute,
+            mail.outbox = []
+#ANNOTATION: mail.outbox is an empty list.
+
+    def send_messages(self, messages):
+#ANNOTATION: define the method send_messages with arguments self and messages.
+        """Redirect messages to the dummy outbox"""
+#ANNOTATION: docstring
+        msg_count = 0
+#ANNOTATION: msg_count is integer 0.
+        for message in messages:  # .message() triggers header validation
+#ANNOTATION: for every message in messages,
+            message.message()
+#ANNOTATION: call the method message.message.
+            msg_count += 1
+#ANNOTATION: increment mes_count by one.
+        mail.outbox.extend(messages)
+#ANNOTATION: call the method mail.outbox.extend with messages.
+        return msg_count
+#ANNOTATION: return msg_count.

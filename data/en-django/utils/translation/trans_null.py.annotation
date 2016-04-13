@@ -1,0 +1,98 @@
+# These are versions of the functions in django.utils.translation.trans_real
+# that don't actually do anything. This is purely for performance, so that
+# settings.USE_I18N = False can use this module rather than trans_real.py.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+from django.utils.safestring import mark_safe, SafeData
+#ANNOTATION: from django.utils.safestring import mark_safe and SafeData into default name space.
+
+
+def ngettext(singular, plural, number):
+#ANNOTATION: define the function ngettext with 3 arguments: singular, plural and number.
+    if number == 1:
+#ANNOTATION: if number equals integer 1,
+        return singular
+#ANNOTATION: return singular.
+    return plural
+#ANNOTATION: return plural.
+ngettext_lazy = ngettext
+#ANNOTATION: substitute ngettext for ngettext_lazy.
+
+
+def ungettext(singular, plural, number):
+#ANNOTATION: define the function ungettext with 3 arguments: singular, plural and number.
+    return force_text(ngettext(singular, plural, number))
+#ANNOTATION: call the function ngettext with 3 arguments: singular, plural and number, use the result as an argument for the call to the force_text,
+#ANNOTATION: return the result.
+
+
+def pgettext(context, message):
+#ANNOTATION: define the function pgettext with 2 arguments: context and message.
+    return ugettext(message)
+#ANNOTATION: call the function ugettext with an argument message.
+
+
+def npgettext(context, singular, plural, number):
+#ANNOTATION: define the function ngettext with 4 arguments: context, singular, plural and number.
+    return ungettext(singular, plural, number)
+#ANNOTATION: call the function ungettext with 3 arguments: singular, plural and number, return the result.
+
+activate = lambda x: None
+#ANNOTATION: activate is a lambda function which returns None for any argument x.
+deactivate = deactivate_all = lambda: None
+#ANNOTATION: deactivate and deactivate_all are lambda functions returning None.
+get_language = lambda: settings.LANGUAGE_CODE
+#ANNOTATION: get_language is a lambda function returning settings.LANGUAGE_CODE.
+get_language_bidi = lambda: settings.LANGUAGE_CODE in settings.LANGUAGES_BIDI
+#ANNOTATION: get_language_bidi is lambda function returning boolean True if settings.LANGUAGE_CODE is contained in settings.LANGUAGES_BIDI.
+check_for_language = lambda x: True
+#ANNOTATION: check_for_language is lambda function that returns boolean True for every argument x.
+
+
+def gettext(message):
+#ANNOTATION: define the function gettext with an argument message.
+    if isinstance(message, SafeData):
+#ANNOTATION: if message is an instance of SafeData.
+        return mark_safe(message)
+#ANNOTATION: call the function mark_safe with an argument message, return the result.
+    return message
+#ANNOTATION: return message.
+
+
+def ugettext(message):
+#ANNOTATION: define the function ugettext with an argument message.
+    return force_text(gettext(message))
+#ANNOTATION: call the function gettext with an argument message, use the result as an argument for the call to the force_text function, return the result.
+
+gettext_noop = gettext_lazy = _ = gettext
+#ANNOTATION: substitute gettext for gettext_noop, gettext_lazy and _. 
+
+
+def to_locale(language):
+#ANNOTATION: define the function to_locale with an argument language.
+    p = language.find('-')
+#ANNOTATION: find position of '-' in the index of the language, substitute the result for p.
+    if p >= 0:
+#ANNOTATION: if p is greater or equal to integer 0,
+        return language[:p].lower() + '_' + language[p + 1:].upper()
+#ANNOTATION: append '_' to string created from first p elements of languages converted to lowercase, 
+#ANNOTATION: convert slice of language string from (p+1)-th index to the end to uppercase, append it to the previous result, return the resulting string. 
+    else:
+#ANNOTATION: if not,
+        return language.lower()
+#ANNOTATION: convert language to lowercase and return it.
+
+
+def get_language_from_request(request, check_path=False):
+#ANNOTATION: define the function get_language_from_request with 2 arguments: request and check_path set to boolean False.
+    return settings.LANGUAGE_CODE
+#ANNOTATION: return settings.LANGUAGE_CODE.
+
+
+def get_language_from_path(request):
+#ANNOTATION: define the function get_language_from_path with an argument request.
+    return None
+#ANNOTATION: return None.

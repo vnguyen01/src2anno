@@ -1,0 +1,154 @@
+"""
+Wrapper class that takes a list of template loaders as an argument and attempts
+to load templates from them in order, caching the result.
+"""
+#ANNOTATION: docstring
+
+import hashlib
+#ANNOTATION: import module hashlib.
+from django.template.base import TemplateDoesNotExist
+#ANNOTATION: from django.template.base import TemplateDoesNotExist into default name space.
+from django.template.loader import BaseLoader, get_template_from_string, find_template_loader, make_origin
+#ANNOTATION: from django.template.loader import BaseLoader, get_template_from_string, find_template_loader and make_origin into default name space.
+from django.utils.encoding import force_bytes
+#ANNOTATION: from django.utils.encoding import force_bytes into default name space.
+
+
+class Loader(BaseLoader):
+#ANNOTATION: derive the class Loader from the BaseLoader base class.
+    is_usable = True
+#ANNOTATION: is_usable is boolean True.
+
+    def __init__(self, loaders):
+#ANNOTATION: define the method __init__ with 2 arguments: self and loaders.
+        self.template_cache = {}
+#ANNOTATION: self.template_cache is an empty dictionary.
+        self.find_template_cache = {}
+#ANNOTATION: self.find_template_cache is an empty dictionary.
+        self._loaders = loaders
+#ANNOTATION: substitute loaders for self._loaders.
+        self._cached_loaders = []
+#ANNOTATION: self._cached_loaders is an empty list.
+
+    @property
+#ANNOTATION: property decorator.
+    def loaders(self):
+#ANNOTATION: define the method loaders with an argument self.
+        # Resolve loaders on demand to avoid circular imports
+        if not self._cached_loaders:
+#ANNOTATION: if self._cached_loaders is false,
+            # Set self._cached_loaders atomically. Otherwise, another thread
+            # could see an incomplete list. See #17303.
+            cached_loaders = []
+#ANNOTATION: cached_loaders is an empty list.
+            for loader in self._loaders:
+#ANNOTATION: for every loader in self._loaders,
+                cached_loaders.append(find_template_loader(loader))
+#ANNOTATION: call the function find_template_loader with an argument loader, append the result to cached_loaders.
+            self._cached_loaders = cached_loaders
+#ANNOTATION: substitute cached_loaders for self._cached_loaders.
+        return self._cached_loaders
+#ANNOTATION: return self._cached_loaders.
+
+    def cache_key(self, template_name, template_dirs):
+#ANNOTATION: define the method cache_key with 3 arguments: self, template_name and template_dirs.
+        if template_dirs:
+#ANNOTATION: if template_dirs is true,
+            # If template directories were specified, use a hash to differentiate
+            return '-'.join([template_name, hashlib.sha1(force_bytes('|'.join(template_dirs))).hexdigest()])
+#ANNOTATION: join template_dirs elements into a string, separated by '|', use it as an argument for the call to the function force_bytes,
+#ANNOTATION: use the result as the argument for the call to the function hashlib.sha1, call the hexdigest method on the result,
+#ANNOTATION: join template_name and previous final result into a string, separated with '-', return it.
+        else:
+#ANNOTATION: if not,
+            return template_name
+#ANNOTATION: return template_name.
+
+    def find_template(self, name, dirs=None):
+#ANNOTATION: define the method find_template with 3 arguments: self, name, dirs set to None.
+        """
+        Helper method. Lookup the template :param name: in all the configured loaders
+        """
+#ANNOTATION: docstring
+        key = self.cache_key(name, dirs)
+#ANNOTATION: call the method self.cache_key with 2 arguments name and dirs, substitute the result for key.
+        try:
+#ANNOTATION: try,
+            result = self.find_template_cache[key]
+#ANNOTATION: get the value under the key key of the self.find_template_cache dictionary, substitute it for result.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            result = None
+#ANNOTATION: result is None.
+            for loader in self.loaders:
+#ANNOTATION: for every loader in self.loaders,
+                try:
+#ANNOTATION: try,
+                    template, display_name = loader(name, dirs)
+#ANNOTATION: call the function loader with arguments name and dirs, assign the result to template and display_name, respectively.
+                except TemplateDoesNotExist:
+#ANNOTATION: if TemplateDoesNotExist exception is caught,
+                    pass
+#ANNOTATION: do nothing.
+                else:
+#ANNOTATION: if not,
+                    result = (template, make_origin(display_name, loader, name, dirs))
+#ANNOTATION: result is an tuple with 2 elements: template and return value of the function make_origin called with 4 arguments: display_name, #ANNOTATION: loader, name and dirs.
+                    break
+#ANNOTATION: break from the loop execution.
+        self.find_template_cache[key] = result
+#ANNOTATION: substitute result for self.find_template_cache dictionary value under the key key. 
+        if result:
+#ANNOTATION: if result is true,
+            return result
+#ANNOTATION: return result
+        else:
+#ANNOTATION: if not,
+            self.template_cache[key] = TemplateDoesNotExist
+#ANNOTATION: substitute TemplateDoesNotExist for self.find_template_cache dictionary value under the key key. 
+            raise TemplateDoesNotExist(name)
+#ANNOTATION: raise an TemplateDoesNotExist exception with an argument name.
+
+    def load_template(self, template_name, template_dirs=None):
+#ANNOTATION: define the method load_template with 3 arguments: self, template_name, template_dirs set to None.
+        key = self.cache_key(template_name, template_dirs)
+#ANNOTATION: get the value under the template_name key of the self.cache_key dictionary, if it exists, substitute it for key,
+#ANNOTATION: if not, substitute template_dirs for key.
+        template_tuple = self.template_cache.get(key)
+#ANNOTATION: get the value under the key key of the self.template_cache dictionary, substitute it for template_tuple.
+        # A cached previous failure:
+        if template_tuple is TemplateDoesNotExist:
+#ANNOTATION: if template_tuple is contained in TemplateDoesNotExist,
+            raise TemplateDoesNotExist
+#ANNOTATION: raise an TemplateDoesNotExist exception.
+        elif template_tuple is None:
+#ANNOTATION: otherwise if template_tuple is None,
+            template, origin = self.find_template(template_name, template_dirs)
+#ANNOTATION: call the method self.find_template with 2 argumetns: template_name and template_dirs, assign the result to template, origin, respectively.
+            if not hasattr(template, 'render'):
+#ANNOTATION: if template doesnt have a 'render' attribute,
+                try:
+#ANNOTATION: try,
+                    template = get_template_from_string(template, origin, template_name)
+#ANNOTATION: call the function get_template_from_string with 3 arguments: template, origin and template_name, substitute the result for template.
+                except TemplateDoesNotExist:
+#ANNOTATION: if TemplateDoesNotExist exception is caught,
+                    # If compiling the template we found raises TemplateDoesNotExist,
+                    # back off to returning the source and display name for the template
+                    # we were asked to load. This allows for correct identification (later)
+                    # of the actual template that does not exist.
+                    self.template_cache[key] = (template, origin)
+#ANNOTATION: substitute a tuple with 2 elements: template and origin, for self.find_template_cache dictionary value under the key key. 
+            self.template_cache[key] = (template, None)
+#ANNOTATION: substitute a tuple with 2 elements: template and None, for self.find_template_cache dictionary value under the key key. 
+        return self.template_cache[key]
+#ANNOTATION: return self.find_template_cache dictionary value under the key key.
+
+    def reset(self):
+#ANNOTATION: define the method reset with an argument self.
+        "Empty the template cache."
+#ANNOTATION: docstring
+        self.template_cache.clear()
+#ANNOTATION: call the method self.template_cache.clear.
+        self.find_template_cache.clear()
+#ANNOTATION: call the method self.find_template_cache.clear.

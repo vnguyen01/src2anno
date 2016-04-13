@@ -1,0 +1,1252 @@
+"""Translation helper functions."""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from collections import OrderedDict
+#ANNOTATION: from collections import OrderedDict into default name space.
+import os
+#ANNOTATION: import module os.
+import re
+#ANNOTATION: import module re.
+import sys
+#ANNOTATION: import module sys.
+import gettext as gettext_module
+#ANNOTATION: import module gettext as gettext_module.
+from threading import local
+#ANNOTATION: from threading import local into default name space.
+import warnings
+#ANNOTATION: import module warnings.
+
+from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core.exceptions import AppRegistryNotReady
+#ANNOTATION: from django.core.exceptions import AppRegistryNotReady into default name space.
+from django.dispatch import receiver
+#ANNOTATION: from django.dispatch import receiver into default name space.
+from django.test.signals import setting_changed
+#ANNOTATION: from django.test.signals import setting_changed into default name space.
+from django.utils.deprecation import RemovedInDjango19Warning
+#ANNOTATION: from django.utils.deprecation import RemovedInDjango19Warning into default name space.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+from django.utils._os import upath
+#ANNOTATION: from django.utils._os import upath into default name space.
+from django.utils.safestring import mark_safe, SafeData
+#ANNOTATION: from django.utils.safestring import mark_safe and SafeData into default name space.
+from django.utils import six, lru_cache
+#ANNOTATION: from django.utils import six and lru_cache into default name space.
+from django.utils.six import StringIO
+#ANNOTATION: from django.utils.six import StringIO into default name space.
+from django.utils.translation import TranslatorCommentWarning, trim_whitespace, LANGUAGE_SESSION_KEY
+#ANNOTATION: from django.utils.translation import TranslatorCommentWarning, trim_whitespace and LANGUAGE_SESSION_KEY into default name space.
+
+
+# Translations are cached in a dictionary for every language.
+# The active translations are stored by threadid to make them thread local.
+_translations = {}
+#ANNOTATION: _translations is an empty dictionary.
+_active = local()
+#ANNOTATION: call the function local, substitute the result for _active.
+
+# The default translation is based on the settings file.
+_default = None
+#ANNOTATION: _default is None.
+
+# This is a cache of settings.LANGUAGES in an OrderedDict for easy lookups by
+# key
+_supported = None
+#ANNOTATION: _supported is None.
+
+# magic gettext number to separate context from message
+CONTEXT_SEPARATOR = "\x04"
+#ANNOTATION: CONTEXT_SEPARATOR is a string "\x04".
+
+# Format of Accept-Language header values. From RFC 2616, section 14.4 and 3.9
+# and RFC 3066, section 2.1
+accept_language_re = re.compile(r'''
+        ([A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*|\*)      # "en", "en-au", "x-y-z", "es-419", "*"
+        (?:\s*;\s*q=(0(?:\.\d{,3})?|1(?:.0{,3})?))?   # Optional "q=1.00", "q=0.8"
+        (?:\s*,\s*|$)                                 # Multiple accepts per header.
+        ''', re.VERBOSE)
+#ANNOTATION: call the function re.compile with 2 arguments: raw string "([A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*|\*)(?:\s*;\s*q=(0(?:\.\d{,3})?|1(?:.0{,3})?))?(?:\s*,\s*|$)",
+#ANNOTATION: and re.VERBOSE, substitute the result for accept_language_re.
+
+language_code_re = re.compile(r'^[a-z]{1,8}(?:-[a-z0-9]{1,8})*$', re.IGNORECASE)
+#ANNOTATION: call the function re.compile with 2 arguments: raw string '^[a-z]{1,8}(?:-[a-z0-9]{1,8})*$' and re.IGNORECASE, 
+#ANNOTATION: substitute the result for language_code_re.
+
+language_code_prefix_re = re.compile(r'^/([\w-]+)(/|$)')
+#ANNOTATION: call the function re.compile with an argument raw string '^/([\w-]+)(/|$)', substitute the result for language_code_prefix_re.
+
+# some browsers use deprecated locales. refs #18419
+_BROWSERS_DEPRECATED_LOCALES = {
+    'zh-cn': 'zh-hans',
+    'zh-tw': 'zh-hant',
+}
+#ANNOTATION: _BROWSERS_DEPRECATED_LOCALES is an dictionary with 2 initial entries: 'zh-hans' for 'zh-cn' and 'zh-hant' for 'zh-tw'.
+
+_DJANGO_DEPRECATED_LOCALES = _BROWSERS_DEPRECATED_LOCALES
+#ANNOTATION: substitute _BROWSERS_DEPRECATED_LOCALES for _DJANGO_DEPRECATED_LOCALES.
+
+
+@receiver(setting_changed)
+#ANNOTATION: decorator function receiver with an argument setting_changed,
+def reset_cache(**kwargs):
+#ANNOTATION: define the function reset_cache with an argument unpacked dictionary kwargs.
+    """
+    Reset global state when LANGUAGES setting has been changed, as some
+    languages should no longer be accepted.
+    """
+#ANNOTATION: docstring
+    if kwargs['setting'] in ('LANGUAGES', 'LANGUAGE_CODE'):
+#ANNOTATION: if value under the 'setting' key of the kwargs dictionary is equal to string 'LANGUAGES' or strnig 'LANGUAGE_CODE',
+        global _supported
+#ANNOTATION: use global variable _supported.
+        _supported = None
+#ANNOTATION: _supported is None.
+        check_for_language.cache_clear()
+#ANNOTATION: call the method check_for_language.cache_clear.
+        get_supported_language_variant.cache_clear()
+#ANNOTATION: call the method get_supported_language_variant.cache_clear.
+
+
+def to_locale(language, to_lower=False):
+#ANNOTATION: define the function to_locale with 2 arguments language and to_lower set to boolean False.
+    """
+    Turns a language name (en-us) into a locale name (en_US). If 'to_lower' is
+    True, the last component is lower-cased (en_us).
+    """
+#ANNOTATION: docstring
+    p = language.find('-')
+#ANNOTATION: find first index of occurrence of character '-' in language, substitute it for p.
+    if p >= 0:
+#ANNOTATION: if p is greater or equal to integer 0,
+        if to_lower:
+#ANNOTATION: if to_lower is true,
+            return language[:p].lower() + '_' + language[p + 1:].lower()
+#ANNOTATION: convert fist p elements of language to lowercase, append '_' to it, 
+#ANNOTATION: covert to lowercase language elements from (p+1)-th index to the end, append it to the previous result, return it.
+        else:
+#ANNOTATION: if not,
+            # Get correct locale for sr-latn
+            if len(language[p + 1:]) > 2:
+#ANNOTATION: slice language from (p+1)-th index to the end, calculate the length of the obtained segment, if it is greater than integer 2,
+                return language[:p].lower() + '_' + language[p + 1].upper() + language[p + 2:].lower()
+#ANNOTATION: convert fist p elements of language to lowercase, append '_' to it, 
+#ANNOTATION: covert to lowercase language element at (p+1)-th index, append it to the previous result,
+#ANNOTATION: covert to lowercase language elements from (p+2)-th index to the end, append it to the previous result, return it.
+            return language[:p].lower() + '_' + language[p + 1:].upper()
+#ANNOTATION: convert fist p elements of language to lowercase, append '_' to it, 
+#ANNOTATION: covert to uppercase language elements from (p+1)-th index to the end, append it to the previous result, return it.
+    else:
+#ANNOTATION: if not,
+        return language.lower()
+#ANNOTATION: convert language to lowercase, return it.
+
+
+def to_language(locale):
+#ANNOTATION: define the function to_language with an argument locale.
+    """Turns a locale name (en_US) into a language name (en-us)."""
+#ANNOTATION: docstring
+    p = locale.find('_')
+#ANNOTATION: find first index of occurrence of character '-' in locale, substitute it for p.
+    if p >= 0:
+#ANNOTATION: if p is greater or equal to integer 0,
+        return locale[:p].lower() + '-' + locale[p + 1:].lower()
+#ANNOTATION: convert fist p elements of locale to lowercase, append '_' to it, 
+#ANNOTATION: covert to lowercase locale elements from (p+1)-th index to the end, append it to the previous result, return it.
+    else:
+#ANNOTATION: if not,
+        return locale.lower()
+#ANNOTATION: convert locale to lowercase and return it.
+
+
+class DjangoTranslation(gettext_module.GNUTranslations):
+#ANNOTATION: derive the class DjangoTranslation from gettext_module.GNUTranslations base class.
+    """
+    This class sets up the GNUTranslations context with regard to output
+    charset.
+
+    This translation object will be constructed out of multiple GNUTranslations
+    objects by merging their catalogs. It will construct an object for the
+    requested language and add a fallback to the default language, if it's
+    different from the requested language.
+    """
+#ANNOTATION: docstring
+    def __init__(self, language):
+#ANNOTATION: define the method __init__ with 2 arguments: self and language.
+        """Create a GNUTranslations() using many locale directories"""
+#ANNOTATION: docstring
+        gettext_module.GNUTranslations.__init__(self)
+#ANNOTATION: call the method gettext_module.GNUTranslations.__init__ with an argument self.
+
+        self.__language = language
+#ANNOTATION: substitute language for self.__language.
+        self.__to_language = to_language(language)
+#ANNOTATION: call the function to_language with an argument language, substitute it for self.__to_language.
+        self.__locale = to_locale(language)
+#ANNOTATION: call the function to_locale with an argument language, substitute it for self.__locale.
+        self.plural = lambda n: int(n != 1)
+#ANNOTATION: self.plural is an lambda function with an argument n, which returns result of boolean expression n not equal to integer 1, 
+#ANNOTATION: converted to an integer.
+
+        self._init_translation_catalog()
+#ANNOTATION: call the method self._init_translation_catalog.
+        self._add_installed_apps_translations()
+#ANNOTATION: call the method self._add_installed_apps_translations.
+        self._add_local_translations()
+#ANNOTATION: call the method self._add_local_translations. 
+        self._add_fallback()
+#ANNOTATION: call the method self._add_fallback.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return "<DjangoTranslation lang:%s>" % self.__language
+#ANNOTATION: return a string "<DjangoTranslation lang:%s>", where '%s' is replaced with self.__language.
+
+    def _new_gnu_trans(self, localedir, use_null_fallback=True):
+#ANNOTATION: define the method _new_gnu_trans with 3 arguments: self, localedir and use_null_fallback set to boolean True.
+        """
+        Returns a mergeable gettext.GNUTranslations instance.
+
+        A convenience wrapper. By default gettext uses 'fallback=False'.
+        Using param `use_null_fallback` to avoid confusion with any other
+        references to 'fallback'.
+        """
+#ANNOTATION: docstring
+        translation = gettext_module.translation(
+            domain='django',
+            localedir=localedir,
+            languages=[self.__locale],
+            codeset='utf-8',
+            fallback=use_null_fallback)
+#ANNOTATION: call the method gettext_module.translation with 5 arguments: domain set to string 'django', localedir set to localedir,
+#ANNOTATION: languages set to a list with an element self.__locale, codeset set to a string 'utf-8' and fallback set to use_null_fallback,
+#ANNOTATION: substitute the result for translation.
+        if not hasattr(translation, '_catalog'):
+#ANNOTATION: if translation has an attribute '_catalog', 
+            # provides merge support for NullTranslations()
+            translation._catalog = {}
+#ANNOTATION: translation._catalog is an empty dictionary.
+            translation._info = {}
+#ANNOTATION: translation._info is an empty dictionary.
+        return translation
+#ANNOTATION: return translation.
+
+    def _init_translation_catalog(self):
+#ANNOTATION: define the method _init_translation_catalog with an argument self.
+        """Creates a base catalog using global django translations."""
+#ANNOTATION: docstring
+        settingsfile = upath(sys.modules[settings.__module__].__file__)
+#ANNOTATION: get the value under the settings.__module__ key of the sys.modules dictionary, 
+#ANNOTATION: use its __file__ field as an argument for the call to the function upath, substitute the result for settingsfile.
+        localedir = os.path.join(os.path.dirname(settingsfile), 'locale')
+#ANNOTATION: call the function os.path.dirname with an argument settingsfile, join the result an string 'locale' into a file path, 
+#ANNOTATION: substitute it for localedir.  
+        use_null_fallback = True
+#ANNOTATION: use_null_fallback is boolean True.
+        if self.__language == settings.LANGUAGE_CODE:
+#ANNOTATION: if self.__language equals settings.LANGUAGE_CODE,
+            # default lang should be present and parseable, if not
+            # gettext will raise an IOError (refs #18192).
+            use_null_fallback = False
+#ANNOTATION: use_null_fallback is boolean False.
+        translation = self._new_gnu_trans(localedir, use_null_fallback)
+#ANNOTATION: call the function self._new_gnu_trans with 2 arguments: localedir and use_null_fallback, substitute the result for translation.
+        self._info = translation._info.copy()
+#ANNOTATION: call the method translation._info.copy, substitute the result for self._info.
+        self._catalog = translation._catalog.copy()
+#ANNOTATION: call the method translation._catalog.copy, substitute the result for self._catalog.
+
+    def _add_installed_apps_translations(self):
+#ANNOTATION: define the method _add_installed_apps_translations with an argument self.
+        """Merges translations from each installed app."""
+#ANNOTATION: docstring
+        try:
+#ANNOTATION: try,
+            app_configs = reversed(list(apps.get_app_configs()))
+#ANNOTATION: call the method apps.get_app_configs, convert the result in a list, reverse the order of elements, substitute the result for app_configs.
+        except AppRegistryNotReady:
+#ANNOTATION: if AppRegistryNotReady exception is caught,
+            raise AppRegistryNotReady(
+                "The translation infrastructure cannot be initialized before the "
+                "apps registry is ready. Check that you don't make non-lazy "
+                "gettext calls at import time.")
+#ANNOTATION: rais an AppRegistryNotReady exception with an argument string "The translation infrastructure cannot be initialized before the "
+#ANNOTATION: "apps registry is ready. Check that you don't make non-lazy gettext calls at import time.".
+        for app_config in app_configs:
+#ANNOTATION: for every app_config in app_configs,
+            localedir = os.path.join(app_config.path, 'locale')
+#ANNOTATION: join app_config.path and string 'locale' into a file path, substitute it for localedir.
+            translation = self._new_gnu_trans(localedir)
+#ANNOTATION: call the method self._new_gnu_trans with an argument localedir, substitute the result for translation.
+            self.merge(translation)
+#ANNOTATION: call the method self.merge with an argument translation.
+
+    def _add_local_translations(self):
+#ANNOTATION: define the method _add_local_translations with an argument self.
+        """Merges translations defined in LOCALE_PATHS."""
+#ANNOTATION: docstring
+        for localedir in reversed(settings.LOCALE_PATHS):
+#ANNOTATION: reverse settings.LOCALE_PATHS element order, for every localedir in the result,
+            translation = self._new_gnu_trans(localedir)
+#ANNOTATION: call the function self._new_gnu_trans with an argument localedir, substitute the result for translation.
+            self.merge(translation)
+#ANNOTATION: call the method self.merge with an argument translation.
+
+    def _add_fallback(self):
+#ANNOTATION: define the method _add_fallback with an argument self.
+        """Sets the GNUTranslations() fallback with the default language."""
+#ANNOTATION: docstring
+        # Don't set a fallback for the default language or for
+        # en-us (as it's empty, so it'll ALWAYS fall back to the default
+        # language; found this as part of #21498, as we set en-us for
+        # management commands)
+        if self.__language == settings.LANGUAGE_CODE or self.__language == "en-us":
+#ANNOTATION: if self.__language equals settings.LANGUAGE_CODE or self.__language equals a string "en-us",
+            return
+#ANNOTATION: return.
+        default_translation = translation(settings.LANGUAGE_CODE)
+#ANNOTATION: call the function translation with an argument settings.LANGUAGE_CODE, substitute the result for default_translation.
+        self.add_fallback(default_translation)
+#ANNOTATION: call the method self.add_fallback with an argument default_translation.
+
+    def merge(self, other):
+#ANNOTATION: define the method merge with 2 arguments self and other.
+        """Merge another translation into this catalog."""
+#ANNOTATION: docstring
+        self._catalog.update(other._catalog)
+#ANNOTATION: update the self._catalog dictionary with other._catalog.
+
+    def language(self):
+#ANNOTATION: define the method language with an argument self.
+        """Returns the translation language."""
+#ANNOTATION: docstring
+        return self.__language
+#ANNOTATION: return self.__language.
+
+    def to_language(self):
+#ANNOTATION: define the method to_language with an argument self.
+        """Returns the translation language name."""
+#ANNOTATION: docstring
+        return self.__to_language
+#ANNOTATION: return self.__to_language.
+
+
+def translation(language):
+#ANNOTATION: define the function translation with an argument language.
+    """
+    Returns a translation object.
+    """
+#ANNOTATION: docstring
+    global _translations
+#ANNOTATION: use global variable _translations.
+    if language not in _translations:
+#ANNOTATION: if language is not contained in _translations,
+        _translations[language] = DjangoTranslation(language)
+#ANNOTATION: _translations dictionary value, under the language key is an instance of DjangoTranslation class, created with an argument language.
+    return _translations[language]
+#ANNOTATION: return _translations dictionary value, under the language key.
+
+
+def activate(language):
+#ANNOTATION: define the function activate with an argument language.
+    """
+    Fetches the translation object for a given language and installs it as the
+    current translation object for the current thread.
+    """
+#ANNOTATION: docstring
+    if language in _DJANGO_DEPRECATED_LOCALES:
+#ANNOTATION: if language is contained in _DJANGO_DEPRECATED_LOCALES,
+        msg = ("The use of the language code '%s' is deprecated. "
+               "Please use the '%s' translation instead.")
+#ANNOTATION: msg is a string "The use of the language code '%s' is deprecated. Please use the '%s' translation instead.".
+        warnings.warn(msg % (language, _DJANGO_DEPRECATED_LOCALES[language]),
+                      RemovedInDjango19Warning, stacklevel=2)
+#ANNOTATION: call the method call the function warnings.warn with 3 arguments: msg formatted with language and value under the language key,
+#ANNOTATION: of the _DJANGO_DEPRECATED_LOCALES dictionary, RemovedInDjango19Warning and stacklevel set to integer 2.
+    _active.value = translation(language)
+#ANNOTATION: call the function translation with an argument language, substitute the result for _active.value.
+
+
+def deactivate():
+#ANNOTATION: define the function deactivate.
+    """
+    Deinstalls the currently active translation object so that further _ calls
+    will resolve against the default translation object, again.
+    """
+#ANNOTATION: docstring
+    if hasattr(_active, "value"):
+#ANNOTATION: if _active has an attribute "value",
+        del _active.value
+#ANNOTATION: delete _active.value.
+
+
+def deactivate_all():
+#ANNOTATION: define the function deactivate_all.
+    """
+    Makes the active translation object a NullTranslations() instance. This is
+    useful when we want delayed translations to appear as the original string
+    for some reason.
+    """
+#ANNOTATION: docstring
+    _active.value = gettext_module.NullTranslations()
+#ANNOTATION: call the method gettext_module.NullTranslations, substitute the result for _active.value.
+
+
+def get_language():
+#ANNOTATION: define the function get_language.
+    """Returns the currently selected language."""
+#ANNOTATION: docstring
+    t = getattr(_active, "value", None)
+#ANNOTATION: get 'value' attribute of the _active object, if it exists substitute it for t, if not t is None.
+    if t is not None:
+#ANNOTATION: if t is not None,
+        try:
+#ANNOTATION: try,
+            return t.to_language()
+#ANNOTATION: call the method t.to_language, return the result.
+        except AttributeError:
+#ANNOTATION: if AttributeError exception is caught, 
+            pass
+#ANNOTATION: do nothing.
+    # If we don't have a real translation object, assume it's the default language.
+    return settings.LANGUAGE_CODE
+#ANNOTATION: return settings.LANGUAGE_CODE.
+
+
+def get_language_bidi():
+#ANNOTATION: define the function get_language_bidi.
+    """
+    Returns selected language's BiDi layout.
+
+    * False = left-to-right layout
+    * True = right-to-left layout
+    """
+#ANNOTATION: docstring
+    base_lang = get_language().split('-')[0]
+#ANNOTATION: call the function get_language, split the result by '-', substitute the first element of the result for base_lang. 
+    return base_lang in settings.LANGUAGES_BIDI
+#ANNOTATION: if base_lang is contained in settings.LANGUAGES_BIDI, return boolean True, if not, return boolean False.
+
+
+def catalog():
+#ANNOTATION: define the function catalog.
+    """
+    Returns the current active catalog for further processing.
+    This can be used if you need to modify the catalog or want to access the
+    whole message catalog instead of just translating one string.
+    """
+#ANNOTATION: docstring
+    global _default
+#ANNOTATION: use global variable _default.
+
+    t = getattr(_active, "value", None)
+#ANNOTATION: get 'value' attribute of the _active object, if it exists substitute it for t, if not t is None.
+    if t is not None:
+#ANNOTATION: if t is not None 
+        return t
+#ANNOTATION: return t.
+    if _default is None:
+#ANNOTATION: if _default is None 
+        _default = translation(settings.LANGUAGE_CODE)
+#ANNOTATION: call the function translation with an argument settings.LANGUAGE_CODE, substitute the result for _default.
+    return _default
+#ANNOTATION: return _default.
+
+
+def do_translate(message, translation_function):
+#ANNOTATION: define the function do_translate with 2 arguments: message and translation_function.
+    """
+    Translates 'message' using the given 'translation_function' name -- which
+    will be either gettext or ugettext. It uses the current thread to find the
+    translation object to use. If no current translation is activated, the
+    message will be run through the default translation object.
+    """
+#ANNOTATION: docstring
+    global _default
+#ANNOTATION: use global variable _default.
+
+    # str() is allowing a bytestring message to remain bytestring on Python 2
+    eol_message = message.replace(str('\r\n'), str('\n')).replace(str('\r'), str('\n'))
+#ANNOTATION: replace every occurrence of string '\r\n' in message with '\n', replace every occurrence of string '\r',
+#ANNOTATION: in the previous result for with string '\n', substitute the result for eol_message.
+    t = getattr(_active, "value", None)
+#ANNOTATION: get 'value' attribute of the _active object, if it exists substitute it for t, if not t is None.
+    if t is not None:
+#ANNOTATION: if t is not None,
+        result = getattr(t, translation_function)(eol_message)
+#ANNOTATION: get translation_function attribute of the object t, call the result with an argument eol_message, substitute the result for result.
+    else:
+#ANNOTATION: if not,
+        if _default is None:
+#ANNOTATION: if _default is None,
+            _default = translation(settings.LANGUAGE_CODE)
+#ANNOTATION: call the function translation with an argument settings.LANGUAGE_CODE, substitute the result for _default.
+        result = getattr(_default, translation_function)(eol_message)
+#ANNOTATION: get translation_function attribute of the object _default, call the result with an argument eol_message, substitute the result for result.
+    if isinstance(message, SafeData):
+#ANNOTATION: if message is an instance of SafeData,
+        return mark_safe(result)
+#ANNOTATION: call the function mark_safe with an argument result, return it.
+    return result
+#ANNOTATION: return result.
+
+
+def gettext(message):
+#ANNOTATION: define the function gettext with an argument message.
+    """
+    Returns a string of the translation of the message.
+
+    Returns a string on Python 3 and an UTF-8-encoded bytestring on Python 2.
+    """
+#ANNOTATION: docstring
+    return do_translate(message, 'gettext')
+#ANNOTATION: call the function do_translate with 2 arguments: message and string 'gettext', return the result.
+
+if six.PY3:
+#ANNOTATION: if six.PY3 is true, 
+    ugettext = gettext
+#ANNOTATION: substitute gettext for ugettext.
+else:
+#ANNOTATION: if not,
+    def ugettext(message):
+#ANNOTATION: define the function ugettext with an argument message.
+        return do_translate(message, 'ugettext')
+#ANNOTATION: call the function do_translate with 2 arguments: message and string 'ugettext', return the result.
+
+
+def pgettext(context, message):
+#ANNOTATION: define the function pgettext with 2 arguments: context and message.
+    msg_with_ctxt = "%s%s%s" % (context, CONTEXT_SEPARATOR, message)
+#ANNOTATION: convert to strings and concatenate context, CONTEXT_SEPARATOR and message, substitute the result for msg_with_ctxt.
+    result = ugettext(msg_with_ctxt)
+#ANNOTATION: call the function ugettext with an argument msg_with_ctxt, substitute the result for result.
+    if CONTEXT_SEPARATOR in result:
+#ANNOTATION: if CONTEXT_SEPARATOR is contained in result,
+        # Translation not found
+        # force unicode, because lazy version expects unicode
+        result = force_text(message)
+#ANNOTATION: call the function force_text with an argument message, return the result.
+    return result
+#ANNOTATION: return result.
+
+
+def gettext_noop(message):
+#ANNOTATION: define the function locale with an argument locale.
+    """
+    Marks strings for translation but doesn't translate them now. This can be
+    used to store strings in global variables that should stay in the base
+    language (because they might be used externally) and will be translated
+    later.
+    """
+#ANNOTATION: docstring
+    return message
+#ANNOTATION: return message.
+
+
+def do_ntranslate(singular, plural, number, translation_function):
+#ANNOTATION: define the function do_ntranslate with 4 arguments: singular, plural, number and translation_function.
+    global _default
+#ANNOTATION: use global variable _default.
+
+    t = getattr(_active, "value", None)
+#ANNOTATION: get 'value' attribute of the _active object, if it exists substitute it for t, if not t is None.
+    if t is not None:
+#ANNOTATION: if t is not None,
+        return getattr(t, translation_function)(singular, plural, number)
+#ANNOTATION: get translation_function attribute of the t object, call the result with 3 arguments: singular, plural and number, return the result.
+    if _default is None:
+#ANNOTATION: if _default is None,
+        _default = translation(settings.LANGUAGE_CODE)
+#ANNOTATION: call the function translation with an argument settings.LANGUAGE_CODE, substitute the result for _default.
+    return getattr(_default, translation_function)(singular, plural, number)
+#ANNOTATION: get translation_function attribute of the _default object, call the result with 3 arguments: singular, plural and number, return the result.
+
+
+def ngettext(singular, plural, number):
+#ANNOTATION: define the function ngettext with 3 arguments: singular, plural and number.
+    """
+    Returns a string of the translation of either the singular or plural,
+    based on the number.
+
+    Returns a string on Python 3 and an UTF-8-encoded bytestring on Python 2.
+    """
+#ANNOTATION: docstring
+    return do_ntranslate(singular, plural, number, 'ngettext')
+#ANNOTATION: call the function do_ntranslate with 3 arguments: singular, plural, number and string 'ngettext', return the result.
+
+if six.PY3:
+#ANNOTATION: if six.PY3 is true,
+    ungettext = ngettext
+#ANNOTATION: substitute ngettext for ungettext.
+else:
+#ANNOTATION: if not,
+    def ungettext(singular, plural, number):
+#ANNOTATION: define the function ungettext with 3 arguments: singular, plural and number.
+        """
+        Returns a unicode strings of the translation of either the singular or
+        plural, based on the number.
+        """
+#ANNOTATION: docstring
+        return do_ntranslate(singular, plural, number, 'ungettext')
+#ANNOTATION: call the function do_ntranslate with 3 arguments: singular, plural, number and string 'ngettext', return the result.
+
+
+def npgettext(context, singular, plural, number):
+#ANNOTATION: define the function npgettext with 4 arguments: context, singular, plural and number.
+    msgs_with_ctxt = ("%s%s%s" % (context, CONTEXT_SEPARATOR, singular),
+                      "%s%s%s" % (context, CONTEXT_SEPARATOR, plural),
+                      number)
+#ANNOTATION: msgs_with_ctxt is a tuple containing 2 elements: string created by concatenating context, CONTEXT_SEPARATOR and singular,
+#ANNOTATION: string created by concatenating context, CONTEXT_SEPARATOR and plural and number.
+    result = ungettext(*msgs_with_ctxt)
+#ANNOTATION: call the function ungettext with unpacked dictionary msgs_with_ctxt, substitute the result for result.
+    if CONTEXT_SEPARATOR in result:
+#ANNOTATION: if CONTEXT_SEPARATOR is contained in result,
+        # Translation not found
+        result = ungettext(singular, plural, number)
+#ANNOTATION: call the function ungettext with 3 arguments: singular, plural and number, substitute the result for result.
+    return result
+#ANNOTATION: return result.
+
+
+def all_locale_paths():
+#ANNOTATION: define the function all_locale_paths.
+    """
+    Returns a list of paths to user-provides languages files.
+    """
+#ANNOTATION: docstring
+    globalpath = os.path.join(
+        os.path.dirname(upath(sys.modules[settings.__module__].__file__)), 'locale')
+#ANNOTATION: get the value under the settings.__module__ key of the sys.modules dictionary, use its __file__ field as an argument,
+#ANNOTATION: for the call to the function upath, get the directory name of the resulting system path, join the result and string 'locale',
+#ANNOTATION: into a valid file path, substitute it for globalpath.
+    return [globalpath] + list(settings.LOCALE_PATHS)
+#ANNOTATION: append settings.LOCALE_PATHS converted into a list to a list containing an element globalpath, return it.
+
+
+@lru_cache.lru_cache(maxsize=1000)
+#ANNOTATION: decorator function lru_cache.lru_cache with an argument maxsize set to integer 1000.
+def check_for_language(lang_code):
+#ANNOTATION: define the function check_for_language with an argument lang_code.
+    """
+    Checks whether there is a global language file for the given language
+    code. This is used to decide whether a user-provided language is
+    available.
+
+    lru_cache should have a maxsize to prevent from memory exhaustion attacks,
+    as the provided language codes are taken from the HTTP request. See also
+    <https://www.djangoproject.com/weblog/2007/oct/26/security-fix/>.
+    """
+#ANNOTATION: docstring
+    # First, a quick check to make sure lang_code is well-formed (#21458)
+    if not language_code_re.search(lang_code):
+#ANNOTATION: call the method language_code_re.search with an argument lang_code, if it evaluates to false,
+        return False
+#ANNOTATION: return boolean False.
+    for path in all_locale_paths():
+#ANNOTATION: call the function all_locale_paths, for every path is the result,
+        if gettext_module.find('django', path, [to_locale(lang_code)]) is not None:
+#ANNOTATION: call the method gettext_module.find with 3 arguments: string 'django', path and list with an element: result of the function,
+#ANNOTATION: to_locale called with an argument lang_code, if the result is not None,
+            return True
+#ANNOTATION: return boolean True.
+    return False
+#ANNOTATION: return boolean False.
+
+
+@lru_cache.lru_cache(maxsize=1000)
+#ANNOTATION: decorator function lru_cache.lru_cache with an argument maxsize set to integer 1000.
+def get_supported_language_variant(lang_code, strict=False):
+#ANNOTATION: define the function get_supported_language_variant with 2 arguments: lang_code and strict set to boolean False.
+    """
+    Returns the language-code that's listed in supported languages, possibly
+    selecting a more generic variant. Raises LookupError if nothing found.
+
+    If `strict` is False (the default), the function will look for an alternative
+    country-specific variant when the currently checked is not found.
+
+    lru_cache should have a maxsize to prevent from memory exhaustion attacks,
+    as the provided language codes are taken from the HTTP request. See also
+    <https://www.djangoproject.com/weblog/2007/oct/26/security-fix/>.
+    """
+#ANNOTATION: docstring
+    global _supported
+#ANNOTATION: use global variable _supported.
+    if _supported is None:
+#ANNOTATION: if _supported is None,
+        _supported = OrderedDict(settings.LANGUAGES)
+#ANNOTATION: _supported is an instance of OrderedDict class, created with an argument settings.LANGUAGES.
+    if lang_code:
+#ANNOTATION: if lang_code is true,
+        # some browsers use deprecated language codes -- #18419
+        replacement = _BROWSERS_DEPRECATED_LOCALES.get(lang_code)
+#ANNOTATION: get the value under the lang_code key of the _BROWSERS_DEPRECATED_LOCALES dictionary, substitute it for replacement.
+        if lang_code not in _supported and replacement in _supported:
+#ANNOTATION: if lang_code is not contained in _supported and replacement is contained in _supported,
+            return replacement
+#ANNOTATION: return replacement.
+        # if fr-ca is not supported, try fr.
+        generic_lang_code = lang_code.split('-')[0]
+#ANNOTATION: split lang_code by '-', substitute the first element of the result for generic_lang_code.
+        for code in (lang_code, generic_lang_code):
+#ANNOTATION: for every code in tuple with 2 elements: lang_code and generic_lang_code,
+            if code in _supported and check_for_language(code):
+#ANNOTATION: if code is contained in _supported and call to the function check_for_language with an argument code evaluates to true,
+                return code
+#ANNOTATION: return code.
+        if not strict:
+#ANNOTATION: if strict is false,
+            # if fr-fr is not supported, try fr-ca.
+            for supported_code in _supported:
+#ANNOTATION: for every supported_code in _supported,
+                if supported_code.startswith(generic_lang_code + '-'):
+#ANNOTATION: append '-' to generic_lang_code, if supported_code starts with it,
+                    return supported_code
+#ANNOTATION: return supported_code.
+    raise LookupError(lang_code)
+#ANNOTATION: raise an LookupError with an argument lang_code. 
+
+
+def get_language_from_path(path, strict=False):
+#ANNOTATION: define the function get_language_from_path with 2 arguments: path and strict set to boolean False.
+    """
+    Returns the language-code if there is a valid language-code
+    found in the `path`.
+
+    If `strict` is False (the default), the function will look for an alternative
+    country-specific variant when the currently checked is not found.
+    """
+#ANNOTATION: docstring
+    regex_match = language_code_prefix_re.match(path)
+#ANNOTATION: call the function language_code_prefix_re.match with an argument path, substitute it for regex_match.
+    if not regex_match:
+#ANNOTATION: if regex_match is false,
+        return None
+#ANNOTATION: return None.
+    lang_code = regex_match.group(1)
+#ANNOTATION: call the method regex_match.group with an argument integer 1, substitute the result for lang_code.
+    try:
+#ANNOTATION: try,
+        return get_supported_language_variant(lang_code, strict=strict)
+#ANNOTATION: call the function get_supported_language_variant with 2 arguments: lang_code and strict set to strict, return the result. 
+    except LookupError:
+#ANNOTATION: if LookupError exception is caught, 
+        return None
+#ANNOTATION: return None.
+
+
+def get_language_from_request(request, check_path=False):
+#ANNOTATION: define the function get_language_from_request with 2 arguments: request and check_path set to boolean False.
+    """
+    Analyzes the request to find what language the user wants the system to
+    show. Only languages listed in settings.LANGUAGES are taken into account.
+    If the user requests a sublanguage where we have a main language, we send
+    out the main language.
+
+    If check_path is True, the URL path prefix will be checked for a language
+    code, otherwise this is skipped for backwards compatibility.
+    """
+#ANNOTATION: docstring
+    global _supported
+#ANNOTATION: use global variable _supported.
+    if _supported is None:
+#ANNOTATION: if _supported is None,
+        _supported = OrderedDict(settings.LANGUAGES)
+#ANNOTATION: _supported is an instance of OrderedDict class, created with an argument settings.LANGUAGES.
+
+    if check_path:
+#ANNOTATION: if check_path is true,
+        lang_code = get_language_from_path(request.path_info)
+#ANNOTATION: call the function get_language_from_path with an argument request.path_info, substitute it for lang_code.
+        if lang_code is not None:
+#ANNOTATION: if lang_code is not None,
+            return lang_code
+#ANNOTATION: return lang_code.
+
+    if hasattr(request, 'session'):
+#ANNOTATION: if request has an attribute 'session',
+        lang_code = request.session.get(LANGUAGE_SESSION_KEY)
+#ANNOTATION: get the value under the LANGUAGE_SESSION_KEY key of the request.session dictionary, substitute it for lang_code.
+        if lang_code in _supported and lang_code is not None and check_for_language(lang_code):
+#ANNOTATION: if lang_code is contained in _supported and lang_code is not None and result of the function check_for_language,
+#ANNOTATION: called with an argument lang_code is true,
+            return lang_code
+#ANNOTATION: return lang_code.
+
+    lang_code = request.COOKIES.get(settings.LANGUAGE_COOKIE_NAME)
+#ANNOTATION: get the value under the settings.LANGUAGE_COOKIE_NAME key of the request.COOKIES dictionary, substitute it for lang_code.
+
+    try:
+#ANNOTATION: try,
+        return get_supported_language_variant(lang_code)
+#ANNOTATION: call the function get_supported_language_variant with an argument lang_code, return the result.
+    except LookupError:
+#ANNOTATION: if LookupError exception is caught, 
+        pass
+#ANNOTATION: do nothing.
+
+    accept = request.META.get('HTTP_ACCEPT_LANGUAGE', '')
+#ANNOTATION: get the value under the 'HTTP_ACCEPT_LANGUAGE' key of the request.META dictionary, if it exists substitute it for accept,
+#ANNOTATION: if not accept is an empty string.
+    for accept_lang, unused in parse_accept_lang_header(accept):
+#ANNOTATION: call the function parse_accept_lang_header with an argument accept, for every accept_lang and unused in the result,
+        if accept_lang == '*':
+#ANNOTATION: if accept_lang equals '*',
+            break
+#ANNOTATION: break from the loop execution.
+
+        if not language_code_re.search(accept_lang):
+#ANNOTATION: call the method language_code_re.search with an argument accept_lang, if it evaluates to false,
+            continue
+#ANNOTATION: skip this loop iteration.
+
+        try:
+#ANNOTATION: try,
+            return get_supported_language_variant(accept_lang)
+#ANNOTATION: call the function get_supported_language_variant with an argument accept_lang, return the result.
+        except LookupError:
+#ANNOTATION: if LookupError exception is caught, 
+            continue
+#ANNOTATION: skip this loop iteration.
+
+    try:
+#ANNOTATION: try,
+        return get_supported_language_variant(settings.LANGUAGE_CODE)
+#ANNOTATION: call the function get_supported_language_variant with an argument settings.LANGUAGE_CODE, return the result.
+    except LookupError:
+#ANNOTATION: if LookupError exception is caught, 
+        return settings.LANGUAGE_CODE
+#ANNOTATION: return settings.LANGUAGE_CODE.
+
+dot_re = re.compile(r'\S')
+#ANNOTATION: call the function re.compile with an argument raw string '\S', substitute it for dot_re.
+
+
+def blankout(src, char):
+#ANNOTATION: define the function blankout with 2 arguments: src and char.
+    """
+    Changes every non-whitespace character to the given char.
+    Used in the templatize function.
+    """
+#ANNOTATION: docstring
+    return dot_re.sub(char, src)
+#ANNOTATION: call the method dot_re.sub with 2 arguments: char and src, return the result.
+
+
+context_re = re.compile(r"""^\s+.*context\s+((?:"[^"]*?")|(?:'[^']*?'))\s*""")
+#ANNOTATION: call the function re.compile with an argument raw string "^\s+.*context\s+((?:"[^"]*?")|(?:'[^']*?'))\s*", substitute the result for context_re.
+inline_re = re.compile(r"""^\s*trans\s+((?:"[^"]*?")|(?:'[^']*?'))(\s+.*context\s+((?:"[^"]*?")|(?:'[^']*?')))?\s*""")
+#ANNOTATION: call the function re.compile with an argument string "^\s*trans\s+((?:"[^"]*?")|(?:'[^']*?'))(\s+.*context\s+((?:"[^"]*?")|(?:'[^']*?')))?\s*", substitute the result for inline_re.
+block_re = re.compile(r"""^\s*blocktrans(\s+.*context\s+((?:"[^"]*?")|(?:'[^']*?')))?(?:\s+|$)""")
+#ANNOTATION: call the function re.compile with an argument raw string "^\s*blocktrans(\s+.*context\s+((?:"[^"]*?")|(?:'[^']*?')))?(?:\s+|$)",
+#ANNOTATION: substitute the result for block_re.
+endblock_re = re.compile(r"""^\s*endblocktrans$""")
+#ANNOTATION: call the function re.compile with an argument raw string "^\s*endblocktrans$", substitute the result for endblock_re.
+plural_re = re.compile(r"""^\s*plural$""")
+#ANNOTATION:call the function re.compile with an argument raw string "^\s*plural$", substitute the result for plural_re. 
+constant_re = re.compile(r"""_\(((?:".*?")|(?:'.*?'))\)""")
+#ANNOTATION: call the function re.compile with an argument raw string "_\(((?:".*?")|(?:'.*?'))\)", substitute the result for constant_re. 
+one_percent_re = re.compile(r"""(?<!%)%(?!%)""")
+#ANNOTATION: call the function re.compile with an argument raw string "(?<!%)%(?!%)", substitute the result for one_percent_re.
+
+
+def templatize(src, origin=None):
+#ANNOTATION: define the function templatize with 2 arguments: src and origin set to None.
+    """
+    Turns a Django template into something that is understood by xgettext. It
+    does so by translating the Django translation tags into standard gettext
+    function invocations.
+    """
+#ANNOTATION: docstring
+    from django.template import (Lexer, TOKEN_TEXT, TOKEN_VAR, TOKEN_BLOCK,
+            TOKEN_COMMENT, TRANSLATOR_COMMENT_MARK)
+#ANNOTATION: from django.template import Lexer, TOKEN_TEXT, TOKEN_VAR, TOKEN_BLOCK, TOKEN_COMMENT and TRANSLATOR_COMMENT_MARK.
+    src = force_text(src, settings.FILE_CHARSET)
+#ANNOTATION: call the function force_text with 2 arguments: src and settings.FILE_CHARSET.
+    out = StringIO('')
+#ANNOTATION: out is an instance of StringIO class, created with an empty string as an argument.
+    message_context = None
+#ANNOTATION: message_context is None.
+    intrans = False
+#ANNOTATION: intrans is boolean False.
+    inplural = False
+#ANNOTATION: inplural is boolean False.
+    trimmed = False
+#ANNOTATION: trimmed is boolean False.
+    singular = []
+#ANNOTATION: singular is an empty list.
+    plural = []
+#ANNOTATION: plural is an empty list.
+    incomment = False
+#ANNOTATION: incomment is boolean False.
+    comment = []
+#ANNOTATION: comment is an empty list.
+    lineno_comment_map = {}
+#ANNOTATION: lineno_comment_map is an dictionary.
+    comment_lineno_cache = None
+#ANNOTATION: comment_lineno_cache is None.
+
+    def join_tokens(tokens, trim=False):
+#ANNOTATION: define the function join_tokens with 2 arguments: tokens and trim set to boolean False.
+        message = ''.join(tokens)
+#ANNOTATION: join tokens elements into a string, substitute it for message.
+        if trim:
+#ANNOTATION: if trim is true,
+            message = trim_whitespace(message)
+#ANNOTATION: call the function trim_whitespace with an argument message, substitute the result for message.
+        return message
+#ANNOTATION: return message.
+
+    for t in Lexer(src, origin).tokenize():
+#ANNOTATION: instantiate Lexer class with 2 argumets src and origin, call the method tokenize from it, for every t in the result,
+        if incomment:
+#ANNOTATION: if incomment is true,
+            if t.token_type == TOKEN_BLOCK and t.contents == 'endcomment':
+#ANNOTATION: if t.token_type equals TOKEN_BLOCK and t.contents equals 'endcomment',
+                content = ''.join(comment)
+#ANNOTATION: join comment elements into a string, substitute it for content.
+                translators_comment_start = None
+#ANNOTATION: translators_comment_start is None.
+                for lineno, line in enumerate(content.splitlines(True)):
+#ANNOTATION: for every lineno and line is enumerated result of the method content.splitlines, called with an argument boolean True,
+                    if line.lstrip().startswith(TRANSLATOR_COMMENT_MARK):
+#ANNOTATION: call the method line.lstrip, if the result starts with TRANSLATOR_COMMENT_MARK,
+                        translators_comment_start = lineno
+#ANNOTATION: substitute lineno for translators_comment_start.
+                for lineno, line in enumerate(content.splitlines(True)):
+#ANNOTATION: for every lineno and line is enumerated result of the method content.splitlines, called with an argument boolean True,
+                    if translators_comment_start is not None and lineno >= translators_comment_start:
+#ANNOTATION: if translators_comment_start is not None and lineno is greater than or equal to translators_comment_start,
+                        out.write(' # %s' % line)
+#ANNOTATION: substitute '%s' in string ' # %s' with line, write it to out file.
+                    else:
+#ANNOTATION: if not,
+                        out.write(' #\n')
+#ANNOTATION: write string ' #\n' to out file.
+                incomment = False
+#ANNOTATION: incomment is boolean False.
+                comment = []
+#ANNOTATION: comment is an empty list.
+            else:
+#ANNOTATION: if not,
+                comment.append(t.contents)
+#ANNOTATION: append t.contents to comment.
+        elif intrans:
+#ANNOTATION: otherwise if intrans is true,
+            if t.token_type == TOKEN_BLOCK:
+#ANNOTATION: if t.token_type equals TOKEN_BLOCK,
+                endbmatch = endblock_re.match(t.contents)
+#ANNOTATION: call the function endblock_re.match with an argument t.contents, substitute the result for endbmatch.
+                pluralmatch = plural_re.match(t.contents)
+#ANNOTATION: call the function plural_re.match with an argument t.contents, substitute the result for pluralmatch. 
+                if endbmatch:
+#ANNOTATION: if endbmatch is true,
+                    if inplural:
+#ANNOTATION: if inplural is true,
+                        if message_context:
+#ANNOTATION: if message_context is true,
+                            out.write(' npgettext(%r, %r, %r,count) ' % (
+                                message_context,
+                                join_tokens(singular, trimmed),
+                                join_tokens(plural, trimmed)))
+#ANNOTATION: substitute '%r' in string ' npgettext(%r, %r, %r,count) ' with message_context, result of the function join_tokens,
+#ANNOTATION: called with 2 arguments: singular and trimmed and result of the function join_tokens called with 2 arguments: plural and trimmed,
+#ANNOTATION: write the result to out.
+                        else:
+#ANNOTATION: if not,
+                            out.write(' ngettext(%r, %r, count) ' % (
+                                join_tokens(singular, trimmed),
+                                join_tokens(plural, trimmed)))
+#ANNOTATION: substitute '%r' in string ' ngettext(%r, %r, count) ' with result of the function join_tokens, called with 2 arguments: singular,
+#ANNOTATION: and trimmed and result of the function join_tokens called with 2 arguments: plural and trimmed, write the result to out.
+                        for part in singular:
+#ANNOTATION: for every part in singular,
+                            out.write(blankout(part, 'S'))
+#ANNOTATION: call the method blankout with 2 arguments: part and 'S', write the result to out.
+                        for part in plural:
+#ANNOTATION: for every part in plural,
+                            out.write(blankout(part, 'P'))
+#ANNOTATION: call the method blankout with 2 arguments: part and 'P', write the result to out.
+                    else:
+#ANNOTATION: if not,
+                        if message_context:
+#ANNOTATION: if message_context is true,
+                            out.write(' pgettext(%r, %r) ' % (
+                                message_context,
+                                join_tokens(singular, trimmed)))
+#ANNOTATION: substitute '%r' in string ' pgettext(%r, %r) ' with message_context and result of the function join_tokens, 
+#ANNOTATION: called with 2 arguments: singular and trimmed, write the result to out.
+                        else:
+#ANNOTATION: if not,
+                            out.write(' gettext(%r) ' % join_tokens(singular,
+                                                                    trimmed))
+#ANNOTATION: substitute '%r' in string ' gettext(%r) ' with  result of the function join_tokens, called with 2 arguments: singular,
+#ANNOTATION: and trimmed, write the result to out.
+                        for part in singular:
+#ANNOTATION: for every part in singular,
+                            out.write(blankout(part, 'S'))
+#ANNOTATION: call the method blankout with 2 arguments: part and 'S', write the result to out.
+                    message_context = None
+#ANNOTATION: message_context is None.
+                    intrans = False
+#ANNOTATION: intrans is boolean False.
+                    inplural = False
+#ANNOTATION: inplural is boolean False.
+                    singular = []
+#ANNOTATION: singular is an empty list.
+                    plural = []
+#ANNOTATION: plural is an empty list.
+                elif pluralmatch:
+#ANNOTATION: otherwise if pluralmatch is true,
+                    inplural = True
+#ANNOTATION: inplural is boolean True.
+                else:
+#ANNOTATION: if not,
+                    filemsg = ''
+#ANNOTATION: filemsg is an empty string.
+                    if origin:
+#ANNOTATION: if origin is true,
+                        filemsg = 'file %s, ' % origin
+#ANNOTATION: filemsg is a string 'file %s, ', where '%s' is replaced with origin.
+                    raise SyntaxError("Translation blocks must not include other block tags: %s (%sline %d)" % (t.contents, filemsg, t.lineno))
+#ANNOTATION: raise an SyntaxError with an argument string "Translation blocks must not include other block tags: %s (%sline %d)",
+#ANNOTATION: formated with t.contents, filemsg and t.lineno.
+            elif t.token_type == TOKEN_VAR:
+#ANNOTATION: otherwise if t.token_type equals TOKEN_VAR,
+                if inplural:
+#ANNOTATION: if inplural is true,
+                    plural.append('%%(%s)s' % t.contents)
+#ANNOTATION: append string '%%(%s)s' to plural, where '%s' is replaced with t.contents.
+                else:
+#ANNOTATION: if not,
+                    singular.append('%%(%s)s' % t.contents)
+#ANNOTATION: append string '%%(%s)s' to singular, where '%s' is replaced with t.contents.
+            elif t.token_type == TOKEN_TEXT:
+#ANNOTATION: if t.token_type == TOKEN_TEXT:
+                contents = one_percent_re.sub('%%', t.contents)
+#ANNOTATION: call the method one_percent_re.sub with 2 arguments: string '%%' and t.contents, substitute the result for contents.
+                if inplural:
+#ANNOTATION: if inplural is true,
+                    plural.append(contents)
+#ANNOTATION: append contents to plural.
+                else:
+#ANNOTATION: if not,
+                    singular.append(contents)
+#ANNOTATION: append contents to singular.
+
+        else:
+#ANNOTATION: if not,
+            # Handle comment tokens (`{# ... #}`) plus other constructs on
+            # the same line:
+            if comment_lineno_cache is not None:
+#ANNOTATION: if comment_lineno_cache is not None,
+                cur_lineno = t.lineno + t.contents.count('\n')
+#ANNOTATION: count occurrences of '\n' in t.contents, add the result to t.lineno, substitute the result for cur_lineno.
+                if comment_lineno_cache == cur_lineno:
+#ANNOTATION: if comment_lineno_cache equals cur_lineno.
+                    if t.token_type != TOKEN_COMMENT:
+#ANNOTATION: if t.token_type is not equal to TOKEN_COMMENT,
+                        for c in lineno_comment_map[comment_lineno_cache]:
+#ANNOTATION: for every c in lineno_comment_map dictionary value under the comment_lineno_cache key,
+                            filemsg = ''
+#ANNOTATION: filemsg is an empty string.
+                            if origin:
+#ANNOTATION: if origin is true,
+                                filemsg = 'file %s, ' % origin
+#ANNOTATION: filemsg is a string 'file %s, ', where '%s' is replaced with origin.
+                            warn_msg = ("The translator-targeted comment '%s' "
+                                "(%sline %d) was ignored, because it wasn't the last item "
+                                "on the line.") % (c, filemsg, comment_lineno_cache)
+#ANNOTATION: warn_msg is a string "The translator-targeted comment '%s' (%sline %d) was ignored, because it wasn't the last item on the line.",
+#ANNOTATION: formated with c, filemsg and comment_lineno_cache.
+                            warnings.warn(warn_msg, TranslatorCommentWarning)
+#ANNOTATION: call the function warnings.warn with 2 arguments: warn_msg and TranslatorCommentWarning.
+                        lineno_comment_map[comment_lineno_cache] = []
+#ANNOTATION: value under the comment_lineno_cache key of the lineno_comment_map dictionary is an empty string.
+                else:
+#ANNOTATION: if not,
+                    out.write('# %s' % ' | '.join(lineno_comment_map[comment_lineno_cache]))
+#ANNOTATION: join lineno_comment_map dictionary value under the comment_lineno_cache key into a string, separated with ' | ', 
+#ANNOTATION: format with it a string '# %s', write it to out.
+                comment_lineno_cache = None
+#ANNOTATION: comment_lineno_cache is None,
+
+            if t.token_type == TOKEN_BLOCK:
+#ANNOTATION:  if t.token_type equals TOKEN_BLOCK,
+                imatch = inline_re.match(t.contents)
+#ANNOTATION: call the function inline_re.match with an argument t.contents, substitute the result for imatch.
+                bmatch = block_re.match(t.contents)
+#ANNOTATION: call the function block_re.match with an argument t.contents, substitute the result for bmatch.
+                cmatches = constant_re.findall(t.contents)
+#ANNOTATION: call the function constant_re.findall with an argument t.contents, substitute the result for cmatches.
+                if imatch:
+#ANNOTATION: if imatch is true,
+                    g = imatch.group(1)
+#ANNOTATION: call the method imatch.group with an argument integer 1, substitute the result for g.
+                    if g[0] == '"':
+#ANNOTATION: if first element of g equals a string '"',
+                        g = g.strip('"')
+#ANNOTATION: strip g of '"' from both ends,
+                    elif g[0] == "'":
+#ANNOTATION: otherwise if first element of g equals a string "'",
+                        g = g.strip("'")
+#ANNOTATION: strip g of "'" from both ends,
+                    g = one_percent_re.sub('%%', g)
+#ANNOTATION: call the method one_percent_re.sub with 2 arguments: string '%%' and g, substitute the result for .
+                    if imatch.group(2):
+#ANNOTATION: call the method imatch.group with an argument integer 1, if it evaluates to true,
+                        # A context is provided
+                        context_match = context_re.match(imatch.group(2))
+#ANNOTATION: call the method imatch.group with an argument integer 2, use the result as an argument for the call to the method context_re.match,
+#ANNOTATION: substitute the result for context_match.
+                        message_context = context_match.group(1)
+#ANNOTATION: call the method context_match.group with an argument integer 1, substitute the result for message_context.
+                        if message_context[0] == '"':
+#ANNOTATION: if first element of message_context equals to character '"',
+                            message_context = message_context.strip('"')
+#ANNOTATION: strip message_context of '"' characters from both ends, substitute the result for message_context.
+                        elif message_context[0] == "'":
+#ANNOTATION: otherwise if, first element of message_context is equal to "'",
+                            message_context = message_context.strip("'")
+#ANNOTATION: strip message_context of "'" characters from both ends, substitute the result for message_context.
+                        out.write(' pgettext(%r, %r) ' % (message_context, g))
+#ANNOTATION: format string ' pgettext(%r, %r) ' with message_context and g, write it to out.
+                        message_context = None
+#ANNOTATION: message_context is None.
+                    else:
+#ANNOTATION: if not,
+                        out.write(' gettext(%r) ' % g)
+#ANNOTATION: format string ' gettext(%r) ' with g, write it to out.
+                elif bmatch:
+#ANNOTATION: otherwise if bmatch is true,
+                    for fmatch in constant_re.findall(t.contents):
+#ANNOTATION: call the method constant_re.findall with an argument t.contents, for every fmatch in the result,
+                        out.write(' _(%s) ' % fmatch)
+#ANNOTATION: format string ' _(%s) ', with fmatch, write it to out.
+                    if bmatch.group(1):
+#ANNOTATION: call the method bmatch.group with an argument integer 1, if it evaluates to true,
+                        # A context is provided
+                        context_match = context_re.match(bmatch.group(1))
+#ANNOTATION: call the method bmatch.group with an argument integer 1, use the result as an argument for the call to the function context_re.match,
+#ANNOTATION: substitute the result for context_match.
+                        message_context = context_match.group(1)
+#ANNOTATION: call the method context_match.group with an argument integer 1, substitute the result for message_context.
+                        if message_context[0] == '"':
+#ANNOTATION: if first element of message_context equals to character '"',
+                            message_context = message_context.strip('"')
+#ANNOTATION: strip message_context of '"' characters from both ends, substitute the result for message_context.
+                        elif message_context[0] == "'":
+#ANNOTATION: otherwise if first element of message_context equals to character "'",
+                            message_context = message_context.strip("'")
+#ANNOTATION: strip message_context of "'" characters from both ends, substitute the result for message_context.
+                    intrans = True
+#ANNOTATION: intrans is boolean True.
+                    inplural = False
+#ANNOTATION: inplural is boolean False.
+                    trimmed = 'trimmed' in t.split_contents()
+#ANNOTATION: if string 'trimmed' is contained in result of the method t.split_contents, trimmed is boolean True, otherwise is boolean False.
+                    singular = []
+#ANNOTATION: singular is an empty list.
+                    plural = []
+#ANNOTATION: plural is an empty list.
+                elif cmatches:
+#ANNOTATION: otherwise if cmatches is true,
+                    for cmatch in cmatches:
+#ANNOTATION: for every cmatch in cmatches,
+                        out.write(' _(%s) ' % cmatch)
+#ANNOTATION: format string ' _(%s) ', with fmatch, write it to out.
+                elif t.contents == 'comment':
+#ANNOTATION: otherwise if t.contents equals a string 'comment',
+                    incomment = True
+#ANNOTATION: incomment is boolean True.
+                else:
+#ANNOTATION: if not,
+                    out.write(blankout(t.contents, 'B'))
+#ANNOTATION: call the function blankout with 2 arguments: t.contents and 'B', write the result to out.
+            elif t.token_type == TOKEN_VAR:
+#ANNOTATION: otherwise if t.token_type equals TOKEN_VAR,
+                parts = t.contents.split('|')
+#ANNOTATION: split t.contents by '|' symbol, substitute the result for parts,
+                cmatch = constant_re.match(parts[0])
+#ANNOTATION: call the method constant_re.match with first element of parts as an argument, substitute the result for cmatch.
+                if cmatch:
+#ANNOTATION: if cmatch is true,
+                    out.write(' _(%s) ' % cmatch.group(1))
+#ANNOTATION: call the method cmatch.group with an argument integer 1, format with the result string ' _(%s) ', write it to out.
+                for p in parts[1:]:
+#ANNOTATION: for every p in parts without the first element,
+                    if p.find(':_(') >= 0:
+#ANNOTATION: find index of the occurrence of string ':_(' in p, if its greater or equal to integer 0,
+                        out.write(' %s ' % p.split(':', 1)[1])
+#ANNOTATION: split p into two parts at the first ':', use the second element of the result to format string ' _(%s) ', write it to out.
+                    else:
+#ANNOTATION: if not,
+                        out.write(blankout(p, 'F'))
+#ANNOTATION: call the function blankout with 2 arguments: p and 'F', write the result to out.
+            elif t.token_type == TOKEN_COMMENT:
+#ANNOTATION: otherwise if t.token_type equals TOKEN_COMMENT,
+                if t.contents.lstrip().startswith(TRANSLATOR_COMMENT_MARK):
+#ANNOTATION: strip t.contents from the left side of whitespaces, if the result starts with TRANSLATOR_COMMENT_MARK,
+                    lineno_comment_map.setdefault(t.lineno,
+                                                  []).append(t.contents)
+#ANNOTATION: call the method lineno_comment_map.setdefault with 2 arguments: t.lineno and an empty list, append t.contents to the result.
+                    comment_lineno_cache = t.lineno
+#ANNOTATION: substitute t.lineno for comment_lineno_cache.
+            else:
+#ANNOTATION: if not,
+                out.write(blankout(t.contents, 'X'))
+#ANNOTATION: call the function blankout with 2 arguments: t.contents and 'X', write the result to out.
+    return out.getvalue()
+#ANNOTATION: call the method out.getvalue, return the result.
+
+
+def parse_accept_lang_header(lang_string):
+#ANNOTATION: define the function parse_accept_lang_header with an argument lang_string.
+    """
+    Parses the lang_string, which is the body of an HTTP Accept-Language
+    header, and returns a list of (lang, q-value), ordered by 'q' values.
+
+    Any format errors in lang_string results in an empty list being returned.
+    """
+#ANNOTATION: docstring
+    result = []
+#ANNOTATION: result is an empty list.
+    pieces = accept_language_re.split(lang_string.lower())
+#ANNOTATION: convert lang_string to lowercase, split by the result string accept_language_re, substitute the result for pieces.
+    if pieces[-1]:
+#ANNOTATION: if last element of pieces is true,
+        return []
+#ANNOTATION: return an empty list.
+    for i in range(0, len(pieces) - 1, 3):
+#ANNOTATION: for every i in range of integers from integer 0 to the length of pieces decremented by one, with step of integer 3, 
+        first, lang, priority = pieces[i:i + 3]
+#ANNOTATION: substitute 3 successive elements starting from the i-th index of pieces for first, lang and priority, respectively.
+        if first:
+#ANNOTATION: if first is true,
+            return []
+#ANNOTATION: return an empty list.
+        if priority:
+#ANNOTATION: if priority is true,
+            try:
+#ANNOTATION: try,
+                priority = float(priority)
+#ANNOTATION: convert priority into a floating point integer, substitute it for priority.
+            except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+                return []
+#ANNOTATION: return an empty list.
+        if not priority:        # if priority is 0.0 at this point make it 1.0
+#ANNOTATION: if priority is false,
+            priority = 1.0
+#ANNOTATION: priority is floating point number 1.0.
+        result.append((lang, priority))
+#ANNOTATION: append a tuple with 2 entries lang and priority to result.
+    result.sort(key=lambda k: k[1], reverse=True)
+#ANNOTATION: sort result in reversed order by the key as lambda function with an argument k and reeturn value second element of k.
+    return result
+#ANNOTATION: return result.

@@ -1,0 +1,554 @@
+import cgi
+#ANNOTATION: import module cgi.
+import errno
+#ANNOTATION: import module errno.
+import mimetypes
+#ANNOTATION: import module mimetypes.
+import os
+#ANNOTATION: import module os.
+import posixpath
+#ANNOTATION: import module posixpath.
+import re
+#ANNOTATION: import module re.
+import shutil
+#ANNOTATION: import module shutil.
+import stat
+#ANNOTATION: import module stat.
+import sys
+#ANNOTATION: import module sys.
+import tempfile
+#ANNOTATION: import module tempfile.
+
+from os import path
+#ANNOTATION: from os import path into default name space.
+
+import django
+#ANNOTATION: import module django.
+from django.template import Template, Context
+#ANNOTATION: from django.template import Template and Context into default name space.
+from django.utils import archive
+#ANNOTATION: from django.utils import archive into default name space.
+from django.utils.six.moves.urllib.request import urlretrieve
+#ANNOTATION: from django.utils.six.moves.urllib.request import urlretrieve into default name space.
+from django.utils._os import rmtree_errorhandler
+#ANNOTATION: from django.utils._os import rmtree_errorhandle into default name space.
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+from django.core.management.utils import handle_extensions
+#ANNOTATION: from django.core.management.utils import handle_extensions into default name space.
+
+
+_drive_re = re.compile('^([a-z]):', re.I)
+#ANNOTATION: call the function re.compile with 2 arguments: string '^([a-z]):' and re.I, substitute the result for _drive_re.
+_url_drive_re = re.compile('^([a-z])[:|]', re.I)
+#ANNOTATION: call the function re.compile with 2 arguments: string '^([a-z])[:|]' and re.I, substitute the result for _url_drive_re.
+
+
+class TemplateCommand(BaseCommand):
+#ANNOTATION: derive the class TemplateCommand from the BaseCommand base class. 
+    """
+    Copies either a Django application layout template or a Django project
+    layout template into the specified directory.
+
+    :param style: A color style object (see django.core.management.color).
+    :param app_or_project: The string 'app' or 'project'.
+    :param name: The name of the application or project.
+    :param directory: The directory to which the template should be copied.
+    :param options: The additional variables passed to project or app templates
+    """
+#ANNOTATION: docstring
+    requires_system_checks = False
+#ANNOTATION: requires_system_checks is boolean False.
+    # Can't import settings during this command, because they haven't
+    # necessarily been created.
+    can_import_settings = False
+#ANNOTATION: can_import_settings is boolean False.
+    # The supported URL schemes
+    url_schemes = ['http', 'https', 'ftp']
+#ANNOTATION: url_schemes is list of strings 'http', 'https' and 'ftp'.
+    # Can't perform any active locale changes during this command, because
+    # setting might not be available at all.
+    leave_locale_alone = True
+#ANNOTATION: leave_locale_alone is boolean True.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_aguments with arguments self and parser.
+        parser.add_argument('name', help='Name of the application or project.')
+#ANNOTATION: call the method parser.add_argument with 2 arguments: string 'name' and help set to string 'Name of the application or project.'.
+        parser.add_argument('directory', nargs='?', help='Optional destination directory')
+#ANNOTATION: call the method parser.add_argument with 3 arguments: string 'directory', nargs set to '?' and help set to string 'Name of the application or project.'.
+        parser.add_argument('--template',
+            help='The path or URL to load the template from.')
+#ANNOTATION: call the method parser.add_argument with 2 arguments: string '--template' and help set to string 'The path or URL to load the template from.'.
+        parser.add_argument('--extension', '-e', dest='extensions',
+            action='append', default=['py'],
+            help='The file extension(s) to render (default: "py"). '
+                 'Separate multiple extensions with commas, or use '
+                 '-e multiple times.')
+#ANNOTATION: call the method parser.add_argument with 6 arguments: string '--extension', string '-e', dest set to string 'extensions',
+#ANNOTATION: action set to 'append', default is a list containing string 'py' and help set to string:
+#ANNOTATION: 'The file extension(s) to render (default: "py"). Separate multiple extensions with commas, or use -e multiple times.'.
+        parser.add_argument('--name', '-n', dest='files',
+            action='append', default=[],
+            help='The file name(s) to render. '
+                 'Separate multiple extensions with commas, or use '
+                 '-n multiple times.')
+#ANNOTATION: call the method parser.add_argument with 6 arguments: string '--name', string '-n', dest set to string 'files',
+#ANNOTATION: action set to string 'append', default as an empty list and help set to a string: 
+#ANNOTATION: 'The file name(s) to render. Separate multiple extensions with commas, or use -n multiple times.'.
+
+    def handle(self, app_or_project, name, target=None, **options):
+#ANNOTATION: define the method handle with 5 arguments: self, app_or_project, name, target set to None and unpacked dictionary options.
+        self.app_or_project = app_or_project
+#ANNOTATION: substitute app_or_project for self.app_or_project.
+        self.paths_to_remove = []
+#ANNOTATION: self.paths_to_remove is an empty list.
+        self.verbosity = options['verbosity']
+#ANNOTATION: substitute value under the 'verbosity' key of the options dictionary for self.verbosity.
+
+        self.validate_name(name, app_or_project)
+#ANNOTATION: call the method self.validate_name with 2 arguments name and app_or_project. 
+
+        # if some directory is given, make sure it's nicely expanded
+        if target is None:
+#ANNOTATION: if target is None,
+            top_dir = path.join(os.getcwd(), name)
+#ANNOTATION: join the current working directory and name into a file path, substitute it for top_dir.
+            try:
+#ANNOTATION: try,
+                os.makedirs(top_dir)
+#ANNOTATION: make a directory top_dir.
+            except OSError as e:
+#ANNOTATION: if OSError renamed to e, exception is caught,
+                if e.errno == errno.EEXIST:
+#ANNOTATION: if e.errno equals errno.EEXIST,
+                    message = "'%s' already exists" % top_dir
+#ANNOTATION: replace '%s' in string "'%s' already exists" with top_dir, substitute it for message.
+                else:
+#ANNOTATION: if not,
+                    message = e
+#ANNOTATION: substitute e for message.
+                raise CommandError(message)
+#ANNOTATION: raise an CommandError exception with an argument message. 
+        else:
+#ANNOTATION: if not,
+            top_dir = os.path.abspath(path.expanduser(target))
+#ANNOTATION: ge the absolute path of the return value of the function path.expanduser with the argument target, substitute it for top_dir.
+            if not os.path.exists(top_dir):
+#ANNOTATION: if file path top_dir doesnt exists,
+                raise CommandError("Destination directory '%s' does not "
+                                   "exist, please create it first." % top_dir)
+#ANNOTATION: raise an CommandError exception with an argument string "Destination directory '%s' does not exist, please create it first.", 
+#ANNOTATION: where '%s' is replaced with top_dir.
+
+        extensions = tuple(
+            handle_extensions(options['extensions'], ignored=()))
+#ANNOTATION: call the function handle_extensions with 2 arguments: value under the 'extensions' key of the options dictionary,
+#ANNOTATION: and ignored as an empty tuple, convert the result into a tuple and substitute it for extensions.
+        extra_files = []
+#ANNOTATION: extra_files is an empty list.
+        for file in options['files']:
+#ANNOTATION: for every file in value under the 'files' key of the options dictionary.
+            extra_files.extend(map(lambda x: x.strip(), file.split(',')))
+#ANNOTATION: split file by ',' character, apply on its every element a lambda function which takes an argument x,
+#ANNOTATION: and returns x striped of the surrounding whitespaces, extend the extra_files with the mapped list.
+        if self.verbosity >= 2:
+#ANNOTATION: if self.verbosity is greater or equal to integer 2,
+            self.stdout.write("Rendering %s template files with "
+                              "extensions: %s\n" %
+                              (app_or_project, ', '.join(extensions)))
+#ANNOTATION: call the method self.stdout.write, with an argument string "Rendering %s template files with extensions: %s\n", 
+#ANNOTATION: where '%s' is replaced with app_or_project and extensions joined into a string, separated by a string ', '.
+            self.stdout.write("Rendering %s template files with "
+                              "filenames: %s\n" %
+                              (app_or_project, ', '.join(extra_files)))
+#ANNOTATION: call the method self.stdout.write, with an argument string "Rendering %s template files with filenames: %s\n", 
+#ANNOTATION: where '%s' is replaced with app_or_project and extra_files joined into a string, separated by a string ', '.
+
+        base_name = '%s_name' % app_or_project
+#ANNOTATION: append string '_name' to app_or_project, substitute it for base_name. 
+        base_subdir = '%s_template' % app_or_project
+#ANNOTATION: append string '_template' to app_or_project, substitute it for base_subdir. 
+        base_directory = '%s_directory' % app_or_project
+#ANNOTATION: append string '_directory' to app_or_project, substitute it for base_directory. 
+        if django.VERSION[-2] != 'final':
+#ANNOTATION: if second last element of django.VERSION is not equal to a string 'final',
+            docs_version = 'dev'
+#ANNOTATION: docs_version is a string 'dev'.
+        else:
+#ANNOTATION: if not,
+            docs_version = '%d.%d' % django.VERSION[:2]
+#ANNOTATION: convert first 2 elements of django.VERSION into a strings, join them together, separated by a '.', substitute the result for docs_version.
+
+        context = Context(dict(options, **{
+            base_name: name,
+            base_directory: top_dir,
+            'docs_version': docs_version,
+        }), autoescape=False)
+#ANNOTATION: context is an instance of a class Context, created with 2 arguments: dictionary created by apllying options to unpacked dictionary containing 3 entries: 
+#ANNOTATION: name for base_name, top_dir for base_directory and docs_version for 'docs_version' and autoescape set to boolean False.
+
+        # Setup a stub settings environment for template rendering
+        from django.conf import settings
+#ANNOTATION: from django.conf import settings into a default name space,
+        if not settings.configured:
+#ANNOTATION: if settings.configured is false,
+            settings.configure()
+#ANNOTATION: call the method settings.configure.
+
+        template_dir = self.handle_template(options['template'],
+                                            base_subdir)
+#ANNOTATION: call the method self.handle_template with 2 arguments: value under the 'template' key of the options dictionary and base_subdir.
+        prefix_length = len(template_dir) + 1
+#ANNOTATION: increment length of template_dir by one and substitute it for prefix_length.
+
+        for root, dirs, files in os.walk(template_dir):
+#ANNOTATION: for every root, dirs and files in subdirectory tree starting from the base dir template_dir,
+
+            path_rest = root[prefix_length:]
+#ANNOTATION: slice root starting from the prefix_length index to the end, substitute it for path_rest.
+            relative_dir = path_rest.replace(base_name, name)
+#ANNOTATION: call the method path_rest.replace with arguments base_name and name, substitute the result for relative_dir.
+            if relative_dir:
+#ANNOTATION: if relative_dir is true,
+                target_dir = path.join(top_dir, relative_dir)
+#ANNOTATION: join top_dir and relative_dir into a file path, substitute it for target_dir.
+                if not path.exists(target_dir):
+#ANNOTATION: if target_dir path doesnt exists,
+                    os.mkdir(target_dir)
+#ANNOTATION: make target_dir directory,
+
+            for dirname in dirs[:]:
+#ANNOTATION: for dirname in dirs,
+                if dirname.startswith('.') or dirname == '__pycache__':
+#ANNOTATION: if dirname starts with character '.' or dirname equals a string '__pycache__',
+                    dirs.remove(dirname)
+#ANNOTATION: remove dirname key from dirs.
+
+            for filename in files:
+#ANNOTATION: for every filename in files,
+                if filename.endswith(('.pyo', '.pyc', '.py.class')):
+#ANNOTATION: if filename ends with '.pyo', '.pyc' or '.py.class',
+                    # Ignore some files as they cause various breakages.
+                    continue
+#ANNOTATION: skip this loop iteration,
+                old_path = path.join(root, filename)
+#ANNOTATION: join root and filename into a file path, substitute it for old_path.
+                new_path = path.join(top_dir, relative_dir,
+                                     filename.replace(base_name, name))
+#ANNOTATION: join top_dir, relative_dir and return value of the function filename.replace called with 2 arguments: base_name and name,
+#ANNOTATION: into a file path, substitute it for new_path.
+                if path.exists(new_path):
+#ANNOTATION: if new_path file path exists, 
+                    raise CommandError("%s already exists, overlaying a "
+                                       "project or app into an existing "
+                                       "directory won't replace conflicting "
+                                       "files" % new_path)
+#ANNOTATION: raise a CommandError exception with an argument:
+#ANNOTATION: string "%s already exists, overlaying a project or app into an existing directory won't replace conflicting files", 
+#ANNOTATION: where '%s" is replaced with new_path.
+                                       
+
+                # Only render the Python files, as we don't want to
+                # accidentally render Django templates files
+                with open(old_path, 'rb') as template_file:
+#ANNOTATION: open old_path file in 'rb' mode, with file descriptor renamed to template_file,
+                    content = template_file.read()
+#ANNOTATION: call the method template_file.read, substitute it for content.
+                if filename.endswith(extensions) or filename in extra_files:
+#ANNOTATION: if filename ends with extensions or filename is contained in extra_files,
+                    content = content.decode('utf-8')
+#ANNOTATION: call the method content.decode with an argument string 'utf-8', substitute it for content.
+                    template = Template(content)
+#ANNOTATION: template is an instance of Template class, created with an argument content.
+                    content = template.render(context)
+#ANNOTATION: call the method template.render with an argument context, substitute it for content.
+                    content = content.encode('utf-8')
+#ANNOTATION: call the method content.encode with an argument string 'utf-8', substitute it for content.
+                with open(new_path, 'wb') as new_file:
+#ANNOTATION: open new_path file in 'wb' mode, with file descriptor renamed to new_file,
+                    new_file.write(content)
+#ANNOTATION: write content to new_file file.
+
+                if self.verbosity >= 2:
+#ANNOTATION: if self.verbosity is greater or equal to integer 2,
+                    self.stdout.write("Creating %s\n" % new_path)
+#ANNOTATION: replace '%s' in string "Creating %s\n" with new_path, write it to the self.stdout stream.
+                try:
+#ANNOTATION: try,
+                    shutil.copymode(old_path, new_path)
+#ANNOTATION: call the function shutil.copymode with arguments old_path and new_path.
+                    self.make_writeable(new_path)
+#ANNOTATION: call the method self.make_writeable with an argument new_path.
+                except OSError:
+#ANNOTATION: if OSError exception is caught,
+                    self.stderr.write(
+                        "Notice: Couldn't set permission bits on %s. You're "
+                        "probably using an uncommon filesystem setup. No "
+                        "problem." % new_path, self.style.NOTICE)
+#ANNOTATION: replace '%s' in string "Notice: Couldn't set permission bits on %s. You're probably using an uncommon filesystem setup. No problem.",
+#ANNOTATION: with new_path and self.style.NOTICE, respectively, write it to self.stderr stream.
+
+        if self.paths_to_remove:
+#ANNOTATION: if self.paths_to_remove is true,
+            if self.verbosity >= 2:
+#ANNOTATION: if self.verbosity is greater or equal to integer 2,
+                self.stdout.write("Cleaning up temporary files.\n")
+#ANNOTATION: write string "Cleaning up temporary files.\n" to self.stdout stream.
+            for path_to_remove in self.paths_to_remove:
+#ANNOTATION: for every path_to_remove in self.paths_to_remove,
+                if path.isfile(path_to_remove):
+#ANNOTATION: if path_to_remove is file,
+                    os.remove(path_to_remove)
+#ANNOTATION: remove file path_to_remove,
+                else:
+#ANNOTATION: if not,
+                    shutil.rmtree(path_to_remove,
+                                  onerror=rmtree_errorhandler)
+#ANNOTATION: call the function shutil.rmtree with 2 arguments: path_to_remove and onerror set to rmtree_errorhandler.
+
+    def handle_template(self, template, subdir):
+#ANNOTATION: define the method handle_template with 3 arguments: self, template and subdir.
+        """
+        Determines where the app or project templates are.
+        Use django.__path__[0] as the default because we don't
+        know into which directory Django has been installed.
+        """
+#ANNOTATION: docstring
+        if template is None:
+#ANNOTATION: if template is None,
+            return path.join(django.__path__[0], 'conf', subdir)
+#ANNOTATION: join first element of django.__path__, string 'conf' and subdir into a valid file path, return it.
+        else:
+#ANNOTATION: if not,
+            if template.startswith('file://'):
+#ANNOTATION: if template starts with a string 'file://',
+                template = template[7:]
+#ANNOTATION: remove first 7 elements form template.
+            expanded_template = path.expanduser(template)
+#ANNOTATION: call the method path.expanduser with an argument template, substitute it for expanded_template.
+            expanded_template = path.normpath(expanded_template)
+#ANNOTATION: call the method path.normpath with an argument expanded_template, substitute it for expanded_template.
+            if path.isdir(expanded_template):
+#ANNOTATION: if expanded_template is a directory,
+                return expanded_template
+#ANNOTATION: return expanded_template.
+            if self.is_url(template):
+#ANNOTATION: call the method self.is_url with an argument template, if it evaluates to true,
+                # downloads the file and returns the path
+                absolute_path = self.download(template)
+#ANNOTATION: call the method self.download with an argument template, substitute the result for absolute_path.
+            else:
+#ANNOTATION: if not,
+                absolute_path = path.abspath(expanded_template)
+#ANNOTATION: get the absolute file path of the expanded_template, substitute it for absolute_path.
+            if path.exists(absolute_path):
+#ANNOTATION: if file path absolute_path exists,
+                return self.extract(absolute_path)
+#ANNOTATION: call the method self.extract with an argument absolute_path, return the result. 
+
+        raise CommandError("couldn't handle %s template %s." %
+                           (self.app_or_project, template))
+#ANNOTATION: raise an CommandError exception with an argument string "couldn't handle %s template %s.", replace '%s' with self.app_or_project and template.
+
+    def validate_name(self, name, app_or_project):
+#ANNOTATION: define validate_name with 3 arguments: self, name and app_or_project.
+        if name is None:
+#ANNOTATION: if name is None,
+            raise CommandError("you must provide %s %s name" % (
+                "an" if app_or_project == "app" else "a", app_or_project))
+#ANNOTATION: raise an CommandError exception with an argument string "you must provide %s %s name", where '%s' is replaced with string 'an',
+#ANNOTATION: and app_or_project if app_or_project equals to string 'app', if not, it is replaced with 'a' and app_or_project.
+        # If it's not a valid directory name.
+        if not re.search(r'^[_a-zA-Z]\w*$', name):
+#ANNOTATION: call the method re.search with 2 arguments: raw string '^[_a-zA-Z]\w*$' and name, if it evaluates to false,
+            # Provide a smart error message, depending on the error.
+            if not re.search(r'^[_a-zA-Z]', name):
+#ANNOTATION: call the method re.search with 2 arguments: raw string '^[_a-zA-Z]' and name, if it evaluates to false,
+                message = 'make sure the name begins with a letter or underscore'
+#ANNOTATION: message is a string 'make sure the name begins with a letter or underscore'.
+            else:
+#ANNOTATION: if not,
+                message = 'use only numbers, letters and underscores'
+#ANNOTATION: message is a string 'use only numbers, letters and underscores'.
+            raise CommandError("%r is not a valid %s name. Please %s." %
+                               (name, app_or_project, message))
+#ANNOTATION: raise an CommandError with an argument string "%r is not a valid %s name. Please %s.", were '%r' is replaced with name,
+#ANNOTATION: and '%s' is replaced with app_or_project and message, respectively.
+
+    def download(self, url):
+#ANNOTATION: define the method download with arguments self and url.
+        """
+        Downloads the given URL and returns the file name.
+        """
+#ANNOTATION: docstring
+        def cleanup_url(url):
+#ANNOTATION: define the function cleanup_url with an argument url. 
+            tmp = url.rstrip('/')
+#ANNOTATION: strip url of surrounding '/' characters, substitute it for tmp.
+            filename = tmp.split('/')[-1]
+#ANNOTATION: split tmp at '/' character, substitute the last element of the result for filename.
+            if url.endswith('/'):
+#ANNOTATION: if url ends with '/' character,
+                display_url = tmp + '/'
+#ANNOTATION: append '/' to tmp, substitute it for display_url.
+            else:
+#ANNOTATION: if not,
+                display_url = url
+#ANNOTATION: substitute url for display_url.
+            return filename, display_url
+#ANNOTATION: return filename and display_url.
+
+        prefix = 'django_%s_template_' % self.app_or_project
+#ANNOTATION: replace '%s' in string 'django_%s_template_' with self.app_or_project.
+        tempdir = tempfile.mkdtemp(prefix=prefix, suffix='_download')
+#ANNOTATION: call the function tempfile.mkdtemp with arguments: prefix set to prefix and suffix  set to string '_download'.
+        self.paths_to_remove.append(tempdir)
+#ANNOTATION: append the tempdir to self.paths_to_remove.
+        filename, display_url = cleanup_url(url)
+#ANNOTATION: call the function cleanup_url with an argument url, assign the result to filename and display_url, respectively.
+
+        if self.verbosity >= 2:
+#ANNOTATION: if self.verbosity is greater or equal to integer 2,
+            self.stdout.write("Downloading %s\n" % display_url)
+#ANNOTATION: replace '%s' in string "Downloading %s\n", with display_url, write it to self.stdout stream.
+        try:
+#ANNOTATION: try,
+            the_path, info = urlretrieve(url, path.join(tempdir, filename))
+#ANNOTATION: call the function urlretrieve with arguments url and tempdir and filename joined into a file path, assign the result to the_path, #ANNOTATION: and info, respectively.
+        except IOError as e:
+#ANNOTATION: if IOErro, renamed to e, exception is caught,
+            raise CommandError("couldn't download URL %s to %s: %s" %
+                               (url, filename, e))
+#ANNOTATION: raise an CommandError exception with an argument string "couldn't download URL %s to %s: %s", where '%s' is replaced with url, 
+#ANNOTATION: filename and e.
+
+        used_name = the_path.split('/')[-1]
+#ANNOTATION: split the_path at the '/' character, substitute last element of the result for used_name.
+
+        # Trying to get better name from response headers
+        content_disposition = info.get('content-disposition')
+#ANNOTATION: get the value under the 'content-disposition' key of the info dictionary, substitute it for content_disposition.
+        if content_disposition:
+#ANNOTATION: if content_disposition is true,
+            _, params = cgi.parse_header(content_disposition)
+#ANNOTATION: call the method cgi.parse_header with an argument content_disposition, assign the result to _ and params, respectively.
+            guessed_filename = params.get('filename') or used_name
+#ANNOTATION: get the value under the 'filename' key of the params dictionary, if the key exists substitute it for guessed_filename,
+#ANNOTATION: if not, substitute used_name for guessed_filename.
+        else:
+#ANNOTATION: if not,
+            guessed_filename = used_name
+#ANNOTATION: substitute used_name for guessed_filename. 
+
+        # Falling back to content type guessing
+        ext = self.splitext(guessed_filename)[1]
+#ANNOTATION: call the method self.splitext with an argument guessed_filename, substitute the second element of the result for ext. 
+        content_type = info.get('content-type')
+#ANNOTATION: get the value under the 'content-type' key of the info dictionary, substitute it for content_type.
+        if not ext and content_type:
+#ANNOTATION: if ext is false and content_type is true,
+            ext = mimetypes.guess_extension(content_type)
+#ANNOTATION: call the method mimetypes.guess_extension with an argument content_type, substitute result for ext.
+            if ext:
+#ANNOTATION: if ext is true,
+                guessed_filename += ext
+#ANNOTATION: append ext to guessed_filename.
+
+        # Move the temporary file to a filename that has better
+        # chances of being recognized by the archive utils
+        if used_name != guessed_filename:
+#ANNOTATION: if used_name is not equal to guessed_filename, 
+            guessed_path = path.join(tempdir, guessed_filename)
+#ANNOTATION: join tempdir and guessed_filename into a file path, substitute it for guessed_path.
+            shutil.move(the_path, guessed_path)
+#ANNOTATION: call the function shutil.move with arguments the_path and guessed_path.
+            return guessed_path
+#ANNOTATION: return guessed_path.
+
+        # Giving up
+        return the_path
+#ANNOTATION: return the_path.
+
+    def splitext(self, the_path):
+#ANNOTATION: define the method splitext with arguments self and the_path.
+        """
+        Like os.path.splitext, but takes off .tar, too
+        """
+#ANNOTATION: docstring
+        base, ext = posixpath.splitext(the_path)
+#ANNOTATION: call the method posixpath.splitext with an argument the_path.
+        if base.lower().endswith('.tar'):
+#ANNOTATION: convert base to lowercase, if it ends with string '.tar',
+            ext = base[-4:] + ext
+#ANNOTATION: take last four elements of base and append ext to it, substitute result for ext.
+            base = base[:-4]
+#ANNOTATION: substitute last four elements of base for base.
+        return base, ext
+#ANNOTATION: return base and ext.
+
+    def extract(self, filename):
+#ANNOTATION: define the function with arguments self and filename.
+        """
+        Extracts the given file to a temporarily and returns
+        the path of the directory with the extracted content.
+        """
+#ANNOTATION: docstring
+        prefix = 'django_%s_template_' % self.app_or_project
+#ANNOTATION: replace '%s' in string 'django_%s_template_' with self.app_or_project, substitute it for prefix. 
+        tempdir = tempfile.mkdtemp(prefix=prefix, suffix='_extract')
+#ANNOTATION: call the method tempfile.mkdtemp with 2 arguments: prefix set to prefix, suffix set to string '_extract', substitute the result for tempdir.
+        self.paths_to_remove.append(tempdir)
+#ANNOTATION: append tempdir to self.self.paths_to_remove.
+        if self.verbosity >= 2:
+#ANNOTATION: if self.verbosity is greater or equal to integer 2.
+            self.stdout.write("Extracting %s\n" % filename)
+#ANNOTATION: substitute '%s' in string "Extracting %s\n" with filename, write it to self.stdout stream.
+        try:
+#ANNOTATION: try,
+            archive.extract(filename, tempdir)
+#ANNOTATION: call the method archive.extract with arguments: filename and tempdir.
+            return tempdir
+#ANNOTATION: return tempdir.
+        except (archive.ArchiveException, IOError) as e:
+#ANNOTATION: if archive.ArchiveException or IOError, renamed to e, exception are caught,
+            raise CommandError("couldn't extract file %s to %s: %s" %
+                               (filename, tempdir, e))
+#ANNOTATION: raise an CommandError with an argument string "couldn't extract file %s to %s: %s", where '%s' is replaced with filename, tempdir and e.
+
+    def is_url(self, template):
+#ANNOTATION: define the method is_url with arguments self and template.
+        """
+        Returns True if the name looks like a URL
+        """
+#ANNOTATION: docstring
+        if ':' not in template:
+#ANNOTATION: if character ':' is not contained in template,
+            return False
+#ANNOTATION: return boolean False.
+        scheme = template.split(':', 1)[0].lower()
+#ANNOTATION: split template once at the first character ':', convert the first element to lowercase and substitute it for scheme.
+        return scheme in self.url_schemes
+#ANNOTATION: if scheme is countaine in self.url_schemes return boolean True, otherwise return False.
+
+    def make_writeable(self, filename):
+#ANNOTATION: define the method make_writeable with arguments self and filename.
+        """
+        Make sure that the file is writeable.
+        Useful if our source is read-only.
+        """
+#ANNOTATION: docstring
+        if sys.platform.startswith('java'):
+#ANNOTATION: if sys.platform starts with string 'java',
+            # On Jython there is no os.access()
+            return
+#ANNOTATION: return nothing.
+        if not os.access(filename, os.W_OK):
+#ANNOTATION: if call to the method os.access with arguments: filename and os.W_OK, evaluates to false,
+            st = os.stat(filename)
+#ANNOTATION: call the function os.stat with an argument filename, substitute the result for st.
+            new_permissions = stat.S_IMODE(st.st_mode) | stat.S_IWUSR
+#ANNOTATION: call the method stat.S_IMODE with an argument st.st_mode, calculate binary OR with the result and stat.S_IWUSR, as operands, 
+#ANNOTATION: substitute the result for new_permission.
+            os.chmod(filename, new_permissions)
+#ANNOTATION: call the function os.chmod wiht arguments filename and new_permissions.

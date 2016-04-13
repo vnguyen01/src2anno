@@ -1,0 +1,138 @@
+"""Functions to parse datetime objects."""
+#ANNOTATION: docstring
+
+# We're using regular expressions rather than time.strptime because:
+# - They provide both validation and parsing.
+# - They're more flexible for datetimes.
+# - The date/datetime/time constructors produce friendlier error messages.
+
+import datetime
+#ANNOTATION: import module datetime.
+import re
+#ANNOTATION: import module re.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.timezone import utc, get_fixed_timezone
+#ANNOTATION: from django.utils.timezone import utc and get_fixed_timezone into default name space.
+
+
+date_re = re.compile(
+    r'(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})$'
+)
+#ANNOTATION: compile regex from raw string '(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})$', substitute it for date_re.
+
+time_re = re.compile(
+    r'(?P<hour>\d{1,2}):(?P<minute>\d{1,2})'
+    r'(?::(?P<second>\d{1,2})(?:\.(?P<microsecond>\d{1,6})\d{0,6})?)?'
+)
+#ANNOTATION: compile regex from raw string '(?P<hour>\d{1,2}):(?P<minute>\d{1,2})(?::(?P<second>\d{1,2})(?:\.(?P<microsecond>\d{1,6})\d{0,6})?)?',
+#ANNOTATION: substitute it for time_re.
+
+datetime_re = re.compile(
+    r'(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})'
+    r'[T ](?P<hour>\d{1,2}):(?P<minute>\d{1,2})'
+    r'(?::(?P<second>\d{1,2})(?:\.(?P<microsecond>\d{1,6})\d{0,6})?)?'
+    r'(?P<tzinfo>Z|[+-]\d{2}(?::?\d{2})?)?$'
+)
+#ANNOTATION: compile regex from raw string '(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})[T ](?P<hour>\d{1,2}):(?P<minute>\d{1,2})'
+#ANNOTATION: '(?::(?P<second>\d{1,2})(?:\.(?P<microsecond>\d{1,6})\d{0,6})?)?(?P<tzinfo>Z|[+-]\d{2}(?::?\d{2})?)?$', substitute it for datetime_re.
+
+
+def parse_date(value):
+#ANNOTATION: define the function parse_date with an argument value.
+    """Parses a string and return a datetime.date.
+
+    Raises ValueError if the input is well formatted but not a valid date.
+    Returns None if the input isn't well formatted.
+    """
+#ANNOTATION: docstring
+    match = date_re.match(value)
+#ANNOTATION: match regex date_re with value, substitute the result for match.
+    if match:
+#ANNOTATION: if match is true,
+        kw = dict((k, int(v)) for k, v in six.iteritems(match.groupdict()))
+#ANNOTATION: call the method match.groupdict, use the result as an argument for the call to the function six.iteritems,
+#ANNOTATION: for every k and v in the previous result, add a key into a dictionary: v converted to an integer for k, 
+#ANNOTATION: substitute the resulting dictionary for kw.
+        return datetime.date(**kw)
+#ANNOTATION: call the method datetime.date with an argument unpacked dictionary kw, return the result.
+
+
+def parse_time(value):
+#ANNOTATION: define the function parse_time with an argument value.
+    """Parses a string and return a datetime.time.
+
+    This function doesn't support time zone offsets.
+
+    Raises ValueError if the input is well formatted but not a valid time.
+    Returns None if the input isn't well formatted, in particular if it
+    contains an offset.
+    """
+#ANNOTATION: docstring
+    match = time_re.match(value)
+#ANNOTATION: match regex time_re with value, substitute the result for match.
+    if match:
+#ANNOTATION: if match is true, 
+        kw = match.groupdict()
+#ANNOTATION: call the method match.groupdict, substitute the result for kw.
+        if kw['microsecond']:
+#ANNOTATION: if value under the 'microsecond' key of the kw dictionary is true,
+            kw['microsecond'] = kw['microsecond'].ljust(6, '0')
+#ANNOTATION: left justify value under the 'microsecond' key of the kw dictionary, in the field of width 6, fill the rest with '0',
+#ANNOTATION: substitute the result for value under the 'microsecond' key of the kw dictionary.
+        kw = dict((k, int(v)) for k, v in six.iteritems(kw) if v is not None)
+#ANNOTATION: update a dictionary with an entry v converted to an integer for k, for every k and v in result of the function six.iteritems,
+#ANNOTATION: called with an argument kw, only if v is not None, substitute the result for kw.
+        return datetime.time(**kw)
+#ANNOTATION: call the method datetime.time with an argument unpacked dictionary kw, return the result.
+
+
+def parse_datetime(value):
+#ANNOTATION: define the function parse_datetime with an argument value.
+    """Parses a string and return a datetime.datetime.
+
+    This function supports time zone offsets. When the input contains one,
+    the output uses a timezone with a fixed offset from UTC.
+
+    Raises ValueError if the input is well formatted but not a valid datetime.
+    Returns None if the input isn't well formatted.
+    """
+#ANNOTATION: docstring
+    match = datetime_re.match(value)
+#ANNOTATION: match regex datetime_re with value, substitute the result for match.
+    if match:
+#ANNOTATION: if match is true,
+        kw = match.groupdict()
+#ANNOTATION: call the method match.groupdict, substitute the result for kw.
+        if kw['microsecond']:
+#ANNOTATION: if value under the 'microsecond' key of the kw dictionary is true,
+            kw['microsecond'] = kw['microsecond'].ljust(6, '0')
+#ANNOTATION: left justify value under the 'microsecond' key of the kw dictionary, in the field of width 6, fill the rest with '0',
+#ANNOTATION: substitute the result for value under the 'microsecond' key of the kw dictionary.
+        tzinfo = kw.pop('tzinfo')
+#ANNOTATION: remove entry under the 'tzinfo' key of the kw dictionary, substitute it for tzinfo.
+        if tzinfo == 'Z':
+#ANNOTATION: if tzinfo equals a string 'Z',
+            tzinfo = utc
+#ANNOTATION: substitute utc for tzinfo.
+        elif tzinfo is not None:
+#ANNOTATION: otherwise if tzinfo is not None,
+            offset_mins = int(tzinfo[-2:]) if len(tzinfo) > 3 else 0
+#ANNOTATION: if length of tzinfo is greater than integer 3, convert elements of tzinfo from indexes 1 to 3 to an integer, 
+#ANNOTATION: substitute the result for offset_mins, otherwise offset_mins is integer 0.
+            offset = 60 * int(tzinfo[1:3]) + offset_mins
+#ANNOTATION: convert elements of tzinfo from indexes 1 to 3 to an integer, multiply it by integer 60 and increment it by offset_mins,
+#ANNOTATION: substitute the result for offset.
+            if tzinfo[0] == '-':
+#ANNOTATION: if first element of tzinfo equals '-',
+                offset = -offset
+#ANNOTATION: multiply offset by integer -1.
+            tzinfo = get_fixed_timezone(offset)
+#ANNOTATION: call the function get_fixed_timezone with an argument offset, substitute the result for tzinfo.
+        kw = dict((k, int(v)) for k, v in six.iteritems(kw) if v is not None)
+#ANNOTATION: update a dictionary with an entry v converted to an integer for k, for every k and v in result of the function six.iteritems,
+#ANNOTATION: called with an argument kw, only if v is not None, substitute the result for kw.
+        kw['tzinfo'] = tzinfo
+#ANNOTATION: substitute tzinfo for value under the 'tzinfo' key of the kw dictionary.
+        return datetime.datetime(**kw)
+#ANNOTATION: call the method datetime.datetime with an argument unpacked dictionary kw, return the result.

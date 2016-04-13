@@ -1,0 +1,224 @@
+from django.utils.six.moves import html_parser as _html_parser
+#ANNOTATION: from django.utils.six.moves import html_parser as _html_parse into default name space.
+import re
+#ANNOTATION: import module re.
+import sys
+#ANNOTATION: import module sys.
+
+current_version = sys.version_info
+#ANNOTATION: substitute version_info from module sys for surrent_version.
+
+use_workaround = (
+    (current_version < (2, 7, 3)) or
+    (current_version >= (3, 0) and current_version < (3, 2, 3))
+)
+#ANNOTATION: set use_workaround to boolean True if current_version tuple elements are smaller than the tuple (2,7,3), respectively,
+#ANNOTATION: or if current_version is greater than (3,0), but smaller than (3,2,3), otherwise set use_workaround to boolean False.
+
+HTMLParseError = _html_parser.HTMLParseError
+#ANNOTATION: substitute HTMLParseError from the module _html_parser for HTMLParseError.
+
+if not use_workaround:
+#ANNOTATION: if use_workaround is boolean False,
+    if current_version >= (3, 4):
+#ANNOTATION: if tuple current_version elements are greater or equal to (3, 4), respectively,  
+        class HTMLParser(_html_parser.HTMLParser):
+#ANNOTATION: derive the class HTMLParser from the base class HTMLParser located in the module _html_parser.
+            """Explicitly set convert_charrefs to be False.
+
+            This silences a deprecation warning on Python 3.4, but we can't do
+            it at call time because Python 2.7 does not have the keyword
+            argument.
+            """
+#ANNOTATION: docstring
+            def __init__(self, convert_charrefs=False, **kwargs):
+#ANNOTATION: define the initialization method __init__, with self instance of this class, convert_charrefs set to boolean False,
+#ANNOTATION: and dictionary of arbitrary length **kwargs as arguments.   
+                _html_parser.HTMLParser.__init__(self, convert_charrefs=convert_charrefs, **kwargs)
+#ANNOTATION: call the initialization method for the base class, _html_parser.HTMLParser.__init__ with self, 
+#ANNOTATION: convert_charrefs set to convert_charrefs and dictionary **kwargs as the arguments.
+    else:
+#ANNOTATION: if not,
+        HTMLParser = _html_parser.HTMLParser
+#ANNOTATION: substitute HTMLParser from the module _html_parser for HTMLParser.
+else:
+#ANNOTATION: if not,
+    tagfind = re.compile('([a-zA-Z][-.a-zA-Z0-9:_]*)(?:\s|/(?!>))*')
+#ANNOTATION: compile a regular expression pattern string '([a-zA-Z][-.a-zA-Z0-9:_]*)(?:\s|/(?!>))*' into a regular expression object and assign it to tagfind. 
+
+    class HTMLParser(_html_parser.HTMLParser):
+#ANNOTATION: derive the class HTMLParser from the base class HTMLParser located in the module _html_parser.
+        """
+        Patched version of stdlib's HTMLParser with patch from:
+        http://bugs.python.org/issue670664
+        """
+#ANNOTATION: docstring
+        def __init__(self):
+#ANNOTATION: define initialization method __init__ with self instance of the class as an argument.
+            _html_parser.HTMLParser.__init__(self)
+#ANNOTATION: call the initialization method _html_parser.HTMLParser.__init__(self) for the base class.
+            self.cdata_tag = None
+#ANNOTATION: set field cdata_tag for this class instance to None.
+
+        def set_cdata_mode(self, tag):
+#ANNOTATION: define method set_cdata_mode, with self class instance and tag as the arguments.
+            try:
+#ANNOTATION: try,
+                self.interesting = _html_parser.interesting_cdata
+#ANNOTATION: set field interesting for this class instance to interesting_cdata from module _html_parser.
+            except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+                self.interesting = re.compile(r'</\s*%s\s*>' % tag.lower(), re.I)
+#ANNOTATION: replace '%s' in the string '</\s*%s\s*>' with the result of the function call tag.lower(),
+#ANNOTATION: use it and the re.I as the input arguments for function re.compile, put the result in the self.interesting. 
+            self.cdata_tag = tag.lower()
+#ANNOTATION: evaluate function tag.lower, without the arguments, put the result in the self.cdata_tag.
+
+        def clear_cdata_mode(self):
+#ANNOTATION: define method clear_cdata_mode, with self class instance as an argument.
+            self.interesting = _html_parser.interesting_normal
+#ANNOTATION: substitute _html_parser.interesting_normal for self.interesting.
+            self.cdata_tag = None
+#ANNOTATION: set self.cdata_tag to None.
+
+        # Internal -- handle starttag, return end or -1 if not terminated
+        def parse_starttag(self, i):
+#ANNOTATION: define method parse_starttag with self class instance and i as the arguments.
+            self.__starttag_text = None
+#ANNOTATION: set self.__starttag_text to None.
+            endpos = self.check_for_whole_start_tag(i)
+#ANNOTATION: call the method self.check_for_whole_start_tag with i as an argument, substitute result for the endpos.
+            if endpos < 0:
+#ANNOTATION: if endpos is lesser than zero,
+                return endpos
+#ANNOTATION: return endpos.
+            rawdata = self.rawdata
+#ANNOTATION: substitute self.rawdata for rawdata.
+            self.__starttag_text = rawdata[i:endpos]
+#ANNOTATION: slice the list from the i-th to the endpos-th element, substitute it for self.__starttag_text. 
+
+            # Now parse the data between i+1 and j into a tag and attrs
+            attrs = []
+#ANNOTATION: attrs is a empty list.
+            match = tagfind.match(rawdata, i + 1)
+#ANNOTATION: match the rawdata from the position i+1, with tagfind pattern, assign the result to the match. 
+            assert match, 'unexpected call to parse_starttag()'
+#ANNOTATION: if match evaluates to False throw an exception with the string message 'unexpected call to parse_starttag()'.
+            k = match.end()
+#ANNOTATION: find the ending position of the regular expression match of the object match, substitute the result for k.
+            self.lasttag = tag = match.group(1).lower()
+#ANNOTATION: find the first subgroup of the matched string from the match object, convert it to lowercase, substitute it for tag and self.lasttag.
+
+            while k < endpos:
+#ANNOTATION: as long k is smaller than endpos,
+                m = _html_parser.attrfind.match(rawdata, k)
+#ANNOTATION: match the rawdata from the position k, with attrfind pattern, assign the result to the m. 
+                if not m:
+#ANNOTATION: if m is not False, None is considered False,
+                    break
+#ANNOTATION: breaks from the smallest enclosing loop.
+                attrname, rest, attrvalue = m.group(1, 2, 3)
+#ANNOTATION: find the first, second and third subgroup of the m regular expression match, assign the result to the attrname, rest and attrvalue, respectively.
+                if not rest:
+#ANNOTATION: if rest is not False, None is considered False,
+                    attrvalue = None
+#ANNOTATION: set attrvalue to None.
+                elif (attrvalue[:1] == '\'' == attrvalue[-1:] or
+                        attrvalue[:1] == '"' == attrvalue[-1:]):
+#ANNOTATION: otherwise, if first and the last character of attrvalue are '\' charter  or first and last character of attrvalue are '"' character, 
+                    attrvalue = attrvalue[1:-1]
+#ANNOTATION: remove first and last character from the attrvalue, substitute it for attrvalue.
+                if attrvalue:
+#ANNOTATION: if attrvalue is not an empty string,
+                    attrvalue = self.unescape(attrvalue)
+#ANNOTATION: call the method unescape with attrvalue as the argument on the self class instance, substitute the result for attrvalue.
+                attrs.append((attrname.lower(), attrvalue))
+#ANNOTATION: form the tuple from the attrname converted to lowercase and attrvalue, append it to the end of attrs. 
+                k = m.end()
+#ANNOTATION: find the ending position of the regular expression match of the object match, substitute the result for k.
+
+            end = rawdata[k:endpos].strip()
+#ANNOTATION: slice the rawdata string from the k-th to the endpos-th index, remove the whitespaces from the start and the end of the string, substitute it for end. 
+            if end not in (">", "/>"):
+#ANNOTATION: if end is not a '>' or '/>' character,
+                lineno, offset = self.getpos()
+#ANNOTATION: evaluate the self.getpos() and assign the result to the lineno and offset respectfully.
+                if "\n" in self.__starttag_text:
+#ANNOTATION: if self.__stattag_text contains newline character,
+                    lineno = lineno + self.__starttag_text.count("\n")
+#ANNOTATION: increment the lineno by the count of the newlines in self.__starttag_text.
+                    offset = (len(self.__starttag_text)
+                             - self.__starttag_text.rfind("\n"))
+#ANNOTATION: find the last index of newline occurrence in self.__starttag_text, subtract it from total length of self.__starttag_text, 
+#ANNOTATION: substitute the result for offset.
+                else:
+#ANNOTATION: if not,
+                    offset = offset + len(self.__starttag_text)
+#ANNOTATION: increment the offset by the length of self.__starttag_text.
+                self.error("junk characters in start tag: %r"
+                           % (rawdata[k:endpos][:20],))
+#ANNOTATION: slice the rawdata from k to endpos, then take the first 20 elements of the previous slice, 
+#ANNOTATION: with it replace %r in the string "junk characters in start tag: %r", 
+#ANNOTATION: call the method self.error with the resulting string as an argument.
+            if end.endswith('/>'):
+#ANNOTATION: if string end ends with string '/>',
+                # XHTML-style empty tag: <span attr="value" />
+                self.handle_startendtag(tag, attrs)
+#ANNOTATION: call the method self.handle_startendtag with tag and attrs as the arguments.
+            else:
+#ANNOTATION: if not,
+                self.handle_starttag(tag, attrs)
+#ANNOTATION: call the method self.handle_starttag, with tag and attrs as the arguments.
+                if tag in self.CDATA_CONTENT_ELEMENTS:
+#ANNOTATION: if tag is contained in self.CDATA_CONTENT_ELEMENTS,
+                    self.set_cdata_mode(tag)  # <--------------------------- Changed
+#ANNOTATION: call the method self.set_cdata_mode with tag as the argument.
+            return endpos
+#ANNOTATION: return endpos.
+
+        # Internal -- parse endtag, return end or -1 if incomplete
+        def parse_endtag(self, i):
+#ANNOTATION: define the method parse_endtag with self class instance and i as the arguments.
+            rawdata = self.rawdata
+#ANNOTATION: substitute self.rawdata for rawdata.
+            assert rawdata[i:i + 2] == "</", "unexpected call to parse_endtag"
+#ANNOTATION: take two characters from the i-th element of rawdata, if they are not equal to the string '</', 
+#ANNOTATION: throw an exception with string "unexpected call to parse_endtag" as the message.
+            match = _html_parser.endendtag.search(rawdata, i + 1)  # >
+#ANNOTATION: search anywhere in the rawdata string starting from the (i+1)-th element for the _html_parser.endendeag, replace the result for match. 
+            if not match:
+#ANNOTATION: if there is no match,
+                return -1
+#ANNOTATION: return integer -1.
+            j = match.end()
+#ANNOTATION: find the ending position of the regular expression match of the object match, substitute the result for j.
+            match = _html_parser.endtagfind.match(rawdata, i)  # </ + tag + >
+#ANNOTATION: match the rawdata from the position i, with _html_parser.endtagfind pattern, assign the result to the match. 
+            if not match:
+#ANNOTATION: if there is no match,
+                if self.cdata_tag is not None:  # *** add ***
+#ANNOTATION: if self.cdata_tag is not None,
+                    self.handle_data(rawdata[i:j])  # *** add ***
+#ANNOTATION: slice the rawdata to obtain substring from i-th to j-th element, use it as the argument for the method call to the self.handle_data.
+                    return j  # *** add ***
+#ANNOTATION: return j.
+                self.error("bad end tag: %r" % (rawdata[i:j],))
+#ANNOTATION: slice the rawdata from i-th to the j-th element, replace with it '%r' in the string "bad end tag: %r", use it to call the method self.error.
+            # --- changed start ---------------------------------------------------
+            tag = match.group(1).strip()
+#ANNOTATION: find the first subgroup of the matched string from the match object, strip the whitespaces from the begging and end, replace it for tag.
+            if self.cdata_tag is not None:
+#ANNOTATION: if self.cdata_tag is not None,
+                if tag.lower() != self.cdata_tag:
+#ANNOTATION: convert tag to lowercase if it is not equal to self.cdata_tag, 
+                    self.handle_data(rawdata[i:j])
+#ANNOTATION: slice the rawdata to obtain substring from i-th to j-th element, use it as the argument for the method call to the self.handle_data.
+                    return j
+#ANNOTATION: return j.
+            # --- changed end -----------------------------------------------------
+            self.handle_endtag(tag.lower())
+#ANNOTATION: convert tag to lowercase, use it as the argument for the call to the method self.handle_endtag.
+            self.clear_cdata_mode()
+#ANNOTATION: call the method self.clear_cdata_mode.
+            return j
+#ANNOTATION: return j.

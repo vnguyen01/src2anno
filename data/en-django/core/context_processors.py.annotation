@@ -1,0 +1,124 @@
+"""
+A set of request processors that return dictionaries to be merged into a
+template context. Each function takes the request object as its only parameter
+and returns a dictionary to add to the context.
+
+These are referenced from the setting TEMPLATE_CONTEXT_PROCESSORS and used by
+RequestContext.
+"""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.middleware.csrf import get_token
+#ANNOTATION: from django.middleware.csrf import get_token into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.encoding import smart_text
+#ANNOTATION: from django.utils.encoding import smart_text into default name space.
+from django.utils.functional import lazy
+#ANNOTATION: from django.utils.functional import lazy into default name space.
+
+
+def csrf(request):
+#ANNOTATION: define the function csrf with an argument request.
+    """
+    Context processor that provides a CSRF token, or the string 'NOTPROVIDED' if
+    it has not been provided by either a view decorator or the middleware
+    """
+#ANNOTATION: docstring
+    def _get_val():
+#ANNOTATION: define the function _get_val.
+        token = get_token(request)
+#ANNOTATION: call the function get_token with an argument request, substitute the result for token.
+        if token is None:
+#ANNOTATION: if token is None,
+            # In order to be able to provide debugging info in the
+            # case of misconfiguration, we use a sentinel value
+            # instead of returning an empty dict.
+            return 'NOTPROVIDED'
+#ANNOTATION: return string 'NOTPROVIDED'.
+        else:
+#ANNOTATION: if not,
+            return smart_text(token)
+#ANNOTATION: call the smart_text function with an argument token, return the result.
+    _get_val = lazy(_get_val, six.text_type)
+#ANNOTATION: call the function lazy with arguments _get_val and six.text_type, substitute the result for _get_val.
+
+    return {'csrf_token': _get_val()}
+#ANNOTATION: return an dictionary containing 1 entry: return value of the function _get_val for 'csrf_token'.
+
+
+def debug(request):
+#ANNOTATION: define the function debug with an argument request.
+    "Returns context variables helpful for debugging."
+#ANNOTATION: docstring
+    context_extras = {}
+#ANNOTATION: context_extras is an empty dictionary.
+    if settings.DEBUG and request.META.get('REMOTE_ADDR') in settings.INTERNAL_IPS:
+#ANNOTATION: if settings.DEBUG is true and value of the request.META dictionary under the 'REMOTE_ADDR' key is contained in settings.INTERNAL_IPS,
+        context_extras['debug'] = True
+#ANNOTATION: value under the 'debug' key of the context_extras dictionary is boolean True.
+        from django.db import connection
+#ANNOTATION: from django.db import connection into default name space.
+        context_extras['sql_queries'] = connection.queries
+#ANNOTATION: substitute connection.queries for value under the 'debug' key of the context_extras dictionary.
+    return context_extras
+#ANNOTATION: return context_extras.
+
+
+def i18n(request):
+#ANNOTATION: define the function i18n with an argument request.
+    from django.utils import translation
+#ANNOTATION: from django.utils import translation into default name space.
+
+    context_extras = {}
+#ANNOTATION: context_extras is an empty dictionary.
+    context_extras['LANGUAGES'] = settings.LANGUAGES
+#ANNOTATION: substitute settings.LANGUAGES for the value under the 'LANGUAGES' key of the context_extras dictionary.
+    context_extras['LANGUAGE_CODE'] = translation.get_language()
+#ANNOTATION: call the translation.get_language function, substitute the result for the value under the 'LANGUAGE_CODE' key of the context_extras dictionary.
+    context_extras['LANGUAGE_BIDI'] = translation.get_language_bidi()
+#ANNOTATION: call the translation.get_language_bidi function, substitute the result for the value under the 'LANGUAGE_BIDI' key of the context_extras dictionary.
+
+    return context_extras
+#ANNOTATION: return context_extras.
+
+
+def tz(request):
+#ANNOTATION: define the function tz with an argument request.
+    from django.utils import timezone
+#ANNOTATION:  from django.utils import timezone into default name space.
+
+    return {'TIME_ZONE': timezone.get_current_timezone_name()}
+#ANNOTATION: return an dictionary containing 1 entry: return value of the function timezone.get_current_timezone_name for 'TIME_ZONE'.
+
+
+def static(request):
+#ANNOTATION: define the function static with an argument request.
+    """
+    Adds static-related context variables to the context.
+
+    """
+#ANNOTATION: docstring
+    return {'STATIC_URL': settings.STATIC_URL}
+#ANNOTATION: return an dictionary containing 1 entry: settings.STATIC_URL for 'STATIC_URL'.
+
+
+def media(request):
+#ANNOTATION: define the function media with an argument request.
+    """
+    Adds media-related context variables to the context.
+
+    """
+#ANNOTATION: docstring
+    return {'MEDIA_URL': settings.MEDIA_URL}
+#ANNOTATION: return an dictionary containing 1 entry: settings.MEDIA_URL for 'MEDIA_URL'.
+
+
+def request(request):
+#ANNOTATION: define the function request with an argument request.
+    return {'request': request}
+#ANNOTATION: return an dictionary containing 1 entry: request for 'request'.

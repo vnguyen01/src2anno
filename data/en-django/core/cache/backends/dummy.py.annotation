@@ -1,0 +1,81 @@
+"Dummy cache backend"
+#ANNOTATION: docstring
+
+from django.core.cache.backends.base import BaseCache, DEFAULT_TIMEOUT
+#ANNOTATION: from django.core.cache.backends.base import BaseCache and DEFAULT_TIMEOUT into default name space.
+
+
+class DummyCache(BaseCache):
+#ANNOTATION: derive the class DummyCache from the base class BaseCache.
+    def __init__(self, host, *args, **kwargs):
+#ANNOTATION: define initialization method __init__ with 4 arguments: self, host, list of arguments args and dictionary of arguments kwargs.
+        BaseCache.__init__(self, *args, **kwargs)
+#ANNOTATION: call the BaseCache initialization method __init__ with 3 arguments self, list of arguments args and dictionary of arguments kwargs.
+
+    def add(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method add with 5 arguments: self, key, value, timeout set to DEFAULT_TIMEOUT and version set to None.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute it for key.
+        self.validate_key(key)
+#ANNOTATION: call the method self.validate_key with argument key.
+        return True
+#ANNOTATION: return boolean True.
+
+    def get(self, key, default=None, version=None):
+#ANNOTATION: define the method get with 4 arguments: self, key, default set to None and version set to None.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute it for key.
+        self.validate_key(key)
+#ANNOTATION: call the method self.validate_key with argument key.
+        return default
+#ANNOTATION: return default.
+
+    def set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method set with 5 arguments: self, key, value, timeout set to DEFAULT_TIMEOUT and version set to None.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute it for key.
+        self.validate_key(key)
+#ANNOTATION: call the method self.validate_key with argument key.
+
+    def delete(self, key, version=None):
+#ANNOTATION: define the method delete with 3 arguments: self, key, and version set to None.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute it for key.
+        self.validate_key(key)
+#ANNOTATION: call the method self.validate_key with argument key.
+
+    def get_many(self, keys, version=None):
+#ANNOTATION: define the method get_many with 3 arguments: self, keys, and version set to None.
+        return {}
+#ANNOTATION: return an empty dictionary.
+
+    def has_key(self, key, version=None):
+#ANNOTATION: define the method has_key with 3 arguments: self, key, and version set to None.
+        key = self.make_key(key, version=version)
+#ANNOTATION: call the method self.make_key with key and version set to version as arguments, substitute it for key.
+        self.validate_key(key)
+#ANNOTATION: call the method self.validate_key with argument key.
+        return False
+#ANNOTATION: return boolean False.
+
+    def set_many(self, data, timeout=DEFAULT_TIMEOUT, version=None):
+#ANNOTATION: define the method set_many with 4 arguments: self, data, timeout set to DEFAULT_TIMEOUT and version set to None.
+        pass
+#ANNOTATION: do nothing
+
+    def delete_many(self, keys, version=None):
+#ANNOTATION: define the method delete_many with 3 arguments: self, keys, and version set to None.
+        pass
+#ANNOTATION: do nothing.
+
+    def clear(self):
+#ANNOTATION: define the method clear with argument self.
+        pass
+#ANNOTATION: do nothing.
+
+
+# For backwards compatibility
+class CacheClass(DummyCache):
+#ANNOTATION: derive the class CacheClass from the DummyCache base class.
+    pass
+#ANNOTATION: do nothing.

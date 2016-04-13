@@ -1,0 +1,9 @@
+from django.dispatch import Signal
+#ANNOTATION: from django.dispatch import Signal into default name space.
+
+request_started = Signal()
+#ANNOTATION: request_started is a instance of a Signal class.
+request_finished = Signal()
+#ANNOTATION: request_finished is a instance of a Signal class.
+got_request_exception = Signal(providing_args=["request"])
+#ANNOTATION: got_request_exception is a instance of a Signal class, created with an argument providing_args as the list containing string 'request'.

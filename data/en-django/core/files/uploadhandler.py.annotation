@@ -1,0 +1,324 @@
+"""
+Base file upload handler classes, and the built-in concrete subclasses
+"""
+#ANNOTATION: docstring
+
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from io import BytesIO
+#ANNOTATION: from io import BytesIO into default name space.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core.files.uploadedfile import TemporaryUploadedFile, InMemoryUploadedFile
+#ANNOTATION: from django.core.files.uploadedfile import TemporaryUploadedFile and InMemoryUploadedFile into default name space.
+from django.utils.encoding import python_2_unicode_compatible
+#ANNOTATION: from django.utils.encoding import python_2_unicode_compatible into default name space.
+from django.utils.module_loading import import_string
+#ANNOTATION: from django.utils.module_loading import import_string into default name space.
+
+__all__ = [
+    'UploadFileException', 'StopUpload', 'SkipFile', 'FileUploadHandler',
+    'TemporaryFileUploadHandler', 'MemoryFileUploadHandler', 'load_handler',
+    'StopFutureHandlers'
+]
+#ANNOTATION: __all__ is a string containing strings: 'UploadFileException', 'StopUpload', 'SkipFile', 'FileUploadHandler',
+#ANNOTATION: 'TemporaryFileUploadHandler', 'MemoryFileUploadHandler', 'load_handler' and 'StopFutureHandlers'.
+
+
+class UploadFileException(Exception):
+#ANNOTATION: derive the class UploadFileException from the Exception base class.
+    """
+    Any error having to do with uploading files.
+    """
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+@python_2_unicode_compatible
+#ANNOTATION: decorator python_2_unicode_compatible,
+class StopUpload(UploadFileException):
+#ANNOTATION: derive the class StopUpload from the UploadFileException base class.
+    """
+    This exception is raised when an upload must abort.
+    """
+#ANNOTATION: docstring
+    def __init__(self, connection_reset=False):
+#ANNOTATION: define the method __init__ with arguments self and connection_reset defaulting to boolean False.
+        """
+        If ``connection_reset`` is ``True``, Django knows will halt the upload
+        without consuming the rest of the upload. This will cause the browser to
+        show a "connection reset" error.
+        """
+#ANNOTATION: docstring
+        self.connection_reset = connection_reset
+#ANNOTATION: substitute connection_reset for self.connection_reset.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with argument self.
+        if self.connection_reset:
+#ANNOTATION: if self.connection_reset is true,
+            return 'StopUpload: Halt current upload.'
+#ANNOTATION: return string 'StopUpload: Halt current upload.'.
+        else:
+#ANNOTATION: if not,
+            return 'StopUpload: Consume request data, then halt.'
+#ANNOTATION: return string 'StopUpload: Consume request data, then halt.'.
+
+
+class SkipFile(UploadFileException):
+#ANNOTATION: derive the class SkipFile from the UploadFileException base class.
+    """
+    This exception is raised by an upload handler that wants to skip a given file.
+    """
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class StopFutureHandlers(UploadFileException):
+#ANNOTATION: derive the class StopFutureHandlers from the UploadFileException base class.
+    """
+    Upload handers that have handled a file and do not want future handlers to
+    run should raise this exception instead of returning None.
+    """
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+
+class FileUploadHandler(object):
+#ANNOTATION: derive the class FileUploadHandler from the object base class.
+    """
+    Base class for streaming upload handlers.
+    """
+#ANNOTATION: docstring
+    chunk_size = 64 * 2 ** 10  # : The default chunk size is 64 KB.
+#ANNOTATION: bring integer 2 to the power of 10, multiply it by integer 64, substitute the result for chunk_size.
+
+    def __init__(self, request=None):
+#ANNOTATION: define the method __init__ with arguments self and request defaulting to None.
+        self.file_name = None
+#ANNOTATION: self.file_name is None.
+        self.content_type = None
+#ANNOTATION: self.content_type is None.
+        self.content_length = None
+#ANNOTATION: self.content_length is None.
+        self.charset = None
+#ANNOTATION: self.charset is None.
+        self.content_type_extra = None
+#ANNOTATION: self.content_type_extra is None.
+        self.request = request
+#ANNOTATION: self.request is None.
+
+    def handle_raw_input(self, input_data, META, content_length, boundary, encoding=None):
+#ANNOTATION: define the method handle_raw_input with arguments: self, input_data, META, content_length, boundary and encoding set to None.
+        """
+        Handle the raw input from the client.
+
+        Parameters:
+
+            :input_data:
+                An object that supports reading via .read().
+            :META:
+                ``request.META``.
+            :content_length:
+                The (integer) value of the Content-Length header from the
+                client.
+            :boundary: The boundary from the Content-Type header. Be sure to
+                prepend two '--'.
+        """
+#ANNOTATION: docstring
+        pass
+#ANNOTATION: do nothing.
+
+    def new_file(self, field_name, file_name, content_type, content_length, charset=None, content_type_extra=None):
+#ANNOTATION: define the method new_file with arguments: self, field_name, file_name, content_type, content_length, charset set to None,
+#ANNOTATION: and content_type_extra set to None.
+        """
+        Signal that a new file has been started.
+
+        Warning: As with any data from the client, you should not trust
+        content_length (and sometimes won't even get it).
+        """
+#ANNOTATION: docstring
+        self.field_name = field_name
+#ANNOTATION: substitute field_name for self.field_name.
+        self.file_name = file_name
+#ANNOTATION: substitute file_name for self.file_name.
+        self.content_type = content_type
+#ANNOTATION: substitute content_type for self.content_type.
+        self.content_length = content_length
+#ANNOTATION: substitute content_length for self.content_length.
+        self.charset = charset
+#ANNOTATION: substitute charset for self.charset.
+        self.content_type_extra = content_type_extra
+#ANNOTATION: substitute content_type_extra for self.content_type_extra.
+
+    def receive_data_chunk(self, raw_data, start):
+#ANNOTATION: define the method receive_data_chunk with arguments: self, raw_data and start.
+        """
+        Receive data from the streamed upload parser. ``start`` is the position
+        in the file of the chunk.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of FileUploadHandler must provide a receive_data_chunk() method')
+#ANNOTATION: raise an NotImplementedError with argument string 'subclasses of FileUploadHandler must provide a receive_data_chunk() method'.
+
+    def file_complete(self, file_size):
+#ANNOTATION: define the method file_complete with arguments: self and file_size.
+        """
+        Signal that a file has completed. File size corresponds to the actual
+        size accumulated by all the chunks.
+
+        Subclasses should return a valid ``UploadedFile`` object.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of FileUploadHandler must provide a file_complete() method')
+#ANNOTATION: raise an NotImplementedError with argument string 'subclasses of FileUploadHandler must provide a file_complete() method'.
+
+    def upload_complete(self):
+#ANNOTATION: define the method upload_complete with argument self.
+        """
+        Signal that the upload is complete. Subclasses should perform cleanup
+        that is necessary for this handler.
+        """
+#ANNOTATION: docstring
+        pass
+#ANNOTATION: do nothing.
+
+
+class TemporaryFileUploadHandler(FileUploadHandler):
+#ANNOTATION: derive the class TemporaryFileUploadHandler from the FileUploadHandler base class.
+    """
+    Upload handler that streams data into a temporary file.
+    """
+#ANNOTATION: docstring
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with arguments self, argument list args and dictionary of arguments kwargs.
+        super(TemporaryFileUploadHandler, self).__init__(*args, **kwargs)
+#ANNOTATION: call the __init__ method from the base class of the TemporaryFileUploadHandler class with arguments: unpacked list args, 
+#ANNOTATION: and unpacked dictionary kwargs. 
+
+    def new_file(self, file_name, *args, **kwargs):
+#ANNOTATION: define the method new_file with arguments: self, file_name, unpacked list args and unpacked dictionary kwargs.
+        """
+        Create the file object to append to as data is coming in.
+        """
+#ANNOTATION: docstring
+        super(TemporaryFileUploadHandler, self).new_file(file_name, *args, **kwargs)
+#ANNOTATION: call the method new_file from the base class of the TemporaryFileUploadHandler class with arguments: file_name, unpacked list args and unpacked dictionary kwargs.
+        self.file = TemporaryUploadedFile(self.file_name, self.content_type, 0, self.charset, self.content_type_extra)
+#ANNOTATION: self.file is a instance of a class TemporaryUploadedFile initialized with arguments: self.file_name, self.content_type, integer 0,
+#ANNOTATION: self.charset and self.content_type_extra.
+
+    def receive_data_chunk(self, raw_data, start):
+#ANNOTATION: define the method receive_data_chunk with arguments: self, raw_data and start.
+        self.file.write(raw_data)
+#ANNOTATION: call the method self.file.write with argument raw_data.
+
+    def file_complete(self, file_size):
+#ANNOTATION: define the method file_complete with arguments self and file_size.
+        self.file.seek(0)
+#ANNOTATION: position the file pointer at the start of the self.file file.
+        self.file.size = file_size
+#ANNOTATION: substitute file_size for self.file.size.
+        return self.file
+#ANNOTATION: return self.file.
+
+
+class MemoryFileUploadHandler(FileUploadHandler):
+#ANNOTATION: derive the class MemoryFileUploadHandler from the FileUploadHandler base class.
+    """
+    File upload handler to stream uploads into memory (used for small files).
+    """
+#ANNOTATION: docstring
+
+    def handle_raw_input(self, input_data, META, content_length, boundary, encoding=None):
+#ANNOTATION: define the method handle_raw_input with arguments: self, input_data, META, content_length, boundary and encoding set to None.  
+        """
+        Use the content_length to signal whether or not this handler should be in use.
+        """
+#ANNOTATION: docstring
+        # Check the content-length header to see if we should
+        # If the post is too large, we cannot use the Memory handler.
+        if content_length > settings.FILE_UPLOAD_MAX_MEMORY_SIZE:
+#ANNOTATION: if content_length is greater than settings.FILE_UPLOAD_MAX_MEMORY_SIZE,
+            self.activated = False
+#ANNOTATION: self.activated is boolean False.
+        else:
+#ANNOTATION: if not,
+            self.activated = True
+#ANNOTATION: self.activated is boolean True.
+
+    def new_file(self, *args, **kwargs):
+#ANNOTATION: define the method new_file with arguments: self, unpacked list args and unpacked dictionary kwargs.
+        super(MemoryFileUploadHandler, self).new_file(*args, **kwargs)
+#ANNOTATION: call the new_file method form the base class from the MemoryFileUploadHandler class with arguments: unpacked list args and unpacked list kwargs.
+        if self.activated:
+#ANNOTATION: if self.activated is boolean True,
+            self.file = BytesIO()
+#ANNOTATION: call the function BytesIO, substitute the result for self.file.
+            raise StopFutureHandlers()
+#ANNOTATION: raise an exception StopFutureHandlers.
+
+    def receive_data_chunk(self, raw_data, start):
+#ANNOTATION: define the function receive_data_chunk with arguments self, raw_data and start.
+        """
+        Add the data to the BytesIO file.
+        """
+#ANNOTATION: docstring
+        if self.activated:
+#ANNOTATION: if self.activated is boolean True,
+            self.file.write(raw_data)
+#ANNOTATION: write raw_data to self.file file.
+        else:
+#ANNOTATION: if not,
+            return raw_data
+#ANNOTATION: return raw_data.
+
+    def file_complete(self, file_size):
+#ANNOTATION: define the function file_complete with arguments self and file_size.
+        """
+        Return a file object if we're activated.
+        """
+#ANNOTATION: docstring
+        if not self.activated:
+#ANNOTATION: if self.activated is boolean False,
+            return
+#ANNOTATION: return nothing.
+
+        self.file.seek(0)
+#ANNOTATION: set file pointer at the beginning of the self.file file.
+        return InMemoryUploadedFile(
+            file=self.file,
+            field_name=self.field_name,
+            name=self.file_name,
+            content_type=self.content_type,
+            size=file_size,
+            charset=self.charset,
+            content_type_extra=self.content_type_extra
+        )
+#ANNOTATION: initialize the object of a InMemoryUploadedFile class with arguments: file set to self.file, field_name set to self.field_name,
+#ANNOTATION: name set to self.file_name, content_type set to self.content_type, size set to file_size, charset set to self.charset, 
+#ANNOTATION: and content_type_extra set to self.content_type_extra, return it.
+
+
+
+def load_handler(path, *args, **kwargs):
+#ANNOTATION: define the function load_handler with arguments: path, unpacked list args and unpacked dictionary kwargs.
+    """
+    Given a path to a handler, return an instance of that handler.
+
+    E.g.::
+        >>> from django.http import HttpRequest
+        >>> request = HttpRequest()
+        >>> load_handler('django.core.files.uploadhandler.TemporaryFileUploadHandler', request)
+        <TemporaryFileUploadHandler object at 0x...>
+
+    """
+#ANNOTATION: docstring
+    return import_string(path)(*args, **kwargs)
+#ANNOTATION: call the import_string with arguments path, call the return function with arguments: unpacked list args and unpacked dictionary kwargs, return the result. 

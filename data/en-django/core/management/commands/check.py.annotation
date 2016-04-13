@@ -1,0 +1,67 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.apps import apps
+#ANNOTATION: from django.apps import apps into default name space.
+from django.core import checks
+#ANNOTATION: from django.core import checks into default name space.
+from django.core.checks.registry import registry
+#ANNOTATION: from django.core.checks.registry import registry into default name space.
+from django.core.management.base import BaseCommand, CommandError
+#ANNOTATION: from django.core.management.base import BaseCommand and CommandError into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand base class.
+    help = "Checks the entire Django project for potential problems."
+#ANNOTATION: help is a string "Checks the entire Django project for potential problems.".
+
+    requires_system_checks = False
+#ANNOTATION: requires_system_checks is boolean False.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with arguments self and parser.
+        parser.add_argument('args', metavar='app_label', nargs='*')
+#ANNOTATION: call the method parser.add_argument with 3 arguments: string 'args', metavar set to string 'app_label' and nargs set to '*'. 
+        parser.add_argument('--tag', '-t', action='append', dest='tags',
+            help='Run only checks labeled with given tag.')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '--tag', string '-t', action set to string 'append', 
+#ANNOTATION: dest set to string 'tags' and help set to string 'Run only checks labeled with given tag.'.
+        parser.add_argument('--list-tags', action='store_true', dest='list_tags',
+            help='List available tags.')
+#ANNOTATION: call the method parser.add_argument with 4 arguments: string '--list-tags', action set to string 'store_true', 
+#ANNOTATION: dest set to string 'list_tags' and help set to string 'List available tags.'.
+
+    def handle(self, *app_labels, **options):
+#ANNOTATION: define method handle with arguments self, unapcked list app_labels and unpacked dictionary options.
+        if options.get('list_tags'):
+#ANNOTATION: if value under the 'list_tags' key of options dictionay is true,
+            self.stdout.write('\n'.join(sorted(registry.tags_available())))
+#ANNOTATION: call the method registry.tags_available, sort the result and join it into a string, separate by newlines, write it to self.stdout.
+            return
+#ANNOTATION: return nothing.
+
+        if app_labels:
+#ANNOTATION: if app_labels is true,
+            app_configs = [apps.get_app_config(app_label) for app_label in app_labels]
+#ANNOTATION: call the method apps.get_app_config with an argument app_label, for every app_label in app_labels, append the results to a list,
+#ANNOTATION: substitute the resulting list for app_config.
+        else:
+#ANNOTATION: if not,
+            app_configs = None
+#ANNOTATION: app_configs is None.
+
+        tags = options.get('tags', None)
+#ANNOTATION: get the value under the 'tags' key of the options dictionary, if it exists substitute it for tags, if not, tags is None.
+        if tags and any(not checks.tag_exists(tag) for tag in tags):
+#ANNOTATION: if tags exists and if all elements in the return value of the method checks.tag_exists called with an argument tag,
+#ANNOTATION: for every tag in tags, are false, 
+            invalid_tag = next(tag for tag in tags if not checks.tag_exists(tag))
+#ANNOTATION: for every tag in tags, if return value of the method checks.tag_exists called with an argument tag, evaluates to false,
+#ANNOTATION: use tag as an argument to call the iterator method next, substitute the result for invalid_tag.
+            raise CommandError('There is no system check with the "%s" tag.' % invalid_tag)
+#ANNOTATION: raise an CommandError exception with an argument string 'There is no system check with the "%s" tag.', where '%s' is replaced with invalid_tag.
+
+        self.check(app_configs=app_configs, tags=tags, display_num_errors=True)
+#ANNOTATION: call the method self.check with arguments: app_configs set to app_configs, tags set to tags, display_num_errors set to boolean True.

@@ -1,0 +1,559 @@
+"""
+Functions for reversing a regular expression (used in reverse URL resolving).
+Used internally by Django and not intended for external use.
+
+This is not, and is not intended to be, a complete reg-exp decompiler. It
+should be good enough for a large class of URLS, however.
+"""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.six.moves import zip
+#ANNOTATION: from django.utils.six.moves import zip into default name space.
+
+# Mapping of an escape character to a representative of that class. So, e.g.,
+# "\w" is replaced by "x" in a reverse URL. A value of None means to ignore
+# this sequence. Any missing key is mapped to itself.
+ESCAPE_MAPPINGS = {
+    "A": None,
+    "b": None,
+    "B": None,
+    "d": "0",
+    "D": "x",
+    "s": " ",
+    "S": "x",
+    "w": "x",
+    "W": "!",
+    "Z": None,
+}
+#ANNOTATION: ESCAPE_MAPPINGS is an dictionary with 10 initial entries: None for 'A', None for 'b', None for 'B', '0' for 'd', 'x' for 'D',
+#ANNOTATION: ' ' for 's', 'x' for 'S', 'x' for 'W', '!' for 'W' and None for 'Z'.
+
+
+class Choice(list):
+#ANNOTATION: derive the class Choice from list base class.
+    """
+    Used to represent multiple possibilities at this point in a pattern string.
+    We use a distinguished type, rather than a list, so that the usage in the
+    code is clear.
+    """
+#ANNOTATION: docstring
+
+
+class Group(list):
+#ANNOTATION: derive the class Group from list base class.
+    """
+    Used to represent a capturing group in the pattern string.
+    """
+#ANNOTATION: docstring
+
+
+class NonCapture(list):
+#ANNOTATION: derive the class NonCapture from list base class.
+    """
+    Used to represent a non-capturing group in the pattern string.
+    """
+#ANNOTATION: docstring
+
+
+def normalize(pattern):
+#ANNOTATION: define the function normalize with an argument pattern.
+    """
+    Given a reg-exp pattern, normalizes it to an iterable of forms that
+    suffice for reverse matching. This does the following:
+
+    (1) For any repeating sections, keeps the minimum number of occurrences
+        permitted (this means zero for optional groups).
+    (2) If an optional group includes parameters, include one occurrence of
+        that group (along with the zero occurrence case from step (1)).
+    (3) Select the first (essentially an arbitrary) element from any character
+        class. Select an arbitrary character for any unordered class (e.g. '.'
+        or '\w') in the pattern.
+    (5) Ignore comments and any of the reg-exp flags that won't change
+        what we construct ("iLmsu"). "(?x)" is an error, however.
+    (6) Raise an error on all other non-capturing (?...) forms (e.g.
+        look-ahead and look-behind matches) and any disjunctive ('|')
+        constructs.
+
+    Django's URLs for forward resolving are either all positional arguments or
+    all keyword arguments. That is assumed here, as well. Although reverse
+    resolving can be done using positional args when keyword args are
+    specified, the two cannot be mixed in the same reverse() call.
+    """
+#ANNOTATION: docstring
+    # Do a linear scan to work out the special features of this pattern. The
+    # idea is that we scan once here and collect all the information we need to
+    # make future decisions.
+    result = []
+#ANNOTATION: result is an empty list.
+    non_capturing_groups = []
+#ANNOTATION: non_capturing_groups is an empty list.
+    consume_next = True
+#ANNOTATION: consume_next is boolean True.
+    pattern_iter = next_char(iter(pattern))
+#ANNOTATION: call the function next_char with an argument iterator pattern, substitute the result for pattern_iter.
+    num_args = 0
+#ANNOTATION: num_args is an integer 0.
+
+    # A "while" loop is used here because later on we need to be able to peek
+    # at the next character and possibly go around without consuming another
+    # one at the top of the loop.
+    try:
+#ANNOTATION: try,
+        ch, escaped = next(pattern_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch and escaped, respectively.
+    except StopIteration:
+#ANNOTATION: if StopIteration exception,
+        return [('', [])]
+#ANNOTATION: return a list with an element tuple with 2 elements: an empty string and an empty list. 
+
+    try:
+#ANNOTATION: try,
+        while True:
+#ANNOTATION: endless loop,
+            if escaped:
+#ANNOTATION: if escaped is true,
+                result.append(ch)
+#ANNOTATION: append ch to result.
+            elif ch == '.':
+#ANNOTATION: otherwise if ch equals a string '.',
+                # Replace "any character" with an arbitrary representative.
+                result.append(".")
+#ANNOTATION: append string '.' to result.
+            elif ch == '|':
+#ANNOTATION: otherwise if ch equals a string '|',
+                # FIXME: One day we'll should do this, but not in 1.0.
+                raise NotImplementedError('Awaiting Implementation')
+#ANNOTATION: raise an NotImplementedError exception with an argument string 'Awaiting Implementation'.
+            elif ch == "^":
+#ANNOTATION: otherwise if ch equals a string '^',
+                pass
+#ANNOTATION: do nothing.
+            elif ch == '$':
+#ANNOTATION: otherwise if ch equals a string '$',
+                break
+#ANNOTATION: skip this loop iteration.
+            elif ch == ')':
+#ANNOTATION: otherwise if ch equals a string ')',
+                # This can only be the end of a non-capturing group, since all
+                # other unescaped parentheses are handled by the grouping
+                # section later (and the full group is handled there).
+                #
+                # We regroup everything inside the capturing group so that it
+                # can be quantified, if necessary.
+                start = non_capturing_groups.pop()
+#ANNOTATION: remove first element from non_capturing_groups, substitute it for start.
+                inner = NonCapture(result[start:])
+#ANNOTATION: inner is an instance of NonCapture, created with elements of result from start index to the end.
+                result = result[:start] + [inner]
+#ANNOTATION: append list with element inner to list containing first start elements of result, substitute it for result.
+            elif ch == '[':
+#ANNOTATION: otherwise if ch equals a string '[',
+                # Replace ranges with the first character in the range.
+                ch, escaped = next(pattern_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch and escaped, respectively.
+                result.append(ch)
+#ANNOTATION: append ch to result.
+                ch, escaped = next(pattern_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch and escaped, respectively.
+                while escaped or ch != ']':
+#ANNOTATION: while escaped is true or ch is not equal to a string ']',
+                    ch, escaped = next(pattern_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch and escaped, respectively.
+            elif ch == '(':
+#ANNOTATION: otherwise if ch equals a string '(',
+                # Some kind of group.
+                ch, escaped = next(pattern_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch and escaped, respectively.
+                if ch != '?' or escaped:
+#ANNOTATION: if ch is not equal to a sring '?' or escaped is true,
+                    # A positional group
+                    name = "_%d" % num_args
+#ANNOTATION: name is a string "_%d" formated with num_args.
+                    num_args += 1
+#ANNOTATION: increment num_args by one.
+                    result.append(Group((("%%(%s)s" % name), name)))
+#ANNOTATION: instantiate a class Group with 2 arguments: string "%%(%s)s" formated with name, and name, append it to result.
+                    walk_to_end(ch, pattern_iter)
+#ANNOTATION: call the function walk_to_end with 2 arguments: ch and pattern_iter.
+                else:
+#ANNOTATION: if not,
+                    ch, escaped = next(pattern_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch and escaped, respectively.
+                    if ch in "iLmsu#":
+#ANNOTATION: if ch is contained in string "iLmsu#",
+                        # All of these are ignorable. Walk to the end of the
+                        # group.
+                        walk_to_end(ch, pattern_iter)
+#ANNOTATION: call the function walk_to_end with 2 arguments: ch and pattern_iter.
+                    elif ch == ':':
+#ANNOTATION: otherwise if ch equals a string ':',
+                        # Non-capturing group
+                        non_capturing_groups.append(len(result))
+#ANNOTATION: append length of result to non_capturing_groups.
+                    elif ch != 'P':
+#ANNOTATION: otherwise if ch equals a string 'P',
+                        # Anything else, other than a named group, is something
+                        # we cannot reverse.
+                        raise ValueError("Non-reversible reg-exp portion: '(?%s'" % ch)
+#ANNOTATION: raise an ValueError with an argument string "Non-reversible reg-exp portion: '(?%s'" formated with ch.
+                    else:
+#ANNOTATION: if not,
+                        ch, escaped = next(pattern_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch and escaped, respectively.
+                        if ch not in ('<', '='):
+#ANNOTATION: if ch is not equal to string '<' or string '=',
+                            raise ValueError("Non-reversible reg-exp portion: '(?P%s'" % ch)
+#ANNOTATION: raise an ValueError with an argument string "Non-reversible reg-exp portion: '(?P%s'" formated with ch.
+                        # We are in a named capturing group. Extra the name and
+                        # then skip to the end.
+                        if ch == '<':
+#ANNOTATION: if ch equals a string '<',
+                            terminal_char = '>'
+#ANNOTATION: terminal_char is an string '>'.
+                        # We are in a named backreference.
+                        else:
+#ANNOTATION: if not,
+                            terminal_char = ')'
+#ANNOTATION: terminal_char is an string ')'.
+                        name = []
+#ANNOTATION: name is an empty list.
+                        ch, escaped = next(pattern_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch and escaped, respectively.
+                        while ch != terminal_char:
+#ANNOTATION: while ch is not equal to terminal_char,
+                            name.append(ch)
+#ANNOTATION: append ch to result.
+                            ch, escaped = next(pattern_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch and escaped, respectively.
+                        param = ''.join(name)
+#ANNOTATION: join elements of name into a string, substitute it for param.
+                        # Named backreferences have already consumed the
+                        # parenthesis.
+                        if terminal_char != ')':
+#ANNOTATION:  if terminal_char is not equal to string ')',
+                            result.append(Group((("%%(%s)s" % param), param)))
+#ANNOTATION: instantiate a class Group with 2 arguments: string "%%(%s)s" formated with param, and param, append it to result.
+                            walk_to_end(ch, pattern_iter)
+#ANNOTATION: call the function walk_to_end with 2 arguments: ch and pattern_iter.
+                        else:
+#ANNOTATION: if not,
+                            result.append(Group((("%%(%s)s" % param), None)))
+#ANNOTATION: instantiate a class Group with 2 arguments: string "%%(%s)s" formated with param, and None, append it to result.
+            elif ch in "*?+{":
+#ANNOTATION: otherwise if ch is contained in string "*?+{",
+                # Quanitifers affect the previous item in the result list.
+                count, ch = get_quantifier(ch, pattern_iter)
+#ANNOTATION: call the function get_quantifier with 2 arguments: ch and pattern_iter, substitute the result for count and ch, respectively.
+                if ch:
+#ANNOTATION: if ch is true,
+                    # We had to look ahead, but it wasn't need to compute the
+                    # quantifier, so use this character next time around the
+                    # main loop.
+                    consume_next = False
+#ANNOTATION: consume_next is boolean False.
+
+                if count == 0:
+#ANNOTATION: if count is equal to integer 0.
+                    if contains(result[-1], Group):
+#ANNOTATION: if call to the function contains with 2 arguments: last element of result and Group, evaluates to true,
+                        # If we are quantifying a capturing group (or
+                        # something containing such a group) and the minimum is
+                        # zero, we must also handle the case of one occurrence
+                        # being present. All the quantifiers (except {0,0},
+                        # which we conveniently ignore) that have a 0 minimum
+                        # also allow a single occurrence.
+                        result[-1] = Choice([None, result[-1]])
+#ANNOTATION: last element of result is an instance of Choice class, created with an argument list with 2 elements: None and last element of result.
+                    else:
+#ANNOTATION: if not,
+                        result.pop()
+#ANNOTATION: remove the first element from result.
+                elif count > 1:
+#ANNOTATION: otherwise if count is greater than integer 1,
+                    result.extend([result[-1]] * (count - 1))
+#ANNOTATION: create a list with count decremented by 1 number of last element of result elements, extend list result with it. 
+            else:
+#ANNOTATION: if not,
+                # Anything else is a literal.
+                result.append(ch)
+#ANNOTATION: append ch to result.
+
+            if consume_next:
+#ANNOTATION: if consume_next is true,
+                ch, escaped = next(pattern_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch and escaped, respectively.
+            else:
+#ANNOTATION: if not,
+                consume_next = True
+#ANNOTATION: consume_next is boolean True.
+    except StopIteration:
+#ANNOTATION: if StopIteration exception,
+        pass
+#ANNOTATION: do nothing.
+    except NotImplementedError:
+#ANNOTATION: if NotImplementedError exception,
+        # A case of using the disjunctive form. No results for you!
+        return [('', [])]
+#ANNOTATION: return a list with an element tuple with 2 elements: an empty string and an empty list. 
+
+    return list(zip(*flatten_result(result)))
+#ANNOTATION: call the function flatten_result with an argument result, unpack the resulting list and zip it in the list of tuples, return the result.
+
+
+def next_char(input_iter):
+#ANNOTATION: define the function next_char with an argument input_iter.
+    """
+    An iterator that yields the next character from "pattern_iter", respecting
+    escape sequences. An escaped character is replaced by a representative of
+    its class (e.g. \w -> "x"). If the escaped character is one that is
+    skipped, it is not returned (the next character is returned instead).
+
+    Yields the next character, along with a boolean indicating whether it is a
+    raw (unescaped) character or not.
+    """
+#ANNOTATION: docstring
+    for ch in input_iter:
+#ANNOTATION: for every ch in input_iter,
+        if ch != '\\':
+#ANNOTATION: if ch is not equal to string '\\'.
+            yield ch, False
+#ANNOTATION: yield ch and boolean False.
+            continue
+#ANNOTATION: skip this loop iteration.
+        ch = next(input_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch.
+        representative = ESCAPE_MAPPINGS.get(ch, ch)
+#ANNOTATION: get the value under ch key of the ESCAPE_MAPPINGS dictionary, if it exists substitute it for representative, if not substitute ch for representative.
+        if representative is None:
+#ANNOTATION: if representative is None,
+            continue
+#ANNOTATION: skip this loop iteration.
+        yield representative, True
+#ANNOTATION: yield representative and boolean True.
+
+
+def walk_to_end(ch, input_iter):
+#ANNOTATION: define the function walk_to_end with 2 arguments ch and input_iter.
+    """
+    The iterator is currently inside a capturing group. We want to walk to the
+    close of this group, skipping over any nested groups and handling escaped
+    parentheses correctly.
+    """
+#ANNOTATION: docstring
+    if ch == '(':
+#ANNOTATION: if ch equal a string '(',
+        nesting = 1
+#ANNOTATION: nesting is integer 1.
+    else:
+#ANNOTATION: if not, 
+        nesting = 0
+#ANNOTATION: nesting is integer 0.
+    for ch, escaped in input_iter:
+#ANNOTATION: for every ch and escaped in input_iter,
+        if escaped:
+#ANNOTATION: if escaped is true,
+            continue
+#ANNOTATION: skip this loop iteration.
+        elif ch == '(':
+#ANNOTATION: otherwise if ch equals a string '(',
+            nesting += 1
+#ANNOTATION: increment nesting by one.
+        elif ch == ')':
+#ANNOTATION: otherwise if ch equals a string ')',
+            if not nesting:
+#ANNOTATION: if nesting is false,
+                return
+#ANNOTATION: return nothing.
+            nesting -= 1
+#ANNOTATION: decrement nesting by one.
+
+
+def get_quantifier(ch, input_iter):
+#ANNOTATION: define the function get_quantifier with 2 arguments ch and input_iter.
+    """
+    Parse a quantifier from the input, where "ch" is the first character in the
+    quantifier.
+
+    Returns the minimum number of occurrences permitted by the quantifier and
+    either None or the next character from the input_iter if the next character
+    is not part of the quantifier.
+    """
+#ANNOTATION: docstring
+    if ch in '*?+':
+#ANNOTATION: if ch is contained in string '*?+',
+        try:
+#ANNOTATION: try,
+            ch2, escaped = next(input_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch2 and escaped, respectively.
+        except StopIteration:
+#ANNOTATION: if StopIteration exception,
+            ch2 = None
+#ANNOTATION: ch2 is None.
+        if ch2 == '?':
+#ANNOTATION: if ch2 equals string '?',
+            ch2 = None
+#ANNOTATION: ch2 is None.
+        if ch == '+':
+#ANNOTATION: if ch equals string '+',
+            return 1, ch2
+#ANNOTATION: return integer 1 and ch2.
+        return 0, ch2
+#ANNOTATION: return integer 0 and ch2.
+
+    quant = []
+#ANNOTATION: quant is an empty list.
+    while ch != '}':
+#ANNOTATION: while ch is not equal to a string '}',
+        ch, escaped = next(input_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch and escaped, respectively.
+        quant.append(ch)
+#ANNOTATION: append ch to quant.
+    quant = quant[:-1]
+#ANNOTATION: remove last element for quant.
+    values = ''.join(quant).split(',')
+#ANNOTATION: join elements of quant into a string, split it by string ',', substitute the result for values.
+
+    # Consume the trailing '?', if necessary.
+    try:
+#ANNOTATION: try,
+        ch, escaped = next(input_iter)
+#ANNOTATION: get the next element of the iterable pattern_iter, assign the result for ch and escaped, respectively.
+    except StopIteration:
+#ANNOTATION: if StopIteration exception,
+        ch = None
+#ANNOTATION: ch is None.
+    if ch == '?':
+#ANNOTATION: if ch equals a string '?',
+        ch = None
+#ANNOTATION: ch is None.
+    return int(values[0]), ch
+#ANNOTATION: convert first element of values into a integer, return the result and ch.
+
+
+def contains(source, inst):
+#ANNOTATION: define the function contains with 2 arguments source and inst.
+    """
+    Returns True if the "source" contains an instance of "inst". False,
+    otherwise.
+    """
+#ANNOTATION: docstring
+    if isinstance(source, inst):
+#ANNOTATION: if source is an instance of inst class,
+        return True
+#ANNOTATION: return boolean True.
+    if isinstance(source, NonCapture):
+#ANNOTATION: if source is an instance of NonCapture class,
+        for elt in source:
+#ANNOTATION: for every elt in source,
+            if contains(elt, inst):
+#ANNOTATION: call the function contains with 2 arguments: elt and inst, if it evaluates to true,
+                return True
+#ANNOTATION: return boolean True.
+    return False
+#ANNOTATION: return boolean False.
+
+
+def flatten_result(source):
+#ANNOTATION: define the function flatten_result with an argument source.
+    """
+    Turns the given source sequence into a list of reg-exp possibilities and
+    their arguments. Returns a list of strings and a list of argument lists.
+    Each of the two lists will be of the same length.
+    """
+#ANNOTATION: docstring
+    if source is None:
+#ANNOTATION: if source is None,
+        return [''], [[]]
+#ANNOTATION: return a list containing an empty string and a list containing an empty list.
+    if isinstance(source, Group):
+#ANNOTATION: if source is an instance of Group class,
+        if source[1] is None:
+#ANNOTATION: if second element of source is None,
+            params = []
+#ANNOTATION: params is an empty list,
+        else:
+#ANNOTATION: if not,
+            params = [source[1]]
+#ANNOTATION: params is a list with second element of source as a element.
+        return [source[0]], [params]
+#ANNOTATION: return a list containing first element of source and a list containing params.
+    result = ['']
+#ANNOTATION: result is a list containing an empty string.
+    result_args = [[]]
+#ANNOTATION: result_args is a list containing an empty list.
+    pos = last = 0
+#ANNOTATION: pos and last are integer 0.
+    for pos, elt in enumerate(source):
+#ANNOTATION: for every pos and elt in enumerated iterable source,
+        if isinstance(elt, six.string_types):
+#ANNOTATION: if elt is an instance of six.string_types class,
+            continue
+#ANNOTATION: skip this loop iteration.
+        piece = ''.join(source[last:pos])
+#ANNOTATION: join source list elements from last till pos indexes into a string, substitute the result for piece. 
+        if isinstance(elt, Group):
+#ANNOTATION: if elt is an instance of Group class,
+            piece += elt[0]
+#ANNOTATION: increment piece by firs element of elt.
+            param = elt[1]
+#ANNOTATION: substitute second element of elt for param.
+        else:
+#ANNOTATION: if not,
+            param = None
+#ANNOTATION: param is None.
+        last = pos + 1
+#ANNOTATION: increment pos by one, substitute the result for last.
+        for i in range(len(result)):
+#ANNOTATION: for every i in range of integers from 0 to length of result, not included,
+            result[i] += piece
+#ANNOTATION: increment i-th element of result by piece.
+            if param:
+#ANNOTATION: if param is true,
+                result_args[i].append(param)
+#ANNOTATION: append param to i-th element of result_args.
+        if isinstance(elt, (Choice, NonCapture)):
+#ANNOTATION: if elt is an instance of Choice or NonCapture classes,
+            if isinstance(elt, NonCapture):
+#ANNOTATION: if elt is an instance of NonCapture class,
+                elt = [elt]
+#ANNOTATION: elt is an list with an element elt.
+            inner_result, inner_args = [], []
+#ANNOTATION: inner_result and inner_args are empty lists.
+            for item in elt:
+#ANNOTATION: for every item in elt,
+                res, args = flatten_result(item)
+#ANNOTATION: call the function flatten_result with an argument item, assign the result to res and args, respectively.
+                inner_result.extend(res)
+#ANNOTATION: extend list inner_result with res.
+                inner_args.extend(args)
+#ANNOTATION: extend list inner_args with args.
+            new_result = []
+#ANNOTATION: new_result is an empty list.
+            new_args = []
+#ANNOTATION: new_args is an empty list.
+            for item, args in zip(result, result_args):
+#ANNOTATION: zip elements of result and result_args into a list of tuples, for every item and args in the result,
+                for i_item, i_args in zip(inner_result, inner_args):
+#ANNOTATION: zip elements of inner_result and inner_args into a list of tuples, for every i_item and i_args in the result,
+                    new_result.append(item + i_item)
+#ANNOTATION: sum item and i_item together, append the result to new_result.
+                    new_args.append(args[:] + i_args)
+#ANNOTATION: append i_args to args, append new_args with the result. 
+            result = new_result
+#ANNOTATION: substitute new_result for result.
+            result_args = new_args
+#ANNOTATION: substitute new_args for result_args.
+    if pos >= last:
+#ANNOTATION: if pos is greater than or equal to last,
+        piece = ''.join(source[last:])
+#ANNOTATION: join elements of list source from index last to the end into a string, substitute it for piece.
+        for i in range(len(result)):
+#ANNOTATION: for every i in range of integers from 0 to length of result, not included,
+            result[i] += piece
+#ANNOTATION: increment i-th element of result by piece.
+    return result, result_args
+#ANNOTATION: return result and result_args.

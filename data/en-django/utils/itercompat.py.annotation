@@ -1,0 +1,24 @@
+"""
+Providing iterator functions that are not in all version of Python we support.
+Where possible, we try to use the system-native version and only fall back to
+these implementations if necessary.
+"""
+#ANNOTATION: docstring
+
+
+def is_iterable(x):
+#ANNOTATION: define the function is_iterable with an argument x. 
+    "A implementation independent way of checking for iterables"
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        iter(x)
+#ANNOTATION: create an iterator out of x.
+    except TypeError:
+#ANNOTATION: if TypeError exception is caught,
+        return False
+#ANNOTATION: return boolean False.
+    else:
+#ANNOTATION: if not,
+        return True
+#ANNOTATION: return boolean True.

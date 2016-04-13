@@ -1,0 +1,1056 @@
+"""
+Multi-part parsing for file uploads.
+
+Exposes one class, ``MultiPartParser``, which feeds chunks of uploaded data to
+file upload handlers for processing.
+"""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import base64
+#ANNOTATION: import module base64.
+import binascii
+#ANNOTATION: import module binascii.
+import cgi
+#ANNOTATION: import module cgi.
+import sys
+#ANNOTATION: import module sys.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.core.exceptions import SuspiciousMultipartForm
+#ANNOTATION: from django.core.exceptions import SuspiciousMultipartF into default name space.
+from django.utils.datastructures import MultiValueDict
+#ANNOTATION: from django.utils.datastructures import MultiValueDict into default name space.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.text import unescape_entities
+#ANNOTATION: from django.utils.text import unescape_entities into default name space.
+from django.core.files.uploadhandler import StopUpload, SkipFile, StopFutureHandlers
+#ANNOTATION: from django.core.files.uploadhandler import StopUpload,  SkipFile and StopFutureHandlers into default name space.
+
+__all__ = ('MultiPartParser', 'MultiPartParserError', 'InputStreamExhausted')
+#ANNOTATION: __all__ is an tuple with 3 elements: strings 'MultiPartParser', 'MultiPartParserError' and 'InputStreamExhausted'.
+
+
+class MultiPartParserError(Exception):
+#ANNOTATION: derive the class MultiPartParserError from the Exception base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+class InputStreamExhausted(Exception):
+#ANNOTATION: derive the class InputStreamExhausted from the Exception base class.
+    """
+    No more reads are allowed from this device.
+    """
+#ANNOTATION: docstring
+    pass
+#ANNOTATION: do nothing.
+
+RAW = "raw"
+#ANNOTATION: RAW is a string "raw".
+FILE = "file"
+#ANNOTATION: FILE is a file".
+FIELD = "field"
+#ANNOTATION: FIELD is a field".
+
+_BASE64_DECODE_ERROR = TypeError if six.PY2 else binascii.Error
+#ANNOTATION: if six.PY2 is true, _BASE64_DECODE_ERROR is TypeError, if not, _BASE64_DECODE_ERROR is binascii.Error.
+
+
+class MultiPartParser(object):
+#ANNOTATION: derive the class MultiPartParser from the object base class.
+    """
+    A rfc2388 multipart/form-data parser.
+
+    ``MultiValueDict.parse()`` reads the input stream in ``chunk_size`` chunks
+    and returns a tuple of ``(MultiValueDict(POST), MultiValueDict(FILES))``.
+    """
+#ANNOTATION: docstring
+    def __init__(self, META, input_data, upload_handlers, encoding=None):
+#ANNOTATION: define the method __init__ wiht 5 arguments: self, META, input_data, upload_handlers and encoding set to None.
+        """
+        Initialize the MultiPartParser object.
+
+        :META:
+            The standard ``META`` dictionary in Django request objects.
+        :input_data:
+            The raw post data, as a file-like object.
+        :upload_handlers:
+            A list of UploadHandler instances that perform operations on the uploaded
+            data.
+        :encoding:
+            The encoding with which to treat the incoming data.
+        """
+#ANNOTATION: docstring
+
+        #
+        # Content-Type should contain multipart and the boundary information.
+        #
+
+        content_type = META.get('HTTP_CONTENT_TYPE', META.get('CONTENT_TYPE', ''))
+#ANNOTATION: get the value from META dictionary, under the 'HTTP_CONTENT_TYPE' key, if the key doesnt exist,
+#ANNOTATION: return the value under the 'CONTENT_TYPE' of the META dictionary, if it doesnt exist return an empty string, 
+#ANNOTATION: substitute the result for content_type.
+        if not content_type.startswith('multipart/'):
+#ANNOTATION: if content_type doesnt start with string 'multipart/', 
+            raise MultiPartParserError('Invalid Content-Type: %s' % content_type)
+#ANNOTATION: raise an MultiPartParserError with an argument string 'Invalid Content-Type: %s', where '%s' is replaced with content_type.
+
+        # Parse the header to get the boundary to split the parts.
+        ctypes, opts = parse_header(content_type.encode('ascii'))
+#ANNOTATION: call the method boundary with an argument string 'ascii', use the result to call to the parse_header function, 
+#ANNOTATION: assign the result to ctypes and opts.
+        boundary = opts.get('boundary')
+#ANNOTATION: get the value under the 'boundary' key of the opts dictionary, substitute it for boundary.
+        if not boundary or not cgi.valid_boundary(boundary):
+#ANNOTATION: if boundary is false or return value of the method cgi.valid_boundary called with an argument boundary evaluates to false,
+            raise MultiPartParserError('Invalid boundary in multipart: %s' % boundary)
+#ANNOTATION: raise an MultiPartParserError with an argument string 'Invalid boundary in multipart: %s' is replaced with boundary.
+
+        # Content-Length should contain the length of the body we are about
+        # to receive.
+        try:
+#ANNOTATION: try,
+            content_length = int(META.get('HTTP_CONTENT_LENGTH', META.get('CONTENT_LENGTH', 0)))
+#ANNOTATION: convert value under the 'HTTP_CONTENT_LENGTH' key of the META dictionary to an integer of base of value under the 'CONTENT_LENGTH' key of META dictionary, if the key doesnt exists use 0 as the base, substitute the result for content_length. 
+        except (ValueError, TypeError):
+#ANNOTATION: if ValueError or TypeError are caught,
+            content_length = 0
+#ANNOTATION: content_length is integer 0.
+
+        if content_length < 0:
+#ANNOTATION: if content_length is lesser than integer 0,
+            # This means we shouldn't continue...raise an error.
+            raise MultiPartParserError("Invalid content length: %r" % content_length)
+#ANNOTATION: raise an MultiPartParserError with an argument string "Invalid content length: %r", where '%r' is replaced with content_length.
+
+        if isinstance(boundary, six.text_type):
+#ANNOTATION: if boundary is an instance of six.text_type class,
+            boundary = boundary.encode('ascii')
+#ANNOTATION: call the method boundary.encode with an argument string 'ascii', substitute the result for boundary.
+        self._boundary = boundary
+#ANNOTATION: substitute boundary for self._boundary.
+        self._input_data = input_data
+#ANNOTATION: substitute input_data for self._input_data.
+
+        # For compatibility with low-level network APIs (with 32-bit integers),
+        # the chunk size should be < 2^31, but still divisible by 4.
+        possible_sizes = [x.chunk_size for x in upload_handlers if x.chunk_size]
+#ANNOTATION: for every x in upload_handlers if x.chunk_size is true, append x.chunk_size to a list, substitute the result for possible_sizes.
+        self._chunk_size = min([2 ** 31 - 4] + possible_sizes)
+#ANNOTATION: bring integer 2 to the power of 31, subtract the result by 4, put the result into a list, append possible_sizes to it, 
+#ANNOTATION: substitute minimal element of the resulting list for self._chunk_size.
+
+        self._meta = META
+#ANNOTATION: substitute META for self._meta.
+        self._encoding = encoding or settings.DEFAULT_CHARSET
+#ANNOTATION: if encoding is true, substitute it for self._encoding, if not substitute settings.DEFAULT_CHARSET for self._encoding.
+        self._content_length = content_length
+#ANNOTATION: substitute content_length for self._content_length.
+        self._upload_handlers = upload_handlers
+#ANNOTATION: substitute _upload_handlers for self.__upload_handlers.
+
+    def parse(self):
+#ANNOTATION: define the method parse with an argument self.
+        """
+        Parse the POST data and break it into a FILES MultiValueDict and a POST
+        MultiValueDict.
+
+        Returns a tuple containing the POST and FILES dictionary, respectively.
+        """
+#ANNOTATION: docstring
+        # We have to import QueryDict down here to avoid a circular import.
+        from django.http import QueryDict
+#ANNOTATION: from django.http import QueryDict into default namespace.
+
+        encoding = self._encoding
+#ANNOTATION: substitute self._encoding for encoding.
+        handlers = self._upload_handlers
+#ANNOTATION: substitute self._upload_handlers for handlers.
+
+        # HTTP spec says that Content-Length >= 0 is valid
+        # handling content-length == 0 before continuing
+        if self._content_length == 0:
+#ANNOTATION: if self._content_length equals integer 0,
+            return QueryDict('', encoding=self._encoding), MultiValueDict()
+#ANNOTATION: instantiate QueryDict class with 2 arguments: an empty string and encoding set to self._encoding, instantiate a class MultiValueDict, return them.
+
+        # See if any of the handlers take care of the parsing.
+        # This allows overriding everything if need be.
+        for handler in handlers:
+#ANNOTATION: for every handler in handlers,
+            result = handler.handle_raw_input(self._input_data,
+                                              self._meta,
+                                              self._content_length,
+                                              self._boundary,
+                                              encoding)
+#ANNOTATION: call the method handler.handle_raw_input with 5 arguments: self._input_data, self._meta, self._content_length, self._boundary, 
+#ANNOTATION: and encoding, substitute the result for result.
+            # Check to see if it was handled
+            if result is not None:
+#ANNOTATION: if result is not None,
+                return result[0], result[1]
+#ANNOTATION: return first and second element of result.
+
+        # Create the data structures to be used later.
+        self._post = QueryDict('', mutable=True)
+#ANNOTATION: self._post is an instance of QueryDict class, created with an empty string and mutable set to boolean True.
+        self._files = MultiValueDict()
+#ANNOTATION: self._files is an instance of MultiValueDict class.
+
+        # Instantiate the parser and stream:
+        stream = LazyStream(ChunkIter(self._input_data, self._chunk_size))
+#ANNOTATION: instantiate class ChunkIter with 2 arguments: self._input_data and self._chunk_size, use it to instantiate LazyStream class,
+#ANNOTATION: assign the handle to stream.
+
+        # Whether or not to signal a file-completion at the beginning of the loop.
+        old_field_name = None
+#ANNOTATION: old_field_name is None.
+        counters = [0] * len(handlers)
+#ANNOTATION: counters is a list containing length of handlers number of zeros.
+
+        try:
+#ANNOTATION: try,
+            for item_type, meta_data, field_stream in Parser(stream, self._boundary):
+#ANNOTATION: call the Parser object with stream and self._boundary, for every item_type, meta_data and field_stream in return value,
+                if old_field_name:
+#ANNOTATION: if old_field_name is true,
+                    # We run this at the beginning of the next loop
+                    # since we cannot be sure a file is complete until
+                    # we hit the next boundary/part of the multipart content.
+                    self.handle_file_complete(old_field_name, counters)
+#ANNOTATION: call the method self.handle_file_complete with arguments old_field_name, counters.
+                    old_field_name = None
+#ANNOTATION: old_field_name is None.
+
+                try:
+#ANNOTATION: try,
+                    disposition = meta_data['content-disposition'][1]
+#ANNOTATION: get the value under the 'content-disposition' key of the meta_data dictionary, substitute second element of it for disposition.
+                    field_name = disposition['name'].strip()
+#ANNOTATION: get the value under the 'name' key of the disposition dictionary, strip it of whitespaces, substitute the result for field_name.
+                except (KeyError, IndexError, AttributeError):
+#ANNOTATION: if KeyError, IndexError and AttributeError exception is caught,
+                    continue
+#ANNOTATION: skip this loop iteration,
+
+                transfer_encoding = meta_data.get('content-transfer-encoding')
+#ANNOTATION: get the value under the 'content-transfer-encoding' key of the disposition meta_data, substitute it for transfer_encoding.
+                if transfer_encoding is not None:
+#ANNOTATION: if transfer_encoding is not None,
+                    transfer_encoding = transfer_encoding[0].strip()
+#ANNOTATION: strip of the whitespaces first element of transfer_encoding, substitute the result for transfer_encoding. 
+                field_name = force_text(field_name, encoding, errors='replace')
+#ANNOTATION: call the function force_text with 3 arguments: field_name, encoding and errors as a string 'replace', substitute the result for field_name.
+
+                if item_type == FIELD:
+#ANNOTATION: if item_type equals FIELD,
+                    # This is a post field, we can just set it in the post
+                    if transfer_encoding == 'base64':
+#ANNOTATION: if transfer_encoding equals a string 'base64',
+                        raw_data = field_stream.read()
+#ANNOTATION: call the method field_stream.read, substitute the result for raw_data.
+                        try:
+#ANNOTATION: try,
+                            data = base64.b64decode(raw_data)
+#ANNOTATION: call the function base64.b64decode with an argument raw_data, substitute the result for data.
+                        except _BASE64_DECODE_ERROR:
+#ANNOTATION: if _BASE64_DECODE_ERROR exception is caught,
+                            data = raw_data
+#ANNOTATION: substitute raw_data for data.
+                    else:
+#ANNOTATION: if not,
+                        data = field_stream.read()
+#ANNOTATION: call the method field_stream.read, substitute the result for data.
+
+                    self._post.appendlist(field_name,
+                                          force_text(data, encoding, errors='replace'))
+#ANNOTATION: call the method self._post.appendlist with 2 arguments: field_name and result of the function force_text called with 3 arguments:
+#ANNOTATION: data, encoding and errors as a string 'replace'.
+                elif item_type == FILE:
+#ANNOTATION: otherwise if item_type equals FILE,
+                    # This is a file, use the handler...
+                    file_name = disposition.get('filename')
+#ANNOTATION: get the value under the 'filename' key of the disposition dictionary, substitute it for file_name.
+                    if not file_name:
+#ANNOTATION: if file_name is false,
+                        continue
+#ANNOTATION: skip this loop execution.
+                    file_name = force_text(file_name, encoding, errors='replace')
+#ANNOTATION: call the function force_text with 3 arguments: file_name, encoding and errors set to string 'replace', 
+#ANNOTATION: substitute the result for file_name.
+                    file_name = self.IE_sanitize(unescape_entities(file_name))
+#ANNOTATION: call the function unescape_entities with an argument file_name, use the result as an argument for the call to the self.IE_sanitize,
+#ANNOTATION: method, substitute the result for file_name.
+
+                    content_type, content_type_extra = meta_data.get('content-type', ('', {}))
+#ANNOTATION: get the value under the 'content-type' of the meta_data dictionary, if it exists assign it to content_type, content_type_extra,
+#ANNOTATION: if not, content_type is an empty string and content_type_extra is an empty dictionary.
+                    content_type = content_type.strip()
+#ANNOTATION: strip the content_type of the whitespaces, substitute it for content_type.
+                    charset = content_type_extra.get('charset')
+#ANNOTATION: get the value under the 'charset' key of the content_type_extra dictionary, substitute it for charset.
+
+                    try:
+#ANNOTATION: try,
+                        content_length = int(meta_data.get('content-length')[0])
+#ANNOTATION: convert to an integer first element of the value under the 'content-length' key of the meta_data dictionary, substitute it for content_length.
+                    except (IndexError, TypeError, ValueError):
+#ANNOTATION: if IndexError, TypeError or ValueError exception is caught,
+                        content_length = None
+#ANNOTATION: content_length is None.
+
+                    counters = [0] * len(handlers)
+#ANNOTATION: counters is a list containing length of handlers number of zeros.
+                    try:
+#ANNOTATION: try,
+                        for handler in handlers:
+#ANNOTATION: for every handler in handlers,
+                            try:
+#ANNOTATION: try,
+                                handler.new_file(field_name, file_name,
+                                                 content_type, content_length,
+                                                 charset, content_type_extra)
+#ANNOTATION: call the method handler.new_file with 6 arguments: field_name, file_name, content_type, content_length, charset and  content_type_extra.
+                            except StopFutureHandlers:
+#ANNOTATION: if StopFutureHandlers exception is caught.
+                                break
+#ANNOTATION: break the loop execution.
+
+                        for chunk in field_stream:
+#ANNOTATION: for every chunk in field_stream,
+                            if transfer_encoding == 'base64':
+#ANNOTATION: if transfer_encoding equals string 'base64',
+                                # We only special-case base64 transfer encoding
+                                # We should always read base64 streams by multiple of 4
+                                over_bytes = len(chunk) % 4
+#ANNOTATION: calculate length of chunk modulo integer 4, substitute the result for over_bytes.
+                                if over_bytes:
+#ANNOTATION: if over_bytes is true,
+                                    over_chunk = field_stream.read(4 - over_bytes)
+#ANNOTATION: call the method field_stream.read with an argument: over_bytes subtracted from integer 4, substitute the result for over_chunk.
+                                    chunk += over_chunk
+#ANNOTATION: increment chunk by over_chunk.
+
+                                try:
+#ANNOTATION: try,
+                                    chunk = base64.b64decode(chunk)
+#ANNOTATION: call the method base64.b64decode with an argument chunk, substitute the result for chunk.
+                                except Exception as e:
+#ANNOTATION: if Exception, renamed to e, exception is caught,
+                                    # Since this is only a chunk, any error is an unfixable error.
+                                    msg = "Could not decode base64 data: %r" % e
+#ANNOTATION: msg is a string "Could not decode base64 data: %r", where '%r' is replace with e.
+                                    six.reraise(MultiPartParserError, MultiPartParserError(msg), sys.exc_info()[2])
+#ANNOTATION: call the method six.reraise with 3 arguments: MultiPartParserError, MultiPartParserError created with msg, 
+#ANNOTATION: and third element of the result of the function sys.exc_info.
+
+                            for i, handler in enumerate(handlers):
+#ANNOTATION: for every i and handler in enumerated iterable handlers,
+                                chunk_length = len(chunk)
+#ANNOTATION: substitute length of chunk for chunk_length.
+                                chunk = handler.receive_data_chunk(chunk,
+                                                                   counters[i])
+#ANNOTATION: call the method handler.receive_data_chunk with 2 arguments: chunk and i-th element of counters, substitute the result for chunk.
+                                counters[i] += chunk_length
+#ANNOTATION: increment i-th element of counters by chunk_length.
+                                if chunk is None:
+#ANNOTATION: if chunk is None,
+                                    # If the chunk received by the handler is None, then don't continue.
+                                    break
+#ANNOTATION: break the loop execution.
+
+                    except SkipFile:
+#ANNOTATION: if SkipFile exception is caught,
+                        self._close_files()
+#ANNOTATION: call the method self._close_files.
+                        # Just use up the rest of this file...
+                        exhaust(field_stream)
+#ANNOTATION: call the function exhaust with an argument field_stream.
+                    else:
+#ANNOTATION: if not,
+                        # Handle file upload completions on next iteration.
+                        old_field_name = field_name
+#ANNOTATION: substitute field_name for old_field_name.
+                else:
+#ANNOTATION: if not,
+                    # If this is neither a FIELD or a FILE, just exhaust the stream.
+                    exhaust(stream)
+#ANNOTATION: call the function exhaust with an argument stream.
+        except StopUpload as e:
+#ANNOTATION: if StopUpload, renamed to e, exception is caught,
+            self._close_files()
+#ANNOTATION: call the method self._close_files.
+            if not e.connection_reset:
+#ANNOTATION: if e.connection_reset is false,
+                exhaust(self._input_data)
+#ANNOTATION: call the function exhaust with an argument self._input_data.
+        else:
+#ANNOTATION: if not,
+            # Make sure that the request data is all fed
+            exhaust(self._input_data)
+#ANNOTATION: call the function exhaust with an argument self._input_data.
+
+        # Signal that the upload has completed.
+        for handler in handlers:
+#ANNOTATION: for every handler in handlers,
+            retval = handler.upload_complete()
+#ANNOTATION: call the method handler.upload_complete, substitute the result for retval.
+            if retval:
+#ANNOTATION: if retval is true,
+                break
+#ANNOTATION: break the loop execution.
+
+        return self._post, self._files
+#ANNOTATION: return self._post and self._files.
+
+    def handle_file_complete(self, old_field_name, counters):
+#ANNOTATION: define the method handle_file_complete with 3 arguments: self, old_field_name and counters.
+        """
+        Handle all the signaling that takes place when a file is complete.
+        """
+#ANNOTATION: docstring
+        for i, handler in enumerate(self._upload_handlers):
+#ANNOTATION: for every i and handler in enumerated iterator self._upload_handlers,
+            file_obj = handler.file_complete(counters[i])
+#ANNOTATION: call the method handler.file_complete with i-th element of counters as an argument, substitute the result for file_obj.
+            if file_obj:
+#ANNOTATION: if file_obj is true,
+                # If it returns a file object, then set the files dict.
+                self._files.appendlist(
+                    force_text(old_field_name, self._encoding, errors='replace'),
+                    file_obj)
+#ANNOTATION: call the function force_text with 3 arguments: old_field_name, self._encoding and errors as a string 'replace',
+#ANNOTATION: use the result and file_obj as arguments for the call to the method self._files.appendlist.
+                break
+#ANNOTATION: break the loop execution.
+
+    def IE_sanitize(self, filename):
+#ANNOTATION: define the method IE_sanitize with arguments self and filename.
+        """Cleanup filename from Internet Explorer full paths."""
+#ANNOTATION: docstring
+        return filename and filename[filename.rfind("\\") + 1:].strip()
+#ANNOTATION: call the method filename.rfind with an argument string "\\", increment the result by one, 
+#ANNOTATION: slice the filename from the previous result as start index to the end, strip it of white spaces from both ends, 
+#ANNOTATION: if the result is not an empty string and filename is not an empty string, return boolean True, otherwise return boolean False.
+
+    def _close_files(self):
+#ANNOTATION: define the method _close_files with an argument self.
+        # Free up all file handles.
+        # FIXME: this currently assumes that upload handlers store the file as 'file'
+        # We should document that... (Maybe add handler.free_file to complement new_file)
+        for handler in self._upload_handlers:
+#ANNOTATION: for every handler in self._upload_handlers,
+            if hasattr(handler, 'file'):
+#ANNOTATION: if handler has an attribute 'file',
+                handler.file.close()
+#ANNOTATION: call the method handler.file.close.
+
+
+class LazyStream(six.Iterator):
+#ANNOTATION: derive the class LazyStream from the six.Iterator base class.
+    """
+    The LazyStream wrapper allows one to get and "unget" bytes from a stream.
+
+    Given a producer object (an iterator that yields bytestrings), the
+    LazyStream object will support iteration, reading, and keeping a "look-back"
+    variable in case you need to "unget" some bytes.
+    """
+#ANNOTATION: docstring
+    def __init__(self, producer, length=None):
+#ANNOTATION: define the method __init__ with 3 arguments: self, producer and length set to None.
+        """
+        Every LazyStream must have a producer when instantiated.
+
+        A producer is an iterable that returns a string each time it
+        is called.
+        """
+#ANNOTATION: docstring
+        self._producer = producer
+#ANNOTATION: substitute producer for self._producer.
+        self._empty = False
+#ANNOTATION: self._empty is boolean False.
+        self._leftover = b''
+#ANNOTATION: self._leftover is an empty string.
+        self.length = length
+#ANNOTATION: substitute length for self._length.
+        self.position = 0
+#ANNOTATION: self.position is an integer 0.
+        self._remaining = length
+#ANNOTATION: substitute length for self._remaining.
+        self._unget_history = []
+#ANNOTATION: self._unget_history is an empty list.
+
+    def tell(self):
+#ANNOTATION: define the method tell with an argument self.
+        return self.position
+#ANNOTATION:  return self.position.
+
+    def read(self, size=None):
+#ANNOTATION: define the method read with arguments self and size set to None.
+        def parts():
+#ANNOTATION: define the function parts.
+            remaining = self._remaining if size is None else size
+#ANNOTATION: if size is None substitute self._remaining for remaining, if not, substitute size for remaining. 
+            # do the whole thing in one shot if no limit was provided.
+            if remaining is None:
+#ANNOTATION: if remaining is None,
+                yield b''.join(self)
+#ANNOTATION: join self into a bytes string, yield the result as the return value of the generator.
+                return
+#ANNOTATION: return nothing.
+
+            # otherwise do some bookkeeping to return exactly enough
+            # of the stream and stashing any extra content we get from
+            # the producer
+            while remaining != 0:
+#ANNOTATION: while remaining is not equal to integer 0,
+                assert remaining > 0, 'remaining bytes to read should never go negative'
+#ANNOTATION: if remaining is not greater than 0, assert an error with the message string 'remaining bytes to read should never go negative'. 
+
+                chunk = next(self)
+#ANNOTATION: get the next element of iterable self, substitute it for chunk.
+
+                emitting = chunk[:remaining]
+#ANNOTATION: create list of first remaining elements of chunk, substitute it for emitting.
+                self.unget(chunk[remaining:])
+#ANNOTATION: call the method self.unget with list containing first remaining elements of chunk as an argument.
+                remaining -= len(emitting)
+#ANNOTATION: decrement remaining by length of emitting.
+                yield emitting
+#ANNOTATION: yield emitting as result of the generator.
+
+        out = b''.join(parts())
+#ANNOTATION: join result of the parts function into a bytes string, substitute it for out.
+        return out
+#ANNOTATION: return out.
+
+    def __next__(self):
+#ANNOTATION: define the method __next__ with an argument self.
+        """
+        Used when the exact number of bytes to read is unimportant.
+
+        This procedure just returns whatever is chunk is conveniently returned
+        from the iterator instead. Useful to avoid unnecessary bookkeeping if
+        performance is an issue.
+        """
+#ANNOTATION: docstring
+        if self._leftover:
+#ANNOTATION: if self._leftover is true,
+            output = self._leftover
+#ANNOTATION: substitute self._leftover for output.
+            self._leftover = b''
+#ANNOTATION: self._leftover is an empty string.
+        else:
+#ANNOTATION: if not,
+            output = next(self._producer)
+#ANNOTATION: get the next element of the self._producer iterable, substitute it for output.
+            self._unget_history = []
+#ANNOTATION: self._unget_history is an empty list.
+        self.position += len(output)
+#ANNOTATION: increment self.position by length of output.
+        return output
+#ANNOTATION: return output.
+
+    def close(self):
+#ANNOTATION: define the method close with an argument self.
+        """
+        Used to invalidate/disable this lazy stream.
+
+        Replaces the producer with an empty list. Any leftover bytes that have
+        already been read will still be reported upon read() and/or next().
+        """
+#ANNOTATION: docstring
+        self._producer = []
+#ANNOTATION: self._producer is an empty list.
+
+    def __iter__(self):
+#ANNOTATION: define the method _iter with an argument self.
+        return self
+#ANNOTATION: return self.
+
+    def unget(self, bytes):
+#ANNOTATION: define the method unget with arguments self and bytes.
+        """
+        Places bytes back onto the front of the lazy stream.
+
+        Future calls to read() will return those bytes first. The
+        stream position and thus tell() will be rewound.
+        """
+#ANNOTATION: docstring
+        if not bytes:
+#ANNOTATION: if bytes is false,
+            return
+#ANNOTATION: return nothing.
+        self._update_unget_history(len(bytes))
+#ANNOTATION: call the method self._update_unget_history with length of bytes as an argument.
+        self.position -= len(bytes)
+#ANNOTATION: decrement self.position by length of bytes. 
+        self._leftover = b''.join([bytes, self._leftover])
+#ANNOTATION: join bytes and self._leftover into a bytes string, substitute it for self._leftover.
+
+    def _update_unget_history(self, num_bytes):
+#ANNOTATION: define the method _update_unget_history with arguments self and num_bytes.
+        """
+        Updates the unget history as a sanity check to see if we've pushed
+        back the same number of bytes in one chunk. If we keep ungetting the
+        same number of bytes many times (here, 50), we're mostly likely in an
+        infinite loop of some sort. This is usually caused by a
+        maliciously-malformed MIME request.
+        """
+#ANNOTATION: docstring
+        self._unget_history = [num_bytes] + self._unget_history[:49]
+#ANNOTATION: append first 49 elements of self._unget_history to list containing num_bytes, substitute the result for self._unget_history.
+        number_equal = len([current_number for current_number in self._unget_history
+                            if current_number == num_bytes])
+#ANNOTATION: append current_number to a list for current_number in self._unget_history, if current_number is equal to num_bytes, 
+#ANNOTATION: substitute the length of the resulting list for number_equal.
+
+        if number_equal > 40:
+#ANNOTATION: if number_equal is greater than integer 40,
+            raise SuspiciousMultipartForm(
+                "The multipart parser got stuck, which shouldn't happen with"
+                " normal uploaded files. Check for malicious upload activity;"
+                " if there is none, report this to the Django developers."
+            )
+#ANNOTATION: raise SuspiciousMultipartForm exception with an argument string, "The multipart parser got stuck, which shouldn't happen with"
+#ANNOTATION: " normal uploaded files. Check for malicious upload activity; if there is none, report this to the Django developers.".
+
+
+class ChunkIter(six.Iterator):
+#ANNOTATION: derive the class ChunkIter from the six.Iterator base class.
+    """
+    An iterable that will yield chunks of data. Given a file-like object as the
+    constructor, this object will yield chunks of read operations from that
+    object.
+    """
+#ANNOTATION: docstring
+    def __init__(self, flo, chunk_size=64 * 1024):
+#ANNOTATION: define the method __init__ with arguments self, flo and chunk_size set to integer 64 multiplied by integer 1024.
+        self.flo = flo
+#ANNOTATION: substitute flo for self.flo.
+        self.chunk_size = chunk_size
+#ANNOTATION: substitute chunk_size for self.chunk_size.
+
+    def __next__(self):
+#ANNOTATION: define the method __next__ with an argument self.
+        try:
+#ANNOTATION: try,
+            data = self.flo.read(self.chunk_size)
+#ANNOTATION: call the method self.flo.read with an argument self.chunk_size, substitute the result for data.
+        except InputStreamExhausted:
+#ANNOTATION: if InputStreamExhausted exception is caught,
+            raise StopIteration()
+#ANNOTATION: raise an StopIteration exception.
+        if data:
+#ANNOTATION: if data is true,
+            return data
+#ANNOTATION: return data.
+        else:
+#ANNOTATION: if not,
+            raise StopIteration()
+#ANNOTATION: raise an StopIteration exception.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        return self
+#ANNOTATION: return self.
+
+
+class InterBoundaryIter(six.Iterator):
+#ANNOTATION: derive the class InterBoundaryIter from the six.Iterator base class.
+    """
+    A Producer that will iterate over boundaries.
+    """
+#ANNOTATION: docstring
+    def __init__(self, stream, boundary):
+#ANNOTATION: define the method __init__ with arguments self, stream and boundary.
+        self._stream = stream
+#ANNOTATION: substitute stream for self._stream.
+        self._boundary = boundary
+#ANNOTATION: substitute boundary for self.boundary.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        return self
+#ANNOTATION: return self.
+
+    def __next__(self):
+#ANNOTATION: define the method __next__ with an argument self.
+        try:
+#ANNOTATION: try,
+            return LazyStream(BoundaryIter(self._stream, self._boundary))
+#ANNOTATION: instantiate class BoundaryIter with 2 arguments: self._stream and self._boundary, use it to instantiate LazyStream class, return it.
+        except InputStreamExhausted:
+#ANNOTATION: if InputStreamExhausted exception is caught,
+            raise StopIteration()
+#ANNOTATION: raise an StopIteration.
+
+
+class BoundaryIter(six.Iterator):
+#ANNOTATION: derive the class BoundaryIter from the six.Iterator base class.
+    """
+    A Producer that is sensitive to boundaries.
+
+    Will happily yield bytes until a boundary is found. Will yield the bytes
+    before the boundary, throw away the boundary bytes themselves, and push the
+    post-boundary bytes back on the stream.
+
+    The future calls to next() after locating the boundary will raise a
+    StopIteration exception.
+    """
+#ANNOTATION: docstring
+
+    def __init__(self, stream, boundary):
+#ANNOTATION: define the method __init__ with arguments self, stream and boundary.
+        self._stream = stream
+#ANNOTATION: substitute stream for self._stream.
+        self._boundary = boundary
+#ANNOTATION: substitute boundary for self._boundary.
+        self._done = False
+#ANNOTATION: self._done is boolean False.
+        # rollback an additional six bytes because the format is like
+        # this: CRLF<boundary>[--CRLF]
+        self._rollback = len(boundary) + 6
+#ANNOTATION: increment length of boundary by integer 6, substitute the result for self._rollback.
+
+        # Try to use mx fast string search if available. Otherwise
+        # use Python find. Wrap the latter for consistency.
+        unused_char = self._stream.read(1)
+#ANNOTATION: call the method self._stream.read with an argument integer 1, substitute the result for unused_char.
+        if not unused_char:
+#ANNOTATION: if unused_char is false,
+            raise InputStreamExhausted()
+#ANNOTATION: raise an InputStreamExhausted exception,
+        self._stream.unget(unused_char)
+#ANNOTATION: call the method self._stream.unget with an argument unused_char. 
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        return self
+#ANNOTATION: return self.
+
+    def __next__(self):
+#ANNOTATION: define the method __next__ with an argument self.
+        if self._done:
+#ANNOTATION: if self._done is true,
+            raise StopIteration()
+#ANNOTATION: raise an StopIteration exception,
+
+        stream = self._stream
+#ANNOTATION: substitute self._stream for stream.
+        rollback = self._rollback
+#ANNOTATION: substitute self._rollback for rollback.
+
+        bytes_read = 0
+#ANNOTATION: bytes_read is integer 0.
+        chunks = []
+#ANNOTATION: chunks is an empty list.
+        for bytes in stream:
+#ANNOTATION: for every bytes in stream,
+            bytes_read += len(bytes)
+#ANNOTATION: increment bytes_read by length of bytes. 
+            chunks.append(bytes)
+#ANNOTATION: append bytes to chunks.
+            if bytes_read > rollback:
+#ANNOTATION: if bytes_read is greater than rollback,
+                break
+#ANNOTATION: break the loop execution.
+            if not bytes:
+#ANNOTATION: if bytes is false,
+                break
+#ANNOTATION: break the loop execution.
+        else:
+#ANNOTATION: if not,
+            self._done = True
+#ANNOTATION: self._done is boolean True.
+
+        if not chunks:
+#ANNOTATION: if chunks is false,
+            raise StopIteration()
+#ANNOTATION: raise an StopIteration exception.
+
+        chunk = b''.join(chunks)
+#ANNOTATION: join chunks into bytes string, substitute it for chunk.
+        boundary = self._find_boundary(chunk, len(chunk) < self._rollback)
+#ANNOTATION: call the method self._find_boundary with 2 arguments: chunk and boolean if length of chunks is lesser than self._rollback, 
+#ANNOTATION: or boolean False if not, substitute the result for boundary.
+
+        if boundary:
+#ANNOTATION: if boundary is true,
+            end, next = boundary
+#ANNOTATION: substitute elements of tuple boundary to end and next, respectively.
+            stream.unget(chunk[next:])
+#ANNOTATION: call the method stream.unget with elements of list chunk from the index next to the end. 
+            self._done = True
+#ANNOTATION: self._done is boolean True.
+            return chunk[:end]
+#ANNOTATION: return first end elements of list chunk.
+        else:
+#ANNOTATION: if not,
+            # make sure we don't treat a partial boundary (and
+            # its separators) as data
+            if not chunk[:-rollback]:  # and len(chunk) >= (len(self._boundary) + 6):
+#ANNOTATION: slice chunk list to get the last rollback elements, if the new list is not empty,
+                # There's nothing left, we should just return and mark as done.
+                self._done = True
+#ANNOTATION: self._done is boolean True.
+                return chunk
+#ANNOTATION: return chunk.
+            else:
+#ANNOTATION: if not,
+                stream.unget(chunk[-rollback:])
+#ANNOTATION: call the method stream.unget with last rollback elements of chunk as an argument.
+                return chunk[:-rollback]
+#ANNOTATION: return last rollback elements of chunk.
+
+    def _find_boundary(self, data, eof=False):
+#ANNOTATION: define the method _find_boundary with an arguments self, data and eof set to boolean False.
+        """
+        Finds a multipart boundary in data.
+
+        Should no boundary exist in the data None is returned instead. Otherwise
+        a tuple containing the indices of the following are returned:
+
+         * the end of current encapsulation
+         * the start of the next encapsulation
+        """
+#ANNOTATION: docstring
+        index = data.find(self._boundary)
+#ANNOTATION: call the method data.find with an argument self._boundary, substitute the result for index. 
+        if index < 0:
+#ANNOTATION: if index is lesser than integer 0,
+            return None
+#ANNOTATION: return None.
+        else:
+#ANNOTATION: if not,
+            end = index
+#ANNOTATION: substitute index for end.
+            next = index + len(self._boundary)
+#ANNOTATION: sum index and length of self._boundary, substitute the result for next.
+            # backup over CRLF
+            last = max(0, end - 1)
+#ANNOTATION: substitute greater element between integer 0 and end decremented by one for last.
+            if data[last:last + 1] == b'\n':
+#ANNOTATION: element of data at the index last equals to newline bytes character.
+                end -= 1
+#ANNOTATION: decrement end by one.
+            last = max(0, end - 1)
+#ANNOTATION: substitute greater element between integer 0 and end decremented by one for last.
+            if data[last:last + 1] == b'\r':
+#ANNOTATION: element of data at the index last equals to carriage return bytes character.
+                end -= 1
+#ANNOTATION: decrement end by one.
+            return end, next
+#ANNOTATION: return end ans next.
+
+
+def exhaust(stream_or_iterable):
+#ANNOTATION: define the function exhaust with an argument stream_or_iterable.
+    """
+    Completely exhausts an iterator or stream.
+
+    Raise a MultiPartParserError if the argument is not a stream or an iterable.
+    """
+#ANNOTATION: docstring
+    iterator = None
+#ANNOTATION: iterator is None.
+    try:
+#ANNOTATION: try,
+        iterator = iter(stream_or_iterable)
+#ANNOTATION: iterator is iterator created out of stream_or_iterable.
+    except TypeError:
+#ANNOTATION: if TypeError exception is caught,
+        iterator = ChunkIter(stream_or_iterable, 16384)
+#ANNOTATION: iterator is an instance of ChunkIter class, created with arguments: stream_or_iterable and integer 16384.
+
+    if iterator is None:
+#ANNOTATION: if iterator is None,
+        raise MultiPartParserError('multipartparser.exhaust() was passed a non-iterable or stream parameter')
+#ANNOTATION: raise an MultiPartParserError with an argument string 'multipartparser.exhaust() was passed a non-iterable or stream parameter'.
+
+    for __ in iterator:
+#ANNOTATION: for every __ in iterator,
+        pass
+#ANNOTATION: do nothing.
+
+
+def parse_boundary_stream(stream, max_header_size):
+#ANNOTATION: define the function parse_boundary_stream with arguments stream and max_header_size.
+    """
+    Parses one and exactly one stream that encapsulates a boundary.
+    """
+#ANNOTATION: docstring
+    # Stream at beginning of header, look for end of header
+    # and parse it if found. The header must fit within one
+    # chunk.
+    chunk = stream.read(max_header_size)
+#ANNOTATION: call the method stream.read with an argument max_header_size, substitute the result for chunk.
+
+    # 'find' returns the top of these four bytes, so we'll
+    # need to munch them later to prevent them from polluting
+    # the payload.
+    header_end = chunk.find(b'\r\n\r\n')
+#ANNOTATION: call the method chunk.find with an argument bytes string '\r\n\r\n', substitute the result for header_end. 
+
+    def _parse_header(line):
+#ANNOTATION: define the method _parse_header with an argument line.
+        main_value_pair, params = parse_header(line)
+#ANNOTATION: call the function parse_header with an argument line, substitute the result for main_value_pair and params, respectively.
+        try:
+#ANNOTATION: try,
+            name, value = main_value_pair.split(':', 1)
+#ANNOTATION: split into two parts string main_value_pair at character ':', substitute the parts for name and value, respectively.
+        except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+            raise ValueError("Invalid header: %r" % line)
+#ANNOTATION: raise an ValueError with an argument string "Invalid header: %r", where '%s' is replaced with line. 
+        return name, (value, params)
+#ANNOTATION: return name and tuple containing 2 elements value and params.
+
+    if header_end == -1:
+#ANNOTATION: if header_end equals integer negative 1,
+        # we find no header, so we just mark this fact and pass on
+        # the stream verbatim
+        stream.unget(chunk)
+#ANNOTATION: call the method stream.unget with an argument chunk. 
+        return (RAW, {}, stream)
+#ANNOTATION: return tuple containing 3 elements: RAW, an empty dictionary and stream.
+
+    header = chunk[:header_end]
+#ANNOTATION: substitute first header_end elements of chunk list for header.
+
+    # here we place any excess chunk back onto the stream, as
+    # well as throwing away the CRLFCRLF bytes from above.
+    stream.unget(chunk[header_end + 4:])
+#ANNOTATION: call the method stream.unget with list containing elements of chunk list from the header_end incremented by integer 4 as a start index to the end as argument. 
+
+    TYPE = RAW
+#ANNOTATION: substitute RAW for TYPE.
+    outdict = {}
+#ANNOTATION: outdict is an empty dictionary.
+
+    # Eliminate blank lines
+    for line in header.split(b'\r\n'):
+#ANNOTATION: split header string at string '\r\n', for every line in result,
+        # This terminology ("main value" and "dictionary of
+        # parameters") is from the Python docs.
+        try:
+#ANNOTATION: try,
+            name, (value, params) = _parse_header(line)
+#ANNOTATION: call the method _parse_header with an argument line, assign the result to name and tuple with 2 elements: value and params, respectively.
+        except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+            continue
+#ANNOTATION: skip this loop iteration.
+
+        if name == 'content-disposition':
+#ANNOTATION: if name equals a string 'content-disposition',
+            TYPE = FIELD
+#ANNOTATION: substitute FIELD for TYPE,
+            if params.get('filename'):
+#ANNOTATION: get the value under the 'filename' key of the params dictionary, if it is true,
+                TYPE = FILE
+#ANNOTATION: substitute FILE for TYPE.
+
+        outdict[name] = value, params
+#ANNOTATION: assign value and params to the value under the name key of the outdict dictionary.
+
+    if TYPE == RAW:
+#ANNOTATION: if TYPE equals to RAW,
+        stream.unget(chunk)
+#ANNOTATION: call the method stream.unget with an argument chunk.
+
+    return (TYPE, outdict, stream)
+#ANNOTATION: return a tuple with 3 elements: TYPE, outdict and stream.
+
+
+class Parser(object):
+#ANNOTATION: derive the class Parser from the base class object.
+    def __init__(self, stream, boundary):
+#ANNOTATION: define the method __init__ with arguments self, stream and boundary.
+        self._stream = stream
+#ANNOTATION: substitute stream for self._stream. 
+        self._separator = b'--' + boundary
+#ANNOTATION: append boundary to bytes string '--', substitute the result for self._separator.
+
+    def __iter__(self):
+#ANNOTATION: define the method __iter__ with an argument self.
+        boundarystream = InterBoundaryIter(self._stream, self._separator)
+#ANNOTATION: boundarystream is an instance of InterBoundaryIter class, created with self._stream and self._separator as arguments. 
+        for sub_stream in boundarystream:
+#ANNOTATION: for every sub_stream in boundarystream,
+            # Iterate over each part
+            yield parse_boundary_stream(sub_stream, 1024)
+#ANNOTATION: call the function parse_boundary_stream with 2 arguments: sub_stream and integer 1024, yield the result as the return value of the generator.
+
+
+def parse_header(line):
+#ANNOTATION: define the function parse_header with an argument line.
+    """ Parse the header into a key-value.
+        Input (line): bytes, output: unicode for key/name, bytes for value which
+        will be decoded later
+    """
+#ANNOTATION: docstring
+    plist = _parse_header_params(b';' + line)
+#ANNOTATION: append line to bytes string ';', use it as an argument for the call to the function _parse_header_params, substitute the result for plist.
+    key = plist.pop(0).lower().decode('ascii')
+#ANNOTATION: pop the first element from plist, convert it to lowercase, call the method decode on it, with string 'ascii' as an argument, 
+#ANNOTATION: substitute the result for key.
+    pdict = {}
+#ANNOTATION: pdict is an empty dictionary.
+    for p in plist:
+#ANNOTATION: for every p in plist,
+        i = p.find(b'=')
+#ANNOTATION: call the method p.find with bytes string '=' as an argument, substitute the result for i. 
+        if i >= 0:
+#ANNOTATION: if i is greater or equal to integer 0,
+            name = p[:i].strip().lower().decode('ascii')
+#ANNOTATION: take the first i elements of string p, strip the whitespaces from the both sides, convert it to lowercase and apply on it the method,
+#ANNOTATION: decode with an argument string 'ascii', substitute the result for name.
+            value = p[i + 1:].strip()
+#ANNOTATION: take elements of p from index i incremented by 1 to the end, strip the result of the whitespaces, substitute it for value.
+            if len(value) >= 2 and value[:1] == value[-1:] == b'"':
+#ANNOTATION: if length of value is greater or equal to integer 2 and first and last elements of value are an empty string,
+                value = value[1:-1]
+#ANNOTATION: strip value of the first and last element.
+                value = value.replace(b'\\\\', b'\\').replace(b'\\"', b'"')
+#ANNOTATION: replace all the occurrences of '\\\\' in string value with '\\' and all occurrences of '\\"' for '"', substitute the result for value.
+            pdict[name] = value
+#ANNOTATION: substitute value for the vale under the name key of the pdict dictionary.
+    return key, pdict
+#ANNOTATION: return key and pdict.
+
+
+def _parse_header_params(s):
+#ANNOTATION: define the function _parse_header_params with an argument s.
+    plist = []
+#ANNOTATION: plist is an empty list.
+    while s[:1] == b';':
+#ANNOTATION: while first element of s is equal to bytes string ';',
+        s = s[1:]
+#ANNOTATION: substitute s without the first element for s.
+        end = s.find(b';')
+#ANNOTATION: call the method s.find with an argument bytes string ';', substitute the result for end.
+        while end > 0 and s.count(b'"', 0, end) % 2:
+#ANNOTATION: while end is greater than integer 0 and return value of the s.count called with 3 arguments: an empty string, integer 0 and end,
+#ANNOTATION: is an even number,
+            end = s.find(b';', end + 1)
+#ANNOTATION: call the method s.find with 2 arguments: bytes string ';' and end incremented by one, substitute the result for end.
+        if end < 0:
+#ANNOTATION: if end is lesser than integer 0,
+            end = len(s)
+#ANNOTATION: substitute length of s for end.
+        f = s[:end]
+#ANNOTATION: substitute first end elements of s for f.
+        plist.append(f.strip())
+#ANNOTATION: strip f of whitespaces and append it to plist.
+        s = s[end:]
+#ANNOTATION: substitute elements of s from the end index to end for s.
+    return plist
+#ANNOTATION: return plist.

@@ -1,0 +1,426 @@
+from collections import defaultdict
+#ANNOTATION: from collections import defaultdict into default name space.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.template.base import TemplateSyntaxError, Library, Node, TextNode,\
+    token_kwargs, Variable
+#ANNOTATION: from django.template.base import TemplateSyntaxError, Library, Node, TextNode, token_kwargs and Variable into default namespace.
+from django.template.loader import get_template
+#ANNOTATION: from django.template.loader import get_template into default name space.
+from django.utils.safestring import mark_safe
+#ANNOTATION: from django.utils.safestring import mark_safe into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+register = Library()
+#ANNOTATION: register is an instance of Library class.
+
+BLOCK_CONTEXT_KEY = 'block_context'
+#ANNOTATION: BLOCK_CONTEXT_KEY is a strign 'block_context'.
+
+
+class ExtendsError(Exception):
+#ANNOTATION: derive the class ExtendsError from the Exception base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+class BlockContext(object):
+#ANNOTATION: derive the class BlockContext from the Exception base class.
+    def __init__(self):
+#ANNOTATION: define the method __init__ with an argument self.
+        # Dictionary of FIFO queues.
+        self.blocks = defaultdict(list)
+#ANNOTATION: convert elements of defaultdict to list, substitute it for self.blocks.
+
+    def add_blocks(self, blocks):
+#ANNOTATION: define the method self and blocks.
+        for name, block in six.iteritems(blocks):
+#ANNOTATION: call the function  six.iteritems with an argument blocks, for every name and block in result,
+            self.blocks[name].insert(0, block)
+#ANNOTATION: get the value under the name key of self.blocks dictionary, insert to it block at the beginning.
+
+    def pop(self, name):
+#ANNOTATION: define the method self and name.
+        try:
+#ANNOTATION: try,
+            return self.blocks[name].pop()
+#ANNOTATION: remove the first element of value under the name key of self.blocks dictionary, return it.
+
+
+        except IndexError:
+#ANNOTATION: if IndexError exception is caught,
+            return None
+#ANNOTATION: return None.
+
+    def push(self, name, block):
+#ANNOTATION: define the method push with 3 arguments: self, name and block.
+        self.blocks[name].append(block)
+#ANNOTATION: append block to the value under the name key of self.blocks dictionary.
+
+    def get_block(self, name):
+#ANNOTATION: define the method get_block with 2 arguments self and name.
+        try:
+#ANNOTATION: try, 
+            return self.blocks[name][-1]
+#ANNOTATION: get value under the self.blocks dictionary under the name key, return the last element.
+        except IndexError:
+#ANNOTATION: if IndexError exception is caught,
+            return None
+#ANNOTATION: return None.
+
+
+class BlockNode(Node):
+#ANNOTATION: derive the class BlockNode from the Node base class.
+    def __init__(self, name, nodelist, parent=None):
+#ANNOTATION: define the method __init__ with 4 arguments: self, name, nodelist, parent set to None.
+        self.name, self.nodelist, self.parent = name, nodelist, parent
+#ANNOTATION: substitute name, nodelist and parent for self.name, self.nodelist and self.parent.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return "<Block Node: %s. Contents: %r>" % (self.name, self.nodelist)
+#ANNOTATION: return string "<Block Node: %s. Contents: %r>", where '%s' is replaced with self.name and '%r' with self.nodelist.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments self and context.
+        block_context = context.render_context.get(BLOCK_CONTEXT_KEY)
+#ANNOTATION: get value under the BLOCK_CONTEXT_KEY key of context.render_context dictionary, substitute it for block_context.
+        with context.push():
+#ANNOTATION: call the context.push method, with the result, perform,
+            if block_context is None:
+#ANNOTATION: if block_context is None,
+                context['block'] = self
+#ANNOTATION: substitute self for value under the 'block' key of context dictionary.
+                result = self.nodelist.render(context)
+#ANNOTATION: call the method self.nodelist.render with an argument context, substitute the result for result.
+            else:
+#ANNOTATION: if not,
+                push = block = block_context.pop(self.name)
+#ANNOTATION: call the method block_context.pop with an argument self.name, assign the result to push and block.
+                if block is None:
+#ANNOTATION: if block is None,
+                    block = self
+#ANNOTATION: substitute self for block.
+                # Create new block so we can store context without thread-safety issues.
+                block = type(self)(block.name, block.nodelist)
+#ANNOTATION: convert self to a tuple, call the result with 2 arguments: block.name and block.nodelist, substitute the result for block.
+                block.context = context
+#ANNOTATION: substitute context for block.context.
+                context['block'] = block
+#ANNOTATION: substitute block for value under the 'block' key of context dictionary.
+                result = block.nodelist.render(context)
+#ANNOTATION: call the method block.nodelist.render with an argument context, substitute the result for result.
+                if push is not None:
+#ANNOTATION: if push is not None,
+                    block_context.push(self.name, push)
+#ANNOTATION: call the method block_context.push with 2 arguments: self.name and push.
+        return result
+#ANNOTATION: return result.
+
+    def super(self):
+#ANNOTATION: define the method super with an argument self.
+        render_context = self.context.render_context
+#ANNOTATION: substitute self.context.render_context for render_context.
+        if (BLOCK_CONTEXT_KEY in render_context and
+                render_context[BLOCK_CONTEXT_KEY].get_block(self.name) is not None):
+#ANNOTATION: if BLOCK_CONTEXT_KEY is contained in render_context and call to the method get_block with an argument self.name from the object,
+#ANNOTATION: under the BLOCK_CONTEXT_KEY key of render_context dictionary dictionary evaluates to be not equal to None, 
+            return mark_safe(self.render(self.context))
+#ANNOTATION: call the method self.render with an argument self.context, use it as an argument for the call to the mark_safe function, return the result.
+        return ''
+#ANNOTATION: return an empty string.
+
+
+class ExtendsNode(Node):
+#ANNOTATION: derive the class ExtendsNode from the Node base class.
+    must_be_first = True
+#ANNOTATION: must_be_first is boolean True.
+
+    def __init__(self, nodelist, parent_name, template_dirs=None):
+#ANNOTATION: define the method __init__ with 4 arguments: self, nodelist, parent_name and template_dirs set to None.
+        self.nodelist = nodelist
+#ANNOTATION: substitute nodelist for self.nodelist.
+        self.parent_name = parent_name
+#ANNOTATION: substitute parent_name for self.parent_name.
+        self.template_dirs = template_dirs
+#ANNOTATION: substitute template_dirs for self.template_dirs.
+        self.blocks = dict((n.name, n) for n in nodelist.get_nodes_by_type(BlockNode))
+#ANNOTATION: self.blocks is a dictionary with elements: n for n.name, for every n in return value of the method nodelist.get_nodes_by_type,
+#ANNOTATION: called with an argument BlockNode.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return '<ExtendsNode: extends %s>' % self.parent_name.token
+#ANNOTATION: return an string '<ExtendsNode: extends %s>', where '%s' is replaced with self.parent_name.token.
+
+    def get_parent(self, context):
+#ANNOTATION: define the method get_parent with 2 arguments self and context.
+        parent = self.parent_name.resolve(context)
+#ANNOTATION: call the method self.parent_name.resolve with an argument context.
+        if not parent:
+#ANNOTATION: if parent is false,
+            error_msg = "Invalid template name in 'extends' tag: %r." % parent
+#ANNOTATION: error_msg is a string "Invalid template name in 'extends' tag: %r.", where '%s' is replaced with parent.
+            if self.parent_name.filters or\
+                    isinstance(self.parent_name.var, Variable):
+#ANNOTATION: if self.parent_name.filters is true or self.parent_name.var is an instance of Variable.
+                error_msg += " Got this from the '%s' variable." %\
+                    self.parent_name.token
+#ANNOTATION: append string " Got this from the '%s' variable." to error_msg, where '%s is replaced with self.parent_name.token.
+            raise TemplateSyntaxError(error_msg)
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument error_msg.
+        if hasattr(parent, 'render'):
+#ANNOTATION: if parent has an attribute 'render',
+            return parent  # parent is a Template object
+#ANNOTATION: return parent.
+        return get_template(parent)
+#ANNOTATION: call the function get_template with an argument parent, return the result.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments self and context.
+        compiled_parent = self.get_parent(context)
+#ANNOTATION: call the method self.get_parent with an argument context, substitute the result for compiled_parent.
+
+        if BLOCK_CONTEXT_KEY not in context.render_context:
+#ANNOTATION: if BLOCK_CONTEXT_KEY is not contained in context.render_context,
+            context.render_context[BLOCK_CONTEXT_KEY] = BlockContext()
+#ANNOTATION: value under the BLOCK_CONTEXT_KEY key of context.render_context dictionary is BlockContext class instance.
+        block_context = context.render_context[BLOCK_CONTEXT_KEY]
+#ANNOTATION: get the value under the BLOCK_CONTEXT_KEY key of the context.render_context dictionary, substitute it for block_context.
+
+        # Add the block nodes from this node to the block context
+        block_context.add_blocks(self.blocks)
+#ANNOTATION: call the method block_context.add_blocks with an argument self.block.
+
+        # If this block's parent doesn't have an extends node it is the root,
+        # and its block nodes also need to be added to the block context.
+        for node in compiled_parent.nodelist:
+#ANNOTATION: for every node in compiled_parent.nodelist,
+            # The ExtendsNode has to be the first non-text node.
+            if not isinstance(node, TextNode):
+#ANNOTATION: if node is not an instance of TextNode,
+                if not isinstance(node, ExtendsNode):
+#ANNOTATION: if node is not an instance of ExtendsNode,
+                    blocks = dict((n.name, n) for n in
+                                  compiled_parent.nodelist.get_nodes_by_type(BlockNode))
+#ANNOTATION: blocks is a dictionary with elements: n for n.name, for every n in return value of the method,
+#ANNOTATION: compiled_parent.nodelist.get_nodes_by_type, called with an argument BlockNode.
+                    block_context.add_blocks(blocks)
+#ANNOTATION: call the method block_context.add_blocks with an argument blocks.
+                break
+#ANNOTATION: break from the loop execution.
+
+        # Call Template._render explicitly so the parser context stays
+        # the same.
+        return compiled_parent._render(context)
+#ANNOTATION: call the method compiled_parent._render with an argument context, return the result.
+
+
+class IncludeNode(Node):
+#ANNOTATION: derive the class IncludeNode from the Node base class.
+    def __init__(self, template, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 4 arguments: self, template, unpacked list args and unpacked dictionary kwargs.
+        self.template = template
+#ANNOTATION: substitute template for self.template.
+        self.extra_context = kwargs.pop('extra_context', {})
+#ANNOTATION: remove kwargs dictionary entry under the 'extra_context' key, if it exists substitute it for self.extra_context, 
+#ANNOTATION: if not self.extra_context is an empty dictionary.
+        self.isolated_context = kwargs.pop('isolated_context', False)
+#ANNOTATION: remove kwargs dictionary entry under the 'isolated_context' key, if it exists substitute it for self.isolated_context, 
+#ANNOTATION: if not self.isolated_context is boolean False.
+        super(IncludeNode, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class IncludeNode, called with 2 arguments: unpacked dictionary args,
+#ANNOTATION: and unpacked dictionary kwargs.
+
+    def render(self, context):
+#ANNOTATION: define the method render with 2 arguments self and context.
+        try:
+#ANNOTATION: try,
+            template = self.template.resolve(context)
+#ANNOTATION: call the method self.template.resolve with an argument context, substitute the result for template.
+            # Does this quack like a Template?
+            if not callable(getattr(template, 'render', None)):
+#ANNOTATION: get 'render' attribute of template object, if it is callable,
+                # If not, we'll try get_template
+                template = get_template(template)
+#ANNOTATION: call the method get_template with an argument template, substitute the result for template.
+            values = {
+                name: var.resolve(context)
+                for name, var in six.iteritems(self.extra_context)
+            }
+#ANNOTATION: values is an dictionary with entries: return value of the method var.resolve with an argument context for name, 
+#ANNOTATION: for every name and var in return value of the function six.iteritems called with an argument self.extra_context.
+            if self.isolated_context:
+#ANNOTATION: if self.isolated_context is true,
+                return template.render(context.new(values))
+#ANNOTATION: call the method context.new with an argument values, use it as an argument for the call to the method template.render, return the result.
+            with context.push(**values):
+#ANNOTATION: call the method context.push with unpacked dictionary values as an argument, with the result perform,
+                return template.render(context)
+#ANNOTATION: call the method template.render with an argument context, return the result.
+        except Exception:
+#ANNOTATION: if Exception exception is caught,
+            if settings.TEMPLATE_DEBUG:
+#ANNOTATION: if settings.TEMPLATE_DEBUG is true,
+                raise
+#ANNOTATION: raise an exception,
+            return ''
+#ANNOTATION: return an empty string.
+
+
+@register.tag('block')
+#ANNOTATION: decorator method register.tag with an argument 'block',
+def do_block(parser, token):
+#ANNOTATION: define the function do_block with 2 arguments parser and token.
+    """
+    Define a block that can be overridden by child templates.
+    """
+#ANNOTATION: docstring
+    # token.split_contents() isn't useful here because this tag doesn't accept variable as arguments
+    bits = token.contents.split()
+#ANNOTATION: call the method token.contents.split, substitute the result for bits.
+    if len(bits) != 2:
+#ANNOTATION: if length of bits is not equal to integer 2,
+        raise TemplateSyntaxError("'%s' tag takes only one argument" % bits[0])
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'%s' tag takes only one argument", 
+#ANNOTATION: where '%s' is replaced with first element of bits.
+    block_name = bits[1]
+#ANNOTATION: substitute second element for bits for block_name.
+    # Keep track of the names of BlockNodes found in this template, so we can
+    # check for duplication.
+    try:
+#ANNOTATION: try,
+        if block_name in parser.__loaded_blocks:
+#ANNOTATION: if block_name is contained in parser.__loaded_blocks,
+            raise TemplateSyntaxError("'%s' tag with name '%s' appears more than once" % (bits[0], block_name))
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'%s' tag with name '%s' appears more than once",
+#ANNOTATION: substitute '%s' with first element of bits and block_name, respectively.
+        parser.__loaded_blocks.append(block_name)
+#ANNOTATION: append block_name to parser.__loaded_blocks.
+    except AttributeError:  # parser.__loaded_blocks isn't a list yet
+#ANNOTATION: if AttributeError exception is caught,
+        parser.__loaded_blocks = [block_name]
+#ANNOTATION: substitute list with an element block_name for parser.__loaded_blocks.
+    nodelist = parser.parse(('endblock',))
+#ANNOTATION: call the method parser.parse with an argument tuple with one element string 'endblock', substitute the result for nodelist.
+
+    # This check is kept for backwards-compatibility. See #3100.
+    endblock = parser.next_token()
+#ANNOTATION: call the method parser.next_token, substitute the result for endblock.
+    acceptable_endblocks = ('endblock', 'endblock %s' % block_name)
+#ANNOTATION: acceptable_endblocks is a tuple with 2 elements: string 'endblock' and 'endblock %s', where '%s' replaced with block_name.
+    if endblock.contents not in acceptable_endblocks:
+#ANNOTATION: if endblock.contents is not contained in acceptable_endblocks,
+        parser.invalid_block_tag(endblock, 'endblock', acceptable_endblocks)
+#ANNOTATION: call the method parser.invalid_block_tag with 3 arguments: endblock, 'endblock' and acceptable_endblocks.
+
+    return BlockNode(block_name, nodelist)
+#ANNOTATION: return an instance of a BlockNode class, created with 2 arguments: block_name and nodelist.
+
+
+@register.tag('extends')
+#ANNOTATION: decorator method register.tag with an argument 'extends',
+def do_extends(parser, token):
+#ANNOTATION: define the function do_extends with 2 arguments parser and token.
+    """
+    Signal that this template extends a parent template.
+
+    This tag may be used in two ways: ``{% extends "base" %}`` (with quotes)
+    uses the literal value "base" as the name of the parent template to extend,
+    or ``{% extends variable %}`` uses the value of ``variable`` as either the
+    name of the parent template to extend (if it evaluates to a string) or as
+    the parent template itself (if it evaluates to a Template object).
+    """
+#ANNOTATION: docstring
+    bits = token.split_contents()
+#ANNOTATION: call the method token.split_contents, substitute the result for bits.
+    if len(bits) != 2:
+#ANNOTATION: if length of bits is not equalt to integer 2,
+        raise TemplateSyntaxError("'%s' takes one argument" % bits[0])
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'%s' takes one argument", where '%s' is replaced with first element of bits.
+    parent_name = parser.compile_filter(bits[1])
+#ANNOTATION: call the method parser.compile_filter with an argument second element for bits, substitute the result for parent_name.
+    nodelist = parser.parse()
+#ANNOTATION: call the method parser.parse, substitute the result for nodelist.
+    if nodelist.get_nodes_by_type(ExtendsNode):
+#ANNOTATION: call the method nodelist.get_nodes_by_type with an argument ExtendsNode, if it evaluates to true,
+        raise TemplateSyntaxError("'%s' cannot appear more than once in the same template" % bits[0])
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string "'%s' cannot appear more than once in the same template",
+#ANNOTATION: where '%s' is replaced with first element of bits.
+    return ExtendsNode(nodelist, parent_name)
+#ANNOTATION: return an instance of ExtendsNode with 2 arguments nodelist and parent_name.
+
+
+@register.tag('include')
+#ANNOTATION: decorator method register.tag with an argument 'include',
+def do_include(parser, token):
+#ANNOTATION: define the function do_include with 2 arguments parser and token.
+    """
+    Loads a template and renders it with the current context. You can pass
+    additional context using keyword arguments.
+
+    Example::
+
+        {% include "foo/some_include" %}
+        {% include "foo/some_include" with bar="BAZZ!" baz="BING!" %}
+
+    Use the ``only`` argument to exclude the current context when rendering
+    the included template::
+
+        {% include "foo/some_include" only %}
+        {% include "foo/some_include" with bar="1" only %}
+    """
+#ANNOTATION: docstring
+    bits = token.split_contents()
+#ANNOTATION: call the method token.split_contents, substitute the result for bits.
+    if len(bits) < 2:
+#ANNOTATION: if length of bits is lesser than integer 2,
+        raise TemplateSyntaxError("%r tag takes at least one argument: the name of the template to be included." % bits[0])
+#ANNOTATION: raise an TemplateSyntaxError with an argument string "%r tag takes at least one argument: the name of the template to be included.",
+#ANNOTATION: where '%r' is replaced with first element of bits.
+    options = {}
+#ANNOTATION: options is an empty dictionary.
+    remaining_bits = bits[2:]
+#ANNOTATION: substitute bits, without the first two elements, substitute the result for remaining_bits.
+    while remaining_bits:
+#ANNOTATION: while remaining_bits is true,
+        option = remaining_bits.pop(0)
+#ANNOTATION: remove first element from remaining_bits, substitute the result for option.
+        if option in options:
+#ANNOTATION: if option is contained in options,
+            raise TemplateSyntaxError('The %r option was specified more '
+                                      'than once.' % option)
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string 'The %r option was specified more than once.', 
+#ANNOTATION: where '%r' is replaced with options.
+        if option == 'with':
+#ANNOTATION: if option equals a string 'with',
+            value = token_kwargs(remaining_bits, parser, support_legacy=False)
+#ANNOTATION: call the function token_kwargs with 3 arguments: remaining_bits, parser, support_legacy set to boolean False, substitute the result for value.
+            if not value:
+#ANNOTATION: if value is true,
+                raise TemplateSyntaxError('"with" in %r tag needs at least '
+                                          'one keyword argument.' % bits[0])
+#ANNOTATION: raise an TemplateSyntaxError exception with an argument string '"with" in %r tag needs at least one keyword argument.',
+#ANNOTATION: where '%s' is replaced with first element of bits.
+        elif option == 'only':
+#ANNOTATION: otherwise if options equals 'only',
+            value = True
+#ANNOTATION: value is boolean True.
+        else:
+#ANNOTATION: if not,
+            raise TemplateSyntaxError('Unknown argument for %r tag: %r.' %
+                                      (bits[0], option))
+#ANNOTATION: raise an TemplateSyntaxError with an argument string 'Unknown argument for %r tag: %r.', where '%r' is replaced with first element of bits and options.
+        options[option] = value
+#ANNOTATION: substitute value for value under the options key of options dictionary.
+    isolated_context = options.get('only', False)
+#ANNOTATION: get the value under the key 'only' of the options dictionary, if it exists substitute the result for isolated_context,
+#ANNOTATION: if not, isolated_context is boolean False.
+    namemap = options.get('with', {})
+#ANNOTATION: get the value under the 'width' key of the options dictionary, if it exists, substitute it for namemap, if not namemap is an empty dictionary.
+    return IncludeNode(parser.compile_filter(bits[1]), extra_context=namemap,
+                       isolated_context=isolated_context)
+#ANNOTATION: return an instance of IncludeNode class, created with 3 arguments: return value of the method parser.compile_filter,
+#ANNOTATION: called with an arument second element fo bits, extra_context set to namemap, isolated_context set to isolated_context.

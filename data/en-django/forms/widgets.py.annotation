@@ -1,0 +1,1486 @@
+"""
+HTML Widget classes
+"""
+#ANNOTATION: docstring
+
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import copy
+#ANNOTATION: import module copy.
+from itertools import chain
+#ANNOTATION: from itertools import chain into default name space.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.forms.utils import flatatt, to_current_timezone
+#ANNOTATION: from django.forms.utils import flatatt and to_current_timezone into default name space.
+from django.utils.datastructures import MultiValueDict, MergeDict
+#ANNOTATION: from django.utils.datastructures import MultiValueDict and MergeDict into default name space.
+from django.utils.encoding import force_text, python_2_unicode_compatible
+#ANNOTATION: from django.utils.encoding import force_text and python_2_unicode_compatible into default name space.
+from django.utils.html import conditional_escape, format_html
+#ANNOTATION: from django.utils.html import conditional_escape and format_html into default name space.
+from django.utils.translation import ugettext_lazy
+#ANNOTATION: from django.utils.translation import ugettext_lazy into default name space.
+from django.utils.safestring import mark_safe
+#ANNOTATION: from django.utils.safestring import mark_safe into default name space.
+from django.utils import formats, six
+#ANNOTATION: from django.utils import formats and six into default name space.
+from django.utils.six.moves.urllib.parse import urljoin
+#ANNOTATION: from django.utils.six.moves.urllib.parse import urljoin into default name space.
+
+__all__ = (
+    'Media', 'MediaDefiningClass', 'Widget', 'TextInput',
+    'EmailInput', 'URLInput', 'NumberInput', 'PasswordInput',
+    'HiddenInput', 'MultipleHiddenInput', 'ClearableFileInput',
+    'FileInput', 'DateInput', 'DateTimeInput', 'TimeInput', 'Textarea', 'CheckboxInput',
+    'Select', 'NullBooleanSelect', 'SelectMultiple', 'RadioSelect',
+    'CheckboxSelectMultiple', 'MultiWidget',
+    'SplitDateTimeWidget', 'SplitHiddenDateTimeWidget',
+)
+#ANNOTATION: __all__ is a tuple of strings: 'Media', 'MediaDefiningClass', 'Widget', 'TextInput', 'EmailInput', 'URLInput', 'NumberInput',
+#ANNOTATION: 'PasswordInput', 'HiddenInput', 'MultipleHiddenInput', 'ClearableFileInput', 'FileInput', 'DateInput', 'DateTimeInput', 'TimeInput',
+#ANNOTATION: 'Textarea', 'CheckboxInput', 'Select', 'NullBooleanSelect', 'SelectMultiple', 'RadioSelect','CheckboxSelectMultiple', 'MultiWidget',
+#ANNOTATION: 'SplitDateTimeWidget' and 'SplitHiddenDateTimeWidget'.
+
+MEDIA_TYPES = ('css', 'js')
+#ANNOTATION: MEDIA_TYPES is a tuple with 2 strings: 'css' and 'js'. 
+
+
+@python_2_unicode_compatible
+#ANNOTATION: python_2_unicode_compatible decorator,
+class Media(object):
+#ANNOTATION: derive the class Media from the object base class.
+    def __init__(self, media=None, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self, media set to None and unpacked dictionary kwargs.
+        if media:
+#ANNOTATION: if media is true,
+            media_attrs = media.__dict__
+#ANNOTATION: substitute media.__dict__ for media_attrs.
+        else:
+#ANNOTATION: if not,
+            media_attrs = kwargs
+#ANNOTATION: substitute kwargs for media_attrs.
+
+        self._css = {}
+#ANNOTATION: self._css is an empty dictionary.
+        self._js = []
+#ANNOTATION: self._js is an empty list.
+
+        for name in MEDIA_TYPES:
+#ANNOTATION: for every name in MEDIA_TYPES,
+            getattr(self, 'add_' + name)(media_attrs.get(name, None))
+#ANNOTATION: append name to string 'add_' use it as the name of the attribute to get from object self, call the result as an function,
+#ANNOTATION: with an argument: value under the name key of the media_attrs dictionary, if it exists, if not use None as an argument.
+
+        # Any leftover attributes must be invalid.
+        # if media_attrs != {}:
+        #     raise TypeError("'class Media' has invalid attribute(s): %s" % ','.join(media_attrs.keys()))
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self. 
+        return self.render()
+#ANNOTATION: call the method self.render, return the result.
+
+    def render(self):
+#ANNOTATION: define the method render with an argument self.
+        return mark_safe('\n'.join(chain(*[getattr(self, 'render_' + name)() for name in MEDIA_TYPES])))
+#ANNOTATION: call the function chain with an argument unpacked list, append name to string 'render_',
+#ANNOTATION: and use it as the name of the attribute to get from the self object, 
+#ANNOTATION: call the result and append it to a list for every name in MEDIA_TYPES, join all the results into a string with newline separator,
+#ANNOTATION: use the result as an argument for the call to the function mark_safe, return the result.
+
+    def render_js(self):
+#ANNOTATION: define the method render_js with an argument self.
+        return [format_html('<script type="text/javascript" src="{0}"></script>', self.absolute_path(path)) for path in self._js]
+#ANNOTATION: return a list containing results of the function format_html called with 2 arguments:
+#ANNOTATION: string '<script type="text/javascript" src="{0}"></script>' and absolute file path of the path, for every path is self._js.
+
+    def render_css(self):
+#ANNOTATION: define the method render_css with an argument self.
+        # To keep rendering order consistent, we can't just iterate over items().
+        # We need to sort the keys, and iterate over the sorted list.
+        media = sorted(self._css.keys())
+#ANNOTATION: call the method self._css.keys, sort the result and substitute it for media.
+        return chain(*[
+            [format_html('<link href="{0}" type="text/css" media="{1}" rel="stylesheet" />', self.absolute_path(path), medium)
+             for path in self._css[medium]]
+            for medium in media])
+#ANNOTATION: return the result of the call to the function chain, with an argument unpacked list, containing the result of the function,
+#ANNOTATION: format_html called with 3 arguments: string '<link href="{0}" type="text/css" media="{1}" rel="stylesheet" />', 
+#ANNOTATION: return value of the function self.absolute_path called with an argument path and medium, 
+#ANNOTATION: for every medium in media and for every path in value under the medium key of the self._css dictionary.
+
+    def absolute_path(self, path, prefix=None):
+#ANNOTATION: define the method absolute_path with 3 arguments self, path and prefix set to None.
+        if path.startswith(('http://', 'https://', '/')):
+#ANNOTATION: if path starts with string 'http://' or string 'https://' or with string '/',
+            return path
+#ANNOTATION: return path,
+        if prefix is None:
+#ANNOTATION: if prefix is None,
+            if settings.STATIC_URL is None:
+#ANNOTATION: if settings.STATIC_URL is None,
+                # backwards compatibility
+                prefix = settings.MEDIA_URL
+#ANNOTATION: substitute settings.MEDIA_URL for prefix.
+            else:
+#ANNOTATION: if not,
+                prefix = settings.STATIC_URL
+#ANNOTATION: substitute settings.STATIC_URL for prefix.
+        return urljoin(prefix, path)
+#ANNOTATION: join prefix and path into an url, return it.
+
+    def __getitem__(self, name):
+#ANNOTATION: define the method __getitem__ with arguments self and name.
+        "Returns a Media object that only contains media of the given type"
+#ANNOTATION: docstring
+        if name in MEDIA_TYPES:
+#ANNOTATION: if name is contained in MEDIA_TYPES,
+            return Media(**{str(name): getattr(self, '_' + name)})
+#ANNOTATION: return an instance of the class Media, called with an unpacked dictionary with an entry: name appended to string '_',
+#ANNOTATION: attribute of the self object for name converted into a string.
+        raise KeyError('Unknown media type "%s"' % name)
+#ANNOTATION: raise an KeyError with an argument string 'Unknown media type "%s"', where '%s' is replaced with name. 
+
+    def add_js(self, data):
+#ANNOTATION: define the method __getitem__ with arguments self and name.
+        if data:
+#ANNOTATION: if data is true,
+            for path in data:
+#ANNOTATION: for every path in data,
+                if path not in self._js:
+#ANNOTATION: if path is not contained in self._js,
+                    self._js.append(path)
+#ANNOTATION: append path to self._js.
+
+    def add_css(self, data):
+#ANNOTATION: define the method add_css with arguments self and data.
+        if data:
+#ANNOTATION: if data is true,
+            for medium, paths in data.items():
+#ANNOTATION: call the method data.items, for every medium and paths in the result.
+                for path in paths:
+#ANNOTATION: for every path in paths,
+                    if not self._css.get(medium) or path not in self._css[medium]:
+#ANNOTATION: if call to the method self._css.get with an argument medium evaluates to false,
+#ANNOTATION: or path is not contained in the value under the medium key of self._css dictionary.
+                        self._css.setdefault(medium, []).append(path)
+#ANNOTATION: call the method self._css.setdefault with 2 arguments medium and an empty string, append path to the result.
+
+    def __add__(self, other):
+#ANNOTATION: define the method __add__ with arguments self and other.
+        combined = Media()
+#ANNOTATION: combined is an instance of Media class.
+        for name in MEDIA_TYPES:
+#ANNOTATION: for every name in MEDIA_TYPES,
+            getattr(combined, 'add_' + name)(getattr(self, '_' + name, None))
+#ANNOTATION: append name to 'add_' use it as the name of the attribute to get from combined object , call the result with an argument:
+#ANNOTATION: name appended to string '_', as the name of the attribute to get from self object, or if the previous doesnt exist, None.
+            getattr(combined, 'add_' + name)(getattr(other, '_' + name, None))
+#ANNOTATION: append name to 'add_' use it as the name of the attribute to get from combined object , call the result with an argument:
+#ANNOTATION: name appended to string '_', as the name of the attribute to get from other object, or if the previous doesnt exist, None.
+        return combined
+#ANNOTATION: return combined.
+
+
+def media_property(cls):
+#ANNOTATION: define the function media_property with an argument cls.
+    def _media(self):
+#ANNOTATION: define the method _media with an argument self.
+        # Get the media property of the superclass, if it exists
+        sup_cls = super(cls, self)
+#ANNOTATION: sup_cls is base class of the class cls.
+        try:
+#ANNOTATION: try,
+            base = sup_cls.media
+#ANNOTATION: substitute sup_cls.media for base.
+        except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+            base = Media()
+#ANNOTATION: base is an instance of Media class.
+
+        # Get the media definition for this class
+        definition = getattr(cls, 'Media', None)
+#ANNOTATION: get the attribute 'Media' of the cls object, if it exists substitute it for definition, if not definition is None.
+        if definition:
+#ANNOTATION: if definition is true,
+            extend = getattr(definition, 'extend', True)
+#ANNOTATION: get the attribute 'extend' of the cls object, if it exists substitute it for extend, if not extend is boolean True.
+            if extend:
+#ANNOTATION: if extend is true,
+                if extend is True:
+#ANNOTATION: if extend is boolean True,
+                    m = base
+#ANNOTATION: substitute base for m.
+                else:
+#ANNOTATION: if not,
+                    m = Media()
+#ANNOTATION: m is an instance of Media class.
+                    for medium in extend:
+#ANNOTATION: for every medium in extend,
+                        m = m + base[medium]
+#ANNOTATION: sum m and value under the medium key of the base dictionary, substitute it for m.
+                return m + Media(definition)
+#ANNOTATION: sum m and class Media created with definition, return the result.
+            else:
+#ANNOTATION: if not,
+                return Media(definition)
+#ANNOTATION: return an instance of Media class, created with definition as an argument.
+        else:
+#ANNOTATION: if not,
+            return base
+#ANNOTATION: return base.
+    return property(_media)
+#ANNOTATION: return property object with _media as getter function.
+
+
+class MediaDefiningClass(type):
+#ANNOTATION: derive the class MediaDefiningClass from the type base class.
+    """
+    Metaclass for classes that can have media definitions.
+    """
+#ANNOTATION: docstring
+    def __new__(mcs, name, bases, attrs):
+#ANNOTATION: define the method __new__ with 4 arguments mcs, name, bases and attrs.
+        new_class = (super(MediaDefiningClass, mcs)
+            .__new__(mcs, name, bases, attrs))
+#ANNOTATION: call the method __new__ from the base class of the class MediaDefiningClass, called with 4 arguments: mcs, name, bases and attrs.
+
+        if 'media' not in attrs:
+#ANNOTATION: if 'media' is not contained in attrs,
+            new_class.media = media_property(new_class)
+#ANNOTATION: call the method media_property with an argument new_class, substitute the result for new_class.media.
+
+        return new_class
+#ANNOTATION: return new_class.
+
+
+@python_2_unicode_compatible
+#ANNOTATION: python_2_unicode_compatible decorator
+class SubWidget(object):
+#ANNOTATION: derive the class SubWidget from the object base class.
+    """
+    Some widgets are made of multiple HTML elements -- namely, RadioSelect.
+    This is a class that represents the "inner" HTML element of a widget.
+    """
+#ANNOTATION: docstring
+    def __init__(self, parent_widget, name, value, attrs, choices):
+#ANNOTATION: define the method __init__ with 6 arguments self, parent_widget, name, value, attrs and choices.
+        self.parent_widget = parent_widget
+#ANNOTATION: substitute parent_widget for self.parent_widget.
+        self.name, self.value = name, value
+#ANNOTATION: substitute name and value for self.name and self.value.
+        self.attrs, self.choices = attrs, choices
+#ANNOTATION: substitute attrs and choices for self.attrs and self.choices
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        args = [self.name, self.value, self.attrs]
+#ANNOTATION: args is an list with 3 initial elements self.name, self.value and self.attrs.
+        if self.choices:
+#ANNOTATION: if self.choices is true,
+            args.append(self.choices)
+#ANNOTATION: append self.choices to args.
+        return self.parent_widget.render(*args)
+#ANNOTATION: call the method self.parent_widget.render with unpacked list args as an argument, return the result.
+
+
+class Widget(six.with_metaclass(MediaDefiningClass)):
+#ANNOTATION: derive the class Widget from the base class in the return value of the six.with_metaclass called with an argument MediaDefiningClass.
+    needs_multipart_form = False  # Determines does this widget need multipart form
+#ANNOTATION: needs_multipart_form is boolean False.
+    is_localized = False
+#ANNOTATION: is_localized is boolean False.
+    is_required = False
+#ANNOTATION: is_required is boolean False.
+
+    def __init__(self, attrs=None):
+#ANNOTATION: define the method __init__ with arguments self and attrs set to None.
+        if attrs is not None:
+#ANNOTATION: if attrs is not None,
+            self.attrs = attrs.copy()
+#ANNOTATION: call the method attrs.copy, substitute the result for self.attrs.
+        else:
+#ANNOTATION: if not,
+            self.attrs = {}
+#ANNOTATION: self.attrs is an empty dictionary.
+
+    def __deepcopy__(self, memo):
+#ANNOTATION: define the method __deepcopy__ with arguments self and memo.
+        obj = copy.copy(self)
+#ANNOTATION: call the method copy.copy, substitute the result for obj.
+        obj.attrs = self.attrs.copy()
+#ANNOTATION: call the method self.attrs.copy, substitute the result for obj.attrs.
+        memo[id(self)] = obj
+#ANNOTATION: substitute obj for the value of the memo dictionary at the identity of the self object key.
+        return obj
+#ANNOTATION: return obj.
+
+    @property
+#ANNOTATION: property decorator,
+    def is_hidden(self):
+#ANNOTATION: define the method is_hidden with an argument self.
+        return self.input_type == 'hidden' if hasattr(self, 'input_type') else False
+#ANNOTATION: if self.input_type equals string 'hidden' and self has an attribute 'input_type', return boolean True, otherwise return boolean False.
+
+    def subwidgets(self, name, value, attrs=None, choices=()):
+#ANNOTATION: define the method subwidgets with 5 arguments: self, name, value, attrs set to None and choices set to an empty tuple.
+        """
+        Yields all "subwidgets" of this widget. Used only by RadioSelect to
+        allow template access to individual <input type="radio"> buttons.
+
+        Arguments are the same as for render().
+        """
+#ANNOTATION: docstring
+        yield SubWidget(self, name, value, attrs, choices)
+#ANNOTATION: yield an instance of SubWidget class created with 5 arguments: self, name, value, attrs and choices.
+
+    def render(self, name, value, attrs=None):
+#ANNOTATION: define the method render with 4 arguments: self, name, value and attrs set to None.
+        """
+        Returns this Widget rendered as HTML, as a Unicode string.
+
+        The 'value' given is not guaranteed to be valid input, so subclass
+        implementations should program defensively.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('subclasses of Widget must provide a render() method')
+#ANNOTATION: raise an NotImplementedError with an argument string 'subclasses of Widget must provide a render() method'. 
+
+    def build_attrs(self, extra_attrs=None, **kwargs):
+#ANNOTATION: define the method build_attrs with 3 arguments: self, extra_attrs set to None and unpacked dictionary kwargs.
+        "Helper function for building an attribute dictionary."
+#ANNOTATION: docstring
+        attrs = dict(self.attrs, **kwargs)
+#ANNOTATION: unpack dictionary kwargs, map it through self.attrs and convert to dictionary, substitute the result for attrs. 
+        if extra_attrs:
+#ANNOTATION: if extra_attrs is true,
+            attrs.update(extra_attrs)
+#ANNOTATION: update attrs dictionary with extra_attrs entry.
+        return attrs
+#ANNOTATION: return attrs.
+
+    def value_from_datadict(self, data, files, name):
+#ANNOTATION: define the method render with 4 arguments: self, name, value and attrs set to None.
+        """
+        Given a dictionary of data and this widget's name, returns the value
+        of this widget. Returns None if it's not provided.
+        """
+#ANNOTATION: docstring
+        return data.get(name, None)
+#ANNOTATION: get the value under the name key of the data dictionary, return it, if the previous doesnt exists, return None.
+
+    def id_for_label(self, id_):
+#ANNOTATION: define the method id_for_label with 2 arguments: self and id.
+        """
+        Returns the HTML ID attribute of this Widget for use by a <label>,
+        given the ID of the field. Returns None if no ID is available.
+
+        This hook is necessary because some widgets have multiple HTML
+        elements and, thus, multiple IDs. In that case, this method should
+        return an ID value that corresponds to the first ID in the widget's
+        tags.
+        """
+#ANNOTATION: docstring
+        return id_
+#ANNOTATION: return id_.
+
+
+class Input(Widget):
+#ANNOTATION: derive the class Input from the Widget base class.
+    """
+    Base class for all <input> widgets (except type='checkbox' and
+    type='radio', which are special).
+    """
+#ANNOTATION: docstring
+    input_type = None  # Subclasses must define this.
+#ANNOTATION: input_type is None.
+
+    def _format_value(self, value):
+#ANNOTATION: define the method _format_value with 2 arguments: self and value.
+        if self.is_localized:
+#ANNOTATION: if self.is_localized is true,
+            return formats.localize_input(value)
+#ANNOTATION: call the method formats.localize_input with an argument value, return the result.
+        return value
+#ANNOTATION: return value.
+
+    def render(self, name, value, attrs=None):
+#ANNOTATION: define the method render with 4 arguments: self, name, value and attrs set to None.
+        if value is None:
+#ANNOTATION: if value is None,
+            value = ''
+#ANNOTATION: value is an empty string.
+        final_attrs = self.build_attrs(attrs, type=self.input_type, name=name)
+#ANNOTATION: call the method self.build_attrs with 3 arguments: attrs, type as self.input_type, name as name, substitute the result for final_attrs.
+        if value != '':
+#ANNOTATION: if value is not equal to an empty string,
+            # Only add the 'value' attribute if a value is non-empty.
+            final_attrs['value'] = force_text(self._format_value(value))
+#ANNOTATION: call the method self._format_value with an argument value, use the result as an argument for the call to the function force_text,
+#ANNOTATION: substitute the result for final_attrs dictionary value under the 'value' key. 
+        return format_html('<input{0} />', flatatt(final_attrs))
+#ANNOTATION: call the function format_html with 2 arguments: string '<input{0} />', 
+#ANNOTATION: result of the function flatatt called with an argument final_attrs, return the result.
+
+
+class TextInput(Input):
+#ANNOTATION: derive the class TextInput from the Input base class.
+    input_type = 'text'
+#ANNOTATION: input_type is a string 'text'.
+
+    def __init__(self, attrs=None):
+#ANNOTATION: define the method __init__ with 2 arguments: self and attrs set to None.
+        if attrs is not None:
+#ANNOTATION: if attrs is not None,
+            self.input_type = attrs.pop('type', self.input_type)
+#ANNOTATION: remover the entry under the 'type' key of the attrs dictionary, substitute it for self.input_type, if the key doesnt exists,
+#ANNOTATION: substitute self.input_type for self.input_type.
+        super(TextInput, self).__init__(attrs)
+#ANNOTATION: call the method __init__ from the base class of the class TextInput, called with an argument attrs.
+
+
+class NumberInput(TextInput):
+#ANNOTATION: derive the class NumberInput from the TextInput base class.
+    input_type = 'number'
+#ANNOTATION: input_type is a string 'number'.
+
+
+class EmailInput(TextInput):
+#ANNOTATION: derive the class EmailInput from the TextInput base class.
+    input_type = 'email'
+#ANNOTATION: input_type is a string 'email'.
+
+
+class URLInput(TextInput):
+#ANNOTATION: derive the class URLInput from the TextInput base class.
+    input_type = 'url'
+#ANNOTATION: input_type is a string 'url'.
+
+
+class PasswordInput(TextInput):
+#ANNOTATION: derive the class PasswordInput from the TextInput base class.
+    input_type = 'password'
+#ANNOTATION: input_type is a string 'password'.
+
+    def __init__(self, attrs=None, render_value=False):
+#ANNOTATION: define the method __init__ with 3 arguments: self, attrs set to None and render_value set to boolean False.
+        super(PasswordInput, self).__init__(attrs)
+#ANNOTATION: call the method __init__ from the base class of the class PasswordInput, called with an argument attrs.
+        self.render_value = render_value
+#ANNOTATION: substitute render_value for self.render_value.
+
+    def render(self, name, value, attrs=None):
+#ANNOTATION: define the method render with 4 arguments: self, name, value and attrs set to None.
+        if not self.render_value:
+#ANNOTATION: if self.render_value is false,
+            value = None
+#ANNOTATION: value is None.
+        return super(PasswordInput, self).render(name, value, attrs)
+#ANNOTATION: call the method render from the base class of the class PasswordInput, called with 3 arguments: name, value and attrs, 
+#ANNOTATION: return the result.
+
+
+class HiddenInput(Input):
+#ANNOTATION: derive the class HiddenInput from the Input base class.
+    input_type = 'hidden'
+#ANNOTATION: input_type is a string 'hidden'.
+
+
+class MultipleHiddenInput(HiddenInput):
+#ANNOTATION: derive the class MultipleHiddenInput from the HiddenInput base class.
+    """
+    A widget that handles <input type="hidden"> for fields that have a list
+    of values.
+    """
+#ANNOTATION: docstring
+    def __init__(self, attrs=None, choices=()):
+#ANNOTATION: define the method __init__ with 3 arguments: self, attrs set to None and choices set to an empty tuple.
+        super(MultipleHiddenInput, self).__init__(attrs)
+#ANNOTATION: call the method __init__ from the base class of the class MultipleHiddenInput, called with an argument attrs.
+        # choices can be any iterable
+        self.choices = choices
+#ANNOTATION: substitute choices for self.choices.
+
+    def render(self, name, value, attrs=None, choices=()):
+#ANNOTATION: define the method render with 5 arguments: self, name, value, attrs set to None and choices set to an empty tuple.
+        if value is None:
+#ANNOTATION: if value is None,
+            value = []
+#ANNOTATION: value is an empty list.
+        final_attrs = self.build_attrs(attrs, type=self.input_type, name=name)
+#ANNOTATION: call the method self.build_attrs with 3 arguments: attrs, type set to self.input_type, name set to name, 
+#ANNOTATION: substitute the result for final_attrs.
+        id_ = final_attrs.get('id', None)
+#ANNOTATION: get the value under the 'id' key of final_attrs dictionary, substitute if for id_ if the key doesnt exists, id_ is None.
+        inputs = []
+#ANNOTATION: inputs is an empty list.
+        for i, v in enumerate(value):
+#ANNOTATION: for every i and v in enumerated iterable value,
+            input_attrs = dict(value=force_text(v), **final_attrs)
+#ANNOTATION: unpack dictionary final_attrs, map the values through force_text function with an argument v and convert it to a dictionary, again,
+#ANNOTATION: substitute the result input_attrs.
+            if id_:
+#ANNOTATION: if id_,
+                # An ID attribute was given. Add a numeric index as a suffix
+                # so that the inputs don't all have the same ID attribute.
+                input_attrs['id'] = '%s_%s' % (id_, i)
+#ANNOTATION: replace '%s' in string '%s_%s' with id_ and i, substitute the result for input_attrs dictionary value under the 'id' key.
+            inputs.append(format_html('<input{0} />', flatatt(input_attrs)))
+#ANNOTATION: call the function format_html with 2 arguments: string '<input{0} />', return value of the function flatatt, called with an argument,
+#ANNOTATION: input_attrs, append the result to inputs list.
+        return mark_safe('\n'.join(inputs))
+#ANNOTATION: join inputs elements into a string, separated with newline character, use it as an argument for the call to the function mark_safe,
+#ANNOTATION: return the result.
+
+    def value_from_datadict(self, data, files, name):
+#ANNOTATION: define the method value_from_datadict with 4 arguments: self, data, files and name.
+        if isinstance(data, (MultiValueDict, MergeDict)):
+#ANNOTATION: if data is an instance of MultiValueDict or MergeDict class,
+            return data.getlist(name)
+#ANNOTATION: call the method data.getlist with an argument name, return the result.
+        return data.get(name, None)
+#ANNOTATION: return value under the name key of the data dictionary, if it doesnt exists, return None.
+
+
+class FileInput(Input):
+#ANNOTATION: derive the class FileInput from the Input base class.
+    input_type = 'file'
+#ANNOTATION: input_type is a string 'file'.
+    needs_multipart_form = True
+#ANNOTATION: needs_multipart_form is boolean True.
+
+    def render(self, name, value, attrs=None):
+#ANNOTATION: define the method render with 4 arguments: self, name, value and attrs set to None.
+        return super(FileInput, self).render(name, None, attrs=attrs)
+#ANNOTATION: call the method render from the base class of the class FileInput, called with 3 arguments: name, None and attrs as attrs.
+
+    def value_from_datadict(self, data, files, name):
+#ANNOTATION: define the method value_from_datadict with 4 arguments: self, data, files and name.
+        "File widgets take data from FILES, not POST"
+#ANNOTATION: docstring
+        return files.get(name, None)
+#ANNOTATION: return value under the name key of the files dictionary, if it doesnt exists, return None.
+
+
+FILE_INPUT_CONTRADICTION = object()
+#ANNOTATION: FILE_INPUT_CONTRADICTION is an instance of object class.
+
+
+class ClearableFileInput(FileInput):
+#ANNOTATION: derive the class ClearableFileInput from the FileInput base class.
+    initial_text = ugettext_lazy('Currently')
+#ANNOTATION: call the function ugettext_lazy with an argument string 'Currently', substitute the result for initial_text.
+    input_text = ugettext_lazy('Change')
+#ANNOTATION: call the function ugettext_lazy with an argument string 'Change', substitute the result for input_text.
+    clear_checkbox_label = ugettext_lazy('Clear')
+#ANNOTATION: call the function ugettext_lazy with an argument string 'Clear', substitute the result for clear_checkbox_label.
+
+    template_with_initial = '%(initial_text)s: %(initial)s %(clear_template)s<br />%(input_text)s: %(input)s'
+#ANNOTATION: template_with_initial is a string '%(initial_text)s: %(initial)s %(clear_template)s<br />%(input_text)s: %(input)s'.
+
+    template_with_clear = '%(clear)s <label for="%(clear_checkbox_id)s">%(clear_checkbox_label)s</label>'
+#ANNOTATION: template_with_clear is a string '%(clear)s <label for="%(clear_checkbox_id)s">%(clear_checkbox_label)s</label>'.
+
+    url_markup_template = '<a href="{0}">{1}</a>'
+#ANNOTATION: url_markup_template is a string '<a href="{0}">{1}</a>'.
+
+    def clear_checkbox_name(self, name):
+#ANNOTATION: define the method clear_checkbox_name with 2 arguments: self and name.
+        """
+        Given the name of the file input, return the name of the clear checkbox
+        input.
+        """
+#ANNOTATION: docstring
+        return name + '-clear'
+#ANNOTATION: concatenate name and string '-clear', return it.
+
+    def clear_checkbox_id(self, name):
+#ANNOTATION: define the method clear_checkbox_id with 2 arguments: self and name.
+        """
+        Given the name of the clear checkbox input, return the HTML id for it.
+        """
+#ANNOTATION: docstring
+        return name + '_id'
+#ANNOTATION: concatenate name and string '_id', return it.
+
+    def render(self, name, value, attrs=None):
+#ANNOTATION: define the method render with 4 arguments: self, name, value and attrs set to None.
+        substitutions = {
+            'initial_text': self.initial_text,
+            'input_text': self.input_text,
+            'clear_template': '',
+            'clear_checkbox_label': self.clear_checkbox_label,
+        }
+#ANNOTATION: substitutions is a dictionary with 4 initial entries: self.initial_text for 'initial_text', self.input_text for 'input_text',
+#ANNOTATION: an empty string for 'clear_template' and self.clear_checkbox_label for 'clear_checkbox_label'.
+        template = '%(input)s'
+#ANNOTATION: template is a string '%(input)s'.
+        substitutions['input'] = super(ClearableFileInput, self).render(name, value, attrs)
+#ANNOTATION: call the method render from the base class of the class ClearableFileInput, called with 3 arguments: name, value and attrs,
+#ANNOTATION: substitute the result for value under the 'input' key of the substitutions dictionary.
+
+        if value and hasattr(value, "url"):
+#ANNOTATION: if value is true and value has an attribute 'url',
+            template = self.template_with_initial
+#ANNOTATION: substitute self.template_with_initial for template.
+            substitutions['initial'] = format_html(self.url_markup_template,
+                                                   value.url,
+                                                   force_text(value))
+#ANNOTATION: call the function format_html with 3 arguments: self.url_markup_template, value.url and return value of the function force_text,
+#ANNOTATION: called with an argument value, substitute the result for value under the 'initial' key of the substitutions dictionary.
+            if not self.is_required:
+#ANNOTATION: if self.is_required is false,
+                checkbox_name = self.clear_checkbox_name(name)
+#ANNOTATION: call the method self.clear_checkbox_name with an argument name, substitute the result for checkbox_name.
+                checkbox_id = self.clear_checkbox_id(checkbox_name)
+#ANNOTATION: call the method self.clear_checkbox_id with an argument checkbox_name, substitute the result for checkbox_id.
+                substitutions['clear_checkbox_name'] = conditional_escape(checkbox_name)
+#ANNOTATION: call the function conditional_escape with an argument checkbox_name, 
+#ANNOTATION: substitute the result for value under the 'clear_checkbox_name' key of the substitutions dictionary.
+                substitutions['clear_checkbox_id'] = conditional_escape(checkbox_id)
+#ANNOTATION: call the function conditional_escape with an argument checkbox_id, 
+#ANNOTATION: substitute the result for value under the 'clear_checkbox_id' key of the substitutions dictionary.
+                substitutions['clear'] = CheckboxInput().render(checkbox_name, False, attrs={'id': checkbox_id})
+#ANNOTATION: call the method render from the instance of CheckboxInput class, with 3 arguments: checkbox_name, boolean False, 
+#ANNOTATION: attrs as a dictionary with an entry: checkbox_id for 'id', 
+#ANNOTATION: substitute the result for value under the 'clear' key of the substitutions dictionary.
+                substitutions['clear_template'] = self.template_with_clear % substitutions
+#ANNOTATION: format self.template_with_clear with substitutions, substitute the result for value under the 'clear_template' key of,
+#ANNOTATION: substitutions dictionary. 
+
+        return mark_safe(template % substitutions)
+#ANNOTATION: call the function mark_safe with an argument template, formated with substitutions, return the result.
+
+    def value_from_datadict(self, data, files, name):
+#ANNOTATION: define the method value_from_datadict with 4 arguments: self, data, files and name.
+        upload = super(ClearableFileInput, self).value_from_datadict(data, files, name)
+#ANNOTATION: call the method value_from_datadict from the base class of the class ClearableFileInput,
+#ANNOTATION: called with 3 arguments: data, files and name, substitute the result for upload.
+        if not self.is_required and CheckboxInput().value_from_datadict(
+                data, files, self.clear_checkbox_name(name)):
+#ANNOTATION: if self.is_required is boolean false and call to the method value_from_datadict from the instance of CheckboxInput class, 
+#ANNOTATION: with 3 arguments: data, files and return value of the function self.clear_checkbox_name called with an argument name, 
+#ANNOTATION: evaluates to true,
+
+            if upload:
+#ANNOTATION: if upload is true,
+                # If the user contradicts themselves (uploads a new file AND
+                # checks the "clear" checkbox), we return a unique marker
+                # object that FileField will turn into a ValidationError.
+                return FILE_INPUT_CONTRADICTION
+#ANNOTATION: return FILE_INPUT_CONTRADICTION.
+            # False signals to clear any existing value, as opposed to just None
+            return False
+#ANNOTATION: return boolean False.
+        return upload
+#ANNOTATION: return boolean upload.
+
+
+class Textarea(Widget):
+#ANNOTATION: derive the class Textarea from the Widget base class.
+    def __init__(self, attrs=None):
+#ANNOTATION: define the method __init__ with 2 arguments: self and attrs set to None.
+        # Use slightly better defaults than HTML's 20x2 box
+        default_attrs = {'cols': '40', 'rows': '10'}
+#ANNOTATION: default_attrs is an dictionary with 2 initial entries: string '40' for 'cols' and string '10' for 'rows'.
+        if attrs:
+#ANNOTATION: if attrs is true,
+            default_attrs.update(attrs)
+#ANNOTATION: update default_attrs dictionary with attrs entry.
+        super(Textarea, self).__init__(default_attrs)
+#ANNOTATION: call the method __init__ from the base class of the class Textarea, with an argument default_attrs.
+
+    def render(self, name, value, attrs=None):
+#ANNOTATION: define the method render with 4 arguments: self, name, value and attrs set to None.
+        if value is None:
+#ANNOTATION: if value is None,
+            value = ''
+#ANNOTATION: value is an empty string.
+        final_attrs = self.build_attrs(attrs, name=name)
+#ANNOTATION: call the method self.build_attrs with 2 arguments: attrs and name set to name, substitute the result for final_attrs.
+        return format_html('<textarea{0}>\r\n{1}</textarea>',
+                           flatatt(final_attrs),
+                           force_text(value))
+#ANNOTATION: call the function format_html with 3 arguments: string ('<textarea{0}>\r\n{1}</textarea>', return value of the function flatatt, 
+#ANNOTATION: called with an argument final_attrs and return value of the function force_text called with an argument value, return the result.
+
+
+class DateTimeBaseInput(TextInput):
+#ANNOTATION: derive the class DateTimeBaseInput from the TextInput base class.
+    format_key = ''
+#ANNOTATION: format key is an empty string.
+    supports_microseconds = False
+#ANNOTATION: supports_microseconds is boolean False.
+
+    def __init__(self, attrs=None, format=None):
+#ANNOTATION: define the method __init__ with 3 arguments: self, attrs set to None and format is None.
+        super(DateTimeBaseInput, self).__init__(attrs)
+#ANNOTATION: call the method __init__ from the base class of the class DateTimeBaseInput, with an argument attrs.
+        self.format = format if format else None
+#ANNOTATION: substitute format for self.format if format is true, if not self.format is None.
+
+    def _format_value(self, value):
+#ANNOTATION: define the method _format_value with 2 arguments: self and value.
+        return formats.localize_input(value,
+            self.format or formats.get_format(self.format_key)[0])
+#ANNOTATION: call the function formats.localize_input with 2 arguments: value and self.format if true, if not, 
+#ANNOTATION: then the first element of the result of the function formats.get_format called with an argument self.format_key, return the result.
+
+
+class DateInput(DateTimeBaseInput):
+#ANNOTATION: derive the class DateInput from the DateTimeBaseInput base class.
+    format_key = 'DATE_INPUT_FORMATS'
+#ANNOTATION: format_key is a string 'DATE_INPUT_FORMATS'.
+
+
+class DateTimeInput(DateTimeBaseInput):
+#ANNOTATION: derive the class DateTimeInput from the DateTimeBaseInput base class.
+    format_key = 'DATETIME_INPUT_FORMATS'
+#ANNOTATION: format_key is a string 'DATETIME_INPUT_FORMATS'.
+
+
+class TimeInput(DateTimeBaseInput):
+#ANNOTATION: derive the class TimeInput from the DateTimeBaseInput base class.
+    format_key = 'TIME_INPUT_FORMATS'
+#ANNOTATION: format_key is a string 'TIME_INPUT_FORMATS'.
+
+
+# Defined at module level so that CheckboxInput is picklable (#17976)
+def boolean_check(v):
+#ANNOTATION: define the function boolean_check with an argument v.
+    return not (v is False or v is None or v == '')
+#ANNOTATION: if v is boolean False or v is None or v is an empty string, return boolean False, otherwise return boolean True.
+
+
+class CheckboxInput(Widget):
+#ANNOTATION: derive the class CheckboxInput from the Widget base class.
+    def __init__(self, attrs=None, check_test=None):
+#ANNOTATION: define the method __init__ with 3 arguments: self, attrs set to None and check_test set to None.
+        super(CheckboxInput, self).__init__(attrs)
+#ANNOTATION: call the method __init__ from the base class of the class CheckboxInput, with an argument attrs.
+        # check_test is a callable that takes a value and returns True
+        # if the checkbox should be checked for that value.
+        self.check_test = boolean_check if check_test is None else check_test
+#ANNOTATION: substitute boolean_check for self.check_test if check_test is None, otherwise substitute check_test for self.check_test.
+
+    def render(self, name, value, attrs=None):
+#ANNOTATION: define the method render with 4 arguments: self, name, value and attrs set to None.
+        final_attrs = self.build_attrs(attrs, type='checkbox', name=name)
+#ANNOTATION: call the method self.build_attrs with 3 arguments: attrs, type as a string 'checkbox', name as name, substitute the result for final_attrs.
+        if self.check_test(value):
+#ANNOTATION: call the method self.check_test with an argument value, if it evaluates to true,
+            final_attrs['checked'] = 'checked'
+#ANNOTATION: substitute string 'checked' for value under the 'checked' key of final_attrs dictionary.
+        if not (value is True or value is False or value is None or value == ''):
+#ANNOTATION: if value is boolean False or boolean True or value is None or value is an empty string, do not perform the following,
+            # Only add the 'value' attribute if a value is non-empty.
+            final_attrs['value'] = force_text(value)
+#ANNOTATION: call the function force_text with an argument value, substitute the result for value under the 'value' key of the final_attrs.
+        return format_html('<input{0} />', flatatt(final_attrs))
+#ANNOTATION: return the result of the function format_html called with 2 arguments: string '<input{0} />', 
+#ANNOTATION: and result of the function flatatt, called with an argument final_attrs.
+
+    def value_from_datadict(self, data, files, name):
+#ANNOTATION: define the method value_from_datadict with 4 arguments: self, data, files and name.
+        if name not in data:
+#ANNOTATION: if name is not contained in data,
+            # A missing value means False because HTML form submission does not
+            # send results for unselected checkboxes.
+            return False
+#ANNOTATION: return boolean False.
+        value = data.get(name)
+#ANNOTATION: get the name key of the data dictionary, substitute it for value.
+        # Translate true and false strings to boolean values.
+        values = {'true': True, 'false': False}
+#ANNOTATION: values is an dictionary with 2 arguments: boolean False for 'false' and boolean True for 'true'.
+        if isinstance(value, six.string_types):
+#ANNOTATION: if value is an instance of six.string_types class,
+            value = values.get(value.lower(), value)
+#ANNOTATION: get the value of the values dictionary under the value converted to lowercase key, substitute it for value, if the key doesnt exists,
+#ANNOTATION: substitute value for value.
+        return bool(value)
+#ANNOTATION: return value converted into a boolean.
+
+
+class Select(Widget):
+#ANNOTATION: derive the class Select from the Widget base class.
+    allow_multiple_selected = False
+#ANNOTATION: allow_multiple_selected is boolean False.
+
+    def __init__(self, attrs=None, choices=()):
+#ANNOTATION: define the method __init__ with 3 arguments: self, attrs set to None and choices set to an empty tuple.
+        super(Select, self).__init__(attrs)
+#ANNOTATION: call the method __init__ from the base class of the class Select, with an argument attrs.
+        # choices can be any iterable, but we may need to render this widget
+        # multiple times. Thus, collapse it into a list so it can be consumed
+        # more than once.
+        self.choices = list(choices)
+#ANNOTATION: convert elements of choices into a list, substitute it for self.choices.
+
+    def render(self, name, value, attrs=None, choices=()):
+#ANNOTATION: define the method render with 5 arguments: self, name, value, attrs set to None and choices set to an empty tuple.
+        if value is None:
+#ANNOTATION: if value is None,
+            value = ''
+#ANNOTATION: value is an empty string.
+        final_attrs = self.build_attrs(attrs, name=name)
+#ANNOTATION: call the method self.build_attrs with arguments attrs, name as name, substitute the result for final_attrs.
+        output = [format_html('<select{0}>', flatatt(final_attrs))]
+#ANNOTATION: output is a list containing an element: result of the function format_html called with 2 arguments: string '<select{0}>', 
+#ANNOTATION: and return value of the function flatatt called with an argument final_attrs, substitute the result for output.
+        options = self.render_options(choices, [value])
+#ANNOTATION: call the method self.render_options with 2 arguments: choices and list with an entry, value, substitute the result for options.
+        if options:
+#ANNOTATION: if options is true,
+            output.append(options)
+#ANNOTATION: append options to output.
+        output.append('</select>')
+#ANNOTATION: append string '</select>' to output.
+        return mark_safe('\n'.join(output))
+#ANNOTATION: join elements of output into a string, separated by newline characters, use it as the argument for the call the function mark_safe,
+#ANNOTATION: return the result.
+
+    def render_option(self, selected_choices, option_value, option_label):
+#ANNOTATION: define the method render_option with 4 arguments: self, selected_choices, option_value and option_label.
+        if option_value is None:
+#ANNOTATION: if option_value is None,
+            option_value = ''
+#ANNOTATION: option_value is an empty string.
+        option_value = force_text(option_value)
+#ANNOTATION: call the function force_text with an argument option_value, substitute the result for option_value.
+        if option_value in selected_choices:
+#ANNOTATION: if option_value is contained in selected_choices,
+            selected_html = mark_safe(' selected="selected"')
+#ANNOTATION: call the function mark_safe with an argument string ' selected="selected"', substitute the result for selected_html.
+            if not self.allow_multiple_selected:
+#ANNOTATION: if self.allow_multiple_selected is false,
+                # Only allow for a single selection.
+                selected_choices.remove(option_value)
+#ANNOTATION: call the method selected_choices.remove with an argument option_value.
+        else:
+#ANNOTATION: if not,
+            selected_html = ''
+#ANNOTATION: selected_html is an empty string.
+        return format_html('<option value="{0}"{1}>{2}</option>',
+                           option_value,
+                           selected_html,
+                           force_text(option_label))
+#ANNOTATION: call the function format_html with 4 arguments: string '<option value="{0}"{1}>{2}</option>', option_value, selected_html,
+#ANNOTATION: result of the function force_text with an argument option_label, return the result.
+
+    def render_options(self, choices, selected_choices):
+#ANNOTATION: define the method render_options with 3 arguments: self, choices and selected_choices.
+        # Normalize to strings.
+        selected_choices = set(force_text(v) for v in selected_choices)
+#ANNOTATION: call the function force_text with an argument v, for every v in selected_choices, add results to a set, 
+#ANNOTATION: substitute the resulting set for selected_choices.
+        output = []
+#ANNOTATION: output is an empty list.
+        for option_value, option_label in chain(self.choices, choices):
+#ANNOTATION: call the function chain with arguments self.choices and choices, for every option_value and option_label in the result,
+            if isinstance(option_label, (list, tuple)):
+#ANNOTATION: if option_label is an instance of list or tuple, 
+                output.append(format_html('<optgroup label="{0}">', force_text(option_value)))
+#ANNOTATION: call the function format_html with 2 arguments: string '<optgroup label="{0}">' and return value of the function force_text,
+#ANNOTATION: called with an argument option_value, append the result to output.
+                for option in option_label:
+#ANNOTATION: for every option in option_label,
+                    output.append(self.render_option(selected_choices, *option))
+#ANNOTATION: call the method self.render_option with 2 arguments: selected_choices and unpacked list option, append the result to output.
+                output.append('</optgroup>')
+#ANNOTATION: append string '</optgroup>' to output.
+            else:
+#ANNOTATION: if not,
+                output.append(self.render_option(selected_choices, option_value, option_label))
+#ANNOTATION: call the method self.render_option with 3 arguments: selected_choices, option_value and option_label, append the result to output.
+        return '\n'.join(output)
+#ANNOTATION: join elements of output in a string, separated by newlines, return it.
+
+
+class NullBooleanSelect(Select):
+#ANNOTATION: derive the class NullBooleanSelect from the Select base class.
+    """
+    A Select Widget intended to be used with NullBooleanField.
+    """
+#ANNOTATION: docstring
+    def __init__(self, attrs=None):
+#ANNOTATION: define the method __init__ with 2 arguments: self and attrs set to None.
+        choices = (('1', ugettext_lazy('Unknown')),
+                   ('2', ugettext_lazy('Yes')),
+                   ('3', ugettext_lazy('No')))
+#ANNOTATION: choices is a tuple with 3 elements: tuple with 2 elements: string '1' and return value of the function ugettext_lazy,
+#ANNOTATION: called with an argument string 'Unknown', tuple with 2 elements: string '2' and return value of the function ugettext_lazy,
+#ANNOTATION: called with an argument string 'Yes' and tuple with 2 elements: string '3' and return value of the function ugettext_lazy,
+#ANNOTATION: called with an argument string 'No'.  
+        super(NullBooleanSelect, self).__init__(attrs, choices)
+#ANNOTATION: call the method __init__ from the base class of the class NullBooleanSelect, with arguments attrs and choices.
+
+    def render(self, name, value, attrs=None, choices=()):
+#ANNOTATION: define the method render with 5 arguments: self, name, value, attrs set to None and choices set to an empty tuple.
+        try:
+#ANNOTATION: try,
+            value = {True: '2', False: '3', '2': '2', '3': '3'}[value]
+#ANNOTATION: get the value under value key of a dictionary with 4 entries: '2' for boolean True, '3' for boolean False, '2' for '2',
+#ANNOTATION: and '3' for '3', substitute it for value.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            value = '1'
+#ANNOTATION: value is an string '1'.
+        return super(NullBooleanSelect, self).render(name, value, attrs, choices)
+#ANNOTATION: call the method render from the base class of the class NullBooleanSelect, with 4 arguments: name, value, attrs and choices,
+#ANNOTATION: return the result.
+
+    def value_from_datadict(self, data, files, name):
+#ANNOTATION: define the method value_from_datadict with 4 arguments: self, data, files and name.
+        value = data.get(name, None)
+#ANNOTATION: get the value under the name key of the data dictionary, if it exists substitute it for value, if not, value is None.
+        return {'2': True,
+                True: True,
+                'True': True,
+                '3': False,
+                'False': False,
+                False: False}.get(value, None)
+#ANNOTATION: get the value under the value key of a dictionary with 6 entries: boolean True for '2', boolean True for boolean True, 
+#ANNOTATION: boolean True for 'True', boolean False for '3', boolean False for 'False' and boolean False for boolean False, 
+#ANNOTATION: return it if the key exists, if not return None.
+
+
+class SelectMultiple(Select):
+#ANNOTATION: derive the class SelectMultiple from the Select base class.
+    allow_multiple_selected = True
+#ANNOTATION: allow_multiple_selected is boolean True.
+
+    def render(self, name, value, attrs=None, choices=()):
+#ANNOTATION: define the method render with 5 arguments: self, name, value, attrs set to None and choices set to an empty tuple.
+        if value is None:
+#ANNOTATION: if value is None,
+            value = []
+#ANNOTATION: value is an empty list.
+        final_attrs = self.build_attrs(attrs, name=name)
+#ANNOTATION: call the method self.build_attrs with 2 arguments: attrs and name set to name, substitute the result for final_attrs.
+        output = [format_html('<select multiple="multiple"{0}>', flatatt(final_attrs))]
+#ANNOTATION: output is a list containing an entry: result of the function format_html called with 2 arguments: 
+#ANNOTATION: string '<select multiple="multiple"{0}>' and result of the function flatatt called with an argument final_attrs.
+        options = self.render_options(choices, value)
+#ANNOTATION: call the method self.render_options with 2 arguments: choices and value, substitute the result for options.
+        if options:
+#ANNOTATION: if options is true,
+            output.append(options)
+#ANNOTATION: append options to output.
+        output.append('</select>')
+#ANNOTATION: append string '</select>' to output.
+        return mark_safe('\n'.join(output))
+#ANNOTATION: join elements of output into a string, separated with newline character, 
+#ANNOTATION: use it as an argument for the call to the mark_safe function, return the result.
+
+    def value_from_datadict(self, data, files, name):
+#ANNOTATION: define the method value_from_datadict with 4 arguments: self, data, files and name.
+        if isinstance(data, (MultiValueDict, MergeDict)):
+#ANNOTATION: if data is an instance of MultiValueDict or MergeDict,
+            return data.getlist(name)
+#ANNOTATION: call the method data.getlist with an argument name, return the result.
+        return data.get(name, None)
+#ANNOTATION: get the value under the name key of the data dictionary, if it exists return it, if not return None.
+
+
+@python_2_unicode_compatible
+#ANNOTATION: python_2_unicode_compatible decorator,
+class ChoiceInput(SubWidget):
+#ANNOTATION: derive the class ChoiceInput from the SubWidget base class.
+    """
+    An object used by ChoiceFieldRenderer that represents a single
+    <input type='$input_type'>.
+    """
+#ANNOTATION: docstring
+    input_type = None  # Subclasses must define this
+#ANNOTATION: input_type is None.
+
+    def __init__(self, name, value, attrs, choice, index):
+#ANNOTATION: define the method __init__ with 6 arguments: self, name, value, attrs, choice and index.
+        self.name = name
+#ANNOTATION: substitute name for self.name.
+        self.value = value
+#ANNOTATION: substitute value for self.value.
+        self.attrs = attrs
+#ANNOTATION: substitute attrs for self.attrs.
+        self.choice_value = force_text(choice[0])
+#ANNOTATION: call the function force_text with first element of choice as an argument, substitute the result for self.choice_value.
+        self.choice_label = force_text(choice[1])
+#ANNOTATION: call the function force_text with second element of choice as an argument, substitute the result for self.choice_label.
+        self.index = index
+#ANNOTATION: substitute index for self.index.
+        if 'id' in self.attrs:
+#ANNOTATION: if string 'id' is contained in self.attrs,
+            self.attrs['id'] += "_%d" % self.index
+#ANNOTATION: convert self.index into a string and append it to '_' string, substitute it for value under the 'id' key of self.attrs dictionary.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        return self.render()
+#ANNOTATION: call the method self.render, return the result.
+
+    def render(self, name=None, value=None, attrs=None, choices=()):
+#ANNOTATION: define the method render with 5 arguments: self, name set to None, value set to None, attrs set to None and choices set to an empty tuple.
+        if self.id_for_label:
+#ANNOTATION: self.id_for_label is true,
+            label_for = format_html(' for="{0}"', self.id_for_label)
+#ANNOTATION: call the function format_html with 2 arguments: string ' for="{0}"' and self.id_for_label, substitute the result for label_for.
+        else:
+#ANNOTATION: if not,
+            label_for = ''
+#ANNOTATION: label_for is an empty string.
+        return format_html('<label{0}>{1} {2}</label>', label_for, self.tag(), self.choice_label)
+#ANNOTATION: call the function format_html with 4 arguments: string '<label{0}>{1} {2}</label>', label_for, result of the method self.tag,
+#ANNOTATION: and self.choice_label, return the result.
+
+    def is_checked(self):
+#ANNOTATION: define the method is_checked with an argument self.
+        return self.value == self.choice_value
+#ANNOTATION: if self.value equals self.choice_value, return boolean True, if not, return boolean False.
+
+    def tag(self):
+#ANNOTATION: define the method tag with an argument self.
+        final_attrs = dict(self.attrs, type=self.input_type, name=self.name, value=self.choice_value)
+#ANNOTATION: call the method dict with 4: self.attrs, type as self.input_type, name as self.name, value as self.choice_value, 
+#ANNOTATION: substitute the result for final_attrs.
+        if self.is_checked():
+#ANNOTATION: call the method self.is_checked, if it evaluates to true, 
+            final_attrs['checked'] = 'checked'
+#ANNOTATION: substitute string 'checked' for value under the 'checked' key of final_attrs dictionary.
+        return format_html('<input{0} />', flatatt(final_attrs))
+#ANNOTATION: call the function format_html with 2 arguments: string '<input{0} />' and result of the function flatatt,
+#ANNOTATION: called with an argument final_attrs, return the result.
+
+    @property
+#ANNOTATION: property decorator,
+    def id_for_label(self):
+#ANNOTATION: define the method id_for_label with an argument self.
+        return self.attrs.get('id', '')
+#ANNOTATION: get the value under the 'id' key of the self.attrs dictionary, return it, if the key doesnt exists return an empty string. 
+
+
+class RadioChoiceInput(ChoiceInput):
+#ANNOTATION: derive the class RadioChoiceInput from the ChoiceInput base class.
+    input_type = 'radio'
+#ANNOTATION: input_type is a string 'radio'.
+
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+        super(RadioChoiceInput, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class RadioChoiceInput, with 2 arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+        self.value = force_text(self.value)
+#ANNOTATION: call the function force_text with an argument self.value, substitute the result for self.value.
+
+
+class CheckboxChoiceInput(ChoiceInput):
+#ANNOTATION: derive the class CheckboxChoiceInput from the ChoiceInput base class.
+    input_type = 'checkbox'
+#ANNOTATION: input_type is a string 'checkbox'.
+
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+        super(CheckboxChoiceInput, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class CheckboxChoiceInput, with 2 arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+        self.value = set(force_text(v) for v in self.value)
+#ANNOTATION: for every v in self.value call the function force_text with an argument v, add the result to a set,
+#ANNOTATION: substitute set of the results for self.value. 
+
+    def is_checked(self):
+#ANNOTATION: define the method is_checked with an argument self.
+        return self.choice_value in self.value
+#ANNOTATION: if self.choice_value is contained in self.value return boolean True, otherwise return boolean False.
+
+
+@python_2_unicode_compatible
+#ANNOTATION: python_2_unicode_compatible decorator,
+class ChoiceFieldRenderer(object):
+#ANNOTATION: derive the class ChoiceFieldRenderer from the object base class.
+    """
+    An object used by RadioSelect to enable customization of radio widgets.
+    """
+#ANNOTATION: docstring
+
+    choice_input_class = None
+#ANNOTATION: choice_input_class is None.
+    outer_html = '<ul{id_attr}>{content}</ul>'
+#ANNOTATION: outer_html is a string '<ul{id_attr}>{content}</ul>'.
+    inner_html = '<li>{choice_value}{sub_widgets}</li>'
+#ANNOTATION: inner_html is a string '<li>{choice_value}{sub_widgets}</li>'.
+
+    def __init__(self, name, value, attrs, choices):
+#ANNOTATION: define the method __init__ with 5 arguments: self, name, value, attrs and choices.
+        self.name = name
+#ANNOTATION: substitute name for self.name.
+        self.value = value
+#ANNOTATION: substitute value for self.value.
+        self.attrs = attrs
+#ANNOTATION: substitute attrs for self.attrs.
+        self.choices = choices
+#ANNOTATION: substitute choices for self.choices.
+
+    def __getitem__(self, idx):
+#ANNOTATION: define the method __getitem__ with 2 arguments: self and idx.
+        choice = self.choices[idx]  # Let the IndexError propagate
+#ANNOTATION: substitute idx-th element of self.choices for choice.
+        return self.choice_input_class(self.name, self.value, self.attrs.copy(), choice, idx)
+#ANNOTATION: call the method self.choice_input_class with 5 arguments: self.name, self.value, result of the method self.attrs.copy,
+#ANNOTATION: choice and idx, return the result.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        return self.render()
+#ANNOTATION: call the method self.render, return the result.
+
+    def render(self):
+#ANNOTATION: define the method render with an argument self.
+        """
+        Outputs a <ul> for this set of choice fields.
+        If an id was given to the field, it is applied to the <ul> (each
+        item in the list will get an id of `$id_$i`).
+        """
+#ANNOTATION: docstring
+        id_ = self.attrs.get('id', None)
+#ANNOTATION: get the value under the 'id' key of the self.attrs dictionary, substitute it for id_ if the key exists, if not id_ is None.
+        output = []
+#ANNOTATION: output is an empty list.
+        for i, choice in enumerate(self.choices):
+#ANNOTATION: for every i and choice in enumerated iterable self.choices,
+            choice_value, choice_label = choice
+#ANNOTATION: substitute choice for choice_value and choice_label, respectively.
+            if isinstance(choice_label, (tuple, list)):
+#ANNOTATION: if choice_label is an instance of tuple or list,
+                attrs_plus = self.attrs.copy()
+#ANNOTATION: call the method self.attrs.copy, substitute the result for attrs_plus.
+                if id_:
+#ANNOTATION: if id_ is true,
+                    attrs_plus['id'] += '_{0}'.format(i)
+#ANNOTATION: prepend string '_' to i converted to an string, append the result to the value under the 'id' key of the attrs_plus.
+                sub_ul_renderer = ChoiceFieldRenderer(name=self.name,
+                                                      value=self.value,
+                                                      attrs=attrs_plus,
+                                                      choices=choice_label)
+#ANNOTATION: sub_ul_renderer is an instance of ChoiceFieldRenderer class, created with 4 arguments: name as self.name, value as self.value,
+#ANNOTATION: attrs as attrs_plus and choices as choice_label.
+                sub_ul_renderer.choice_input_class = self.choice_input_class
+#ANNOTATION: substitute self.choice_input_class for sub_ul_renderer.choice_input_class.
+                output.append(format_html(self.inner_html, choice_value=choice_value,
+                                          sub_widgets=sub_ul_renderer.render()))
+#ANNOTATION: call the function format_html with 3 arguments: self.inner_html, choice_value set to choice_value,
+#ANNOTATION: and sub_widgets set to return value of the function sub_ul_renderer.render, append the result to output.
+            else:
+#ANNOTATION: if not,
+                w = self.choice_input_class(self.name, self.value,
+                                            self.attrs.copy(), choice, i)
+#ANNOTATION: call the method self.choice_input_class with 5 arguments: self.name, self.value, return value of the method self.attrs.copy, 
+#ANNOTATION: choice and i, substitute the result for w.
+                output.append(format_html(self.inner_html,
+                                          choice_value=force_text(w), sub_widgets=''))
+#ANNOTATION: call the function format_html with 3 arguments: self.inner_html, choice_value set to result of the function force_text,
+#ANNOTATION: called with an argument w, and sub_widgets as an empty string, append the result to output.
+        return format_html(self.outer_html,
+                           id_attr=format_html(' id="{0}"', id_) if id_ else '',
+                           content=mark_safe('\n'.join(output)))
+#ANNOTATION: call the function format_html with 3 arguments: self.outer_html, 
+#ANNOTATION: if id_ is true id_attr set to return value of the function format_html, if not id_attr set to an empty string,
+#ANNOTATION: content set to result of the function mark_safe with an argument: string created by joining elements of outputs, with '\n' separator,
+#ANNOTATION: return the result.
+
+
+class RadioFieldRenderer(ChoiceFieldRenderer):
+#ANNOTATION: derive the class RadioFieldRenderer from the ChoiceFieldRenderer base class.
+    choice_input_class = RadioChoiceInput
+#ANNOTATION: substitute RadioChoiceInput for choice_input_class.
+
+
+class CheckboxFieldRenderer(ChoiceFieldRenderer):
+#ANNOTATION: derive the class CheckboxFieldRenderer from the ChoiceFieldRenderer base class.
+    choice_input_class = CheckboxChoiceInput
+#ANNOTATION: substitute CheckboxChoiceInput for choice_input_class.
+
+
+class RendererMixin(object):
+#ANNOTATION: derive the class RendererMixin from the object base class.
+    renderer = None  # subclasses must define this
+#ANNOTATION: renderer is None.
+    _empty_value = None
+#ANNOTATION: _empty_value is None.
+
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the method __init__ with 3 arguments: self, unpacked list args and unpacked dictionary kwargs. 
+        # Override the default renderer if we were passed one.
+        renderer = kwargs.pop('renderer', None)
+#ANNOTATION: remove entry under 'render' key of the kwargs dictionary and substitute it for renderer, if the key doesnt exists, renderer is None.
+        if renderer:
+#ANNOTATION: if renderer is true,
+            self.renderer = renderer
+#ANNOTATION: substitute renderer for self.renderer.
+        super(RendererMixin, self).__init__(*args, **kwargs)
+#ANNOTATION: call the method __init__ from the base class of the class RendererMixin, with 2 arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs.
+
+    def subwidgets(self, name, value, attrs=None, choices=()):
+#ANNOTATION: define the method subwidgets with 5 arguments: self, name, value, attrs set to None and choices set to an empty tuple.
+        for widget in self.get_renderer(name, value, attrs, choices):
+#ANNOTATION: call the method self.get_renderer with 4 arguments: name, value, attrs and choices, for every widget in result,
+            yield widget
+#ANNOTATION: yield widget.
+
+    def get_renderer(self, name, value, attrs=None, choices=()):
+#ANNOTATION: define the method get_renderer with 5 arguments: self, name, value, attrs set to None and choices set to an empty tuple.
+        """Returns an instance of the renderer."""
+#ANNOTATION: docstring
+        if value is None:
+#ANNOTATION: if value is None,
+            value = self._empty_value
+#ANNOTATION: substitute self._empty_value for value.
+        final_attrs = self.build_attrs(attrs)
+#ANNOTATION: call the method self.build_attrs with an argument attrs, substitute the result for final_attrs.
+        choices = list(chain(self.choices, choices))
+#ANNOTATION: call the function chain with 2 arguments: self.choices and choices, convert the result into a list and substitute it for choices.
+        return self.renderer(name, value, final_attrs, choices)
+#ANNOTATION: call the method self.renderer with 4 arguments: name, value, final_attrs and choices, return the result.
+
+    def render(self, name, value, attrs=None, choices=()):
+#ANNOTATION: define the method render with 5 arguments: self, name, value, attrs set to None and choices set to an empty tuple.
+        return self.get_renderer(name, value, attrs, choices).render()
+#ANNOTATION: call the method self.get_renderer with 4 arguments: name, value, attrs and choices, call the render method on the result, return the result.
+
+    def id_for_label(self, id_):
+#ANNOTATION: define the method id_for_label with 2 arguments: self and id_.
+        # Widgets using this RendererMixin are made of a collection of
+        # subwidgets, each with their own <label>, and distinct ID.
+        # The IDs are made distinct by y "_X" suffix, where X is the zero-based
+        # index of the choice field. Thus, the label for the main widget should
+        # reference the first subwidget, hence the "_0" suffix.
+        if id_:
+#ANNOTATION: if id_ is true,
+            id_ += '_0'
+#ANNOTATION: append string '_0' to id_.
+        return id_
+#ANNOTATION: return id_.
+
+
+class RadioSelect(RendererMixin, Select):
+#ANNOTATION: derive the class RadioSelect from the RendererMixin and Select base classes.
+    renderer = RadioFieldRenderer
+#ANNOTATION: substitute RadioFieldRenderer for renderer.
+    _empty_value = ''
+#ANNOTATION: _empty_value is an empty string.
+
+
+class CheckboxSelectMultiple(RendererMixin, SelectMultiple):
+#ANNOTATION: derive the class CheckboxSelectMultiple from the RendererMixin and SelectMultiple base classes.
+    renderer = CheckboxFieldRenderer
+#ANNOTATION: substitute CheckboxFieldRenderer for renderer.
+    _empty_value = []
+#ANNOTATION: _empty_value is an empty list.
+
+
+class MultiWidget(Widget):
+#ANNOTATION: derive the class MultiWidget from the Widget base class.
+    """
+    A widget that is composed of multiple widgets.
+
+    Its render() method is different than other widgets', because it has to
+    figure out how to split a single value for display in multiple widgets.
+    The ``value`` argument can be one of two things:
+
+        * A list.
+        * A normal value (e.g., a string) that has been "compressed" from
+          a list of values.
+
+    In the second case -- i.e., if the value is NOT a list -- render() will
+    first "decompress" the value into a list before rendering it. It does so by
+    calling the decompress() method, which MultiWidget subclasses must
+    implement. This method takes a single "compressed" value and returns a
+    list.
+
+    When render() does its HTML rendering, each value in the list is rendered
+    with the corresponding widget -- the first value is rendered in the first
+    widget, the second value is rendered in the second widget, etc.
+
+    Subclasses may implement format_output(), which takes the list of rendered
+    widgets and returns a string of HTML that formats them any way you'd like.
+
+    You'll probably want to use this class with MultiValueField.
+    """
+#ANNOTATION: docstring
+    def __init__(self, widgets, attrs=None):
+#ANNOTATION: define the method __init__ with 3 arguments: self, widgets and attrs set to None.
+        self.widgets = [w() if isinstance(w, type) else w for w in widgets]
+#ANNOTATION: for every w in widgets, call the function w and append the result to a list, if w is an instance of type class, 
+#ANNOTATION: if not append w to the list, substitute the resulting list for self.widgets. 
+        super(MultiWidget, self).__init__(attrs)
+#ANNOTATION: call the method __init__ from the base class of the class MultiWidget, with an argument attrs.
+
+    @property
+#ANNOTATION: property decorator,
+    def is_hidden(self):
+#ANNOTATION: define the method is_hidden with an argument self.
+        return all(w.is_hidden for w in self.widgets)
+#ANNOTATION: for every w in self.widgets, if all elements w.is_hidden are true, return boolean True, otherwise return boolean False. 
+
+    def render(self, name, value, attrs=None):
+#ANNOTATION: define the method render with 4 arguments: self, name, value and attrs set to None.
+        if self.is_localized:
+#ANNOTATION: if self.is_localized is true,
+            for widget in self.widgets:
+#ANNOTATION: for every bwidget in self.widgets,
+                widget.is_localized = self.is_localized
+#ANNOTATION: substitute self.is_localized for widget.is_localized.
+        # value is a list of values, each corresponding to a widget
+        # in self.widgets.
+        if not isinstance(value, list):
+#ANNOTATION: if value is not an instance of list type,
+            value = self.decompress(value)
+#ANNOTATION: call the method self.decompress with an argument value, substitute the result for value.
+        output = []
+#ANNOTATION: output is an empty list.
+        final_attrs = self.build_attrs(attrs)
+#ANNOTATION: call the method self.build_attrs with an argument attrs, substitute the result for final_attrs.
+        id_ = final_attrs.get('id', None)
+#ANNOTATION: get the value under the 'id' key of the final_attrs dictionary, substitute it for id_, if it doesnt exists, id_ is None.
+        for i, widget in enumerate(self.widgets):
+#ANNOTATION: for every i and widget in enumerated iterable self.widgets,
+            try:
+#ANNOTATION: try,
+                widget_value = value[i]
+#ANNOTATION: substitute i-th element of value for widget_value.
+            except IndexError:
+#ANNOTATION: if IndexError exception is caught,
+                widget_value = None
+#ANNOTATION: widget_value is None.
+            if id_:
+#ANNOTATION: if id_ is true,
+                final_attrs = dict(final_attrs, id='%s_%s' % (id_, i))
+#ANNOTATION: call the dict function with 2 arguments: final_attrs and id set to string '%s_%s', where '%s' is replaced with id_ and i,
+#ANNOTATION: substitute the result for final_attrs.
+            output.append(widget.render(name + '_%s' % i, widget_value, final_attrs))
+#ANNOTATION: call the method widget.render with 3 arguments: string created by concatenation from: name, string '_' and i, widget_value, 
+#ANNOTATION: and final_attrs, append the result to output.
+        return mark_safe(self.format_output(output))
+#ANNOTATION: call the method self.format_output with an argument output, use the result as an argument for the call to the function mark_safe,
+#ANNOTATION: return the result.
+
+    def id_for_label(self, id_):
+#ANNOTATION: define the method id_for_label with 2 arguments: self and id_.
+        # See the comment for RadioSelect.id_for_label()
+        if id_:
+#ANNOTATION: if id_ is true,
+            id_ += '_0'
+#ANNOTATION: append string '_0' to id_.
+        return id_
+#ANNOTATION: return id_.
+
+    def value_from_datadict(self, data, files, name):
+#ANNOTATION: define the method value_from_datadict with 2 arguments: self, data, files and name.
+        return [widget.value_from_datadict(data, files, name + '_%s' % i) for i, widget in enumerate(self.widgets)]
+#ANNOTATION: for every i and widget in enumerated iterable self.widgets, call the function widget.value_from_datadict with 3 arguments: data,
+#ANNOTATION: files and string created with concatenation of: name, string '_' and i converted into a string, return the results in a list.
+
+    def format_output(self, rendered_widgets):
+#ANNOTATION: define the method format_output with 2 arguments: self and rendered_widgets.
+        """
+        Given a list of rendered widgets (as strings), returns a Unicode string
+        representing the HTML for the whole lot.
+
+        This hook allows you to format the HTML design of the widgets, if
+        needed.
+        """
+#ANNOTATION: docstring
+        return ''.join(rendered_widgets)
+#ANNOTATION: join rendered_widgets into a string, return it.
+
+    def decompress(self, value):
+#ANNOTATION: define the method decompress with 2 arguments: self and value.
+        """
+        Returns a list of decompressed values for the given compressed value.
+        The given value can be assumed to be valid, but not necessarily
+        non-empty.
+        """
+#ANNOTATION: docstring
+        raise NotImplementedError('Subclasses must implement this method.')
+#ANNOTATION: raise NotImplementedError exception with an argument string 'Subclasses must implement this method.'.
+
+    def _get_media(self):
+#ANNOTATION: define the method _get_media with an argument self.
+        "Media for a multiwidget is the combination of all media of the subwidgets"
+#ANNOTATION: docstring
+        media = Media()
+#ANNOTATION: media is an instance of Media class.
+        for w in self.widgets:
+#ANNOTATION: for every w in self.widgets,
+            media = media + w.media
+#ANNOTATION: sum media and w.media, substitute the result for media.
+        return media
+#ANNOTATION: return media.
+    media = property(_get_media)
+#ANNOTATION: media is a property object of the current class, with _get_media as getter function.
+
+    def __deepcopy__(self, memo):
+#ANNOTATION: define the method __deepcopy__ with 2 arguments: self and memo.
+        obj = super(MultiWidget, self).__deepcopy__(memo)
+#ANNOTATION: call the method __deepcopy__ from the base class of the class MultiWidget, with an argument memo, substitute the result for obj.
+        obj.widgets = copy.deepcopy(self.widgets)
+#ANNOTATION: call the method copy.deepcopy with an argument self.widgets, substitute the result for obj.widgets.
+        return obj
+#ANNOTATION: return obj.
+
+    @property
+#ANNOTATION: property decorator,
+    def needs_multipart_form(self):
+#ANNOTATION: define the method needs_multipart_form with an argument self.
+        return any(w.needs_multipart_form for w in self.widgets)
+#ANNOTATION: if any w.needs_multipart_form for every w in self.widgets is true, return boolean True, if not return boolean False.
+
+
+class SplitDateTimeWidget(MultiWidget):
+#ANNOTATION: derive the class SplitDateTimeWidget from the MultiWidget base class.
+    """
+    A Widget that splits datetime input into two <input type="text"> boxes.
+    """
+#ANNOTATION: docstring
+    supports_microseconds = False
+#ANNOTATION: supports_microseconds is boolean False.
+
+    def __init__(self, attrs=None, date_format=None, time_format=None):
+#ANNOTATION: define the method __init__ with 4 arguments: self, attrs set to None, date_format set to None and time_format set to None.
+        widgets = (DateInput(attrs=attrs, format=date_format),
+                   TimeInput(attrs=attrs, format=time_format))
+#ANNOTATION: widgets is a tuple with 2 elements: instance of DateInput class, created with 2 arguments: attrs as attrs and format as date_format,
+#ANNOTATION: and instance of TimeInput class, created with 2 arguments: attrs set to attrs and format set to date_format.
+        super(SplitDateTimeWidget, self).__init__(widgets, attrs)
+#ANNOTATION: call the method __init__ from the base class of the class SplitDateTimeWidget, with 2 arguments: widgets and attrs.
+
+    def decompress(self, value):
+#ANNOTATION: define the method decompress with 2 arguments: self and value.
+        if value:
+#ANNOTATION: if value is true,
+            value = to_current_timezone(value)
+#ANNOTATION: call the function to_current_timezone with an argument, substitute the result for value.
+            return [value.date(), value.time().replace(microsecond=0)]
+#ANNOTATION: return a list containing 2 elements: return value of the value.date method and return value of the replace method,
+#ANNOTATION: called with the argument microseconds set to integer 0, on the result of the method value.time.
+        return [None, None]
+#ANNOTATION: return list containing 2 elements: None and None.
+
+
+class SplitHiddenDateTimeWidget(SplitDateTimeWidget):
+#ANNOTATION: derive the class SplitHiddenDateTimeWidget from the SplitDateTimeWidget base class.
+    """
+    A Widget that splits datetime input into two <input type="hidden"> inputs.
+    """
+#ANNOTATION: docstring
+    def __init__(self, attrs=None, date_format=None, time_format=None):
+#ANNOTATION: define the method render with 4 arguments: self, attrs set to None, date_format set to None and time_format set to None.
+        super(SplitHiddenDateTimeWidget, self).__init__(attrs, date_format, time_format)
+#ANNOTATION: call the method __init__ from the base class of the class SplitHiddenDateTimeWidget, with 3 arguments: attrs, date_format, #ANNOTATION: and time_format.
+        for widget in self.widgets:
+#ANNOTATION: for every widget in self.widgets:,
+            widget.input_type = 'hidden'
+#ANNOTATION: widget.input_type is a string 'hidden'.

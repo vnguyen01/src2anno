@@ -1,0 +1,180 @@
+import os
+#ANNOTATION: import module os.
+
+from django.core.management.base import BaseCommand
+#ANNOTATION: from django.core.management.base import BaseCommand into default name space.
+
+
+class Command(BaseCommand):
+#ANNOTATION: derive the class Command from the BaseCommand class.
+    help = "Runs a Python interactive interpreter. Tries to use IPython or bpython, if one of them is available."
+#ANNOTATION: help is a string "Runs a Python interactive interpreter. Tries to use IPython or bpython, if one of them is available.".
+    requires_system_checks = False
+#ANNOTATION: requires_system_checks is boolean False.
+    shells = ['ipython', 'bpython']
+#ANNOTATION: shells is a list containing 2 elements: string 'ipython' and string 'bpython'.
+
+    def add_arguments(self, parser):
+#ANNOTATION: define the method add_arguments with 2 arguments self and parser.
+        parser.add_argument('--plain', action='store_true', dest='plain',
+            help='Tells Django to use plain Python, not IPython or bpython.')
+#ANNOTATION: call the method parser.add_argument with 4 arguments: string '--plain', action set to string 'store_true', dest as a string 'plain',
+#ANNOTATION: and help is a string 'Tells Django to use plain Python, not IPython or bpython.'.
+        parser.add_argument('--no-startup', action='store_true', dest='no_startup',
+            help='When using plain Python, ignore the PYTHONSTARTUP environment variable and ~/.pythonrc.py script.')
+#ANNOTATION: call the method parser.add_argument with 4 arguments: string '--no-startup', action as a string 'store_true',
+#ANNOTATION: dest as a string 'no_startup' and help as a string 'When using plain Python, ignore the PYTHONSTARTUP environment variable and ~/.pythonrc.py script.'.
+        parser.add_argument('-i', '--interface', choices=self.shells, dest='interface',
+            help='Specify an interactive interpreter interface. Available options: "ipython" and "bpython"')
+#ANNOTATION: call the method parser.add_argument with 5 arguments: string '-i', string '--interface', choices set to string self.shells,
+#ANNOTATION: dest as a string 'interface' and help as a string 'Specify an interactive interpreter interface. Available options: "ipython" and "bpython"'.
+
+    def _ipython_pre_011(self):
+#ANNOTATION: define the method _ipython_pre_011 with an argument self.
+        """Start IPython pre-0.11"""
+#ANNOTATION: docstring
+        from IPython.Shell import IPShell
+#ANNOTATION: from IPython.Shell import IPShell into default namespace.
+        shell = IPShell(argv=[])
+#ANNOTATION: shell is an instance of IPShell class, created with an argument argv as an empty list.
+        shell.mainloop()
+#ANNOTATION: call the method shell.mainloop.
+
+    def _ipython_pre_100(self):
+#ANNOTATION: define the method _ipython_pre_100 with an argument self.
+        """Start IPython pre-1.0.0"""
+#ANNOTATION: docstring
+        from IPython.frontend.terminal.ipapp import TerminalIPythonApp
+#ANNOTATION:  from IPython.frontend.terminal.ipapp import TerminalIPythonApp into default namespace.
+        app = TerminalIPythonApp.instance()
+#ANNOTATION: call the method instance of TerminalIPythonApp class, substitute the result for app.
+        app.initialize(argv=[])
+#ANNOTATION: call the method app.initialize with an argument argv as an empty list.
+        app.start()
+#ANNOTATION: call the method app.start.
+
+    def _ipython(self):
+#ANNOTATION: define the method _ipython with an argument self.
+        """Start IPython >= 1.0"""
+#ANNOTATION: docstring
+        from IPython import start_ipython
+#ANNOTATION: from IPython import start_ipython into default namespace.
+        start_ipython(argv=[])
+#ANNOTATION: call the method start_ipython with an argument argv as an empty list.
+
+    def ipython(self):
+#ANNOTATION: define the method ipython with an argument self.
+        """Start any version of IPython"""
+#ANNOTATION: docstring
+        for ip in (self._ipython, self._ipython_pre_100, self._ipython_pre_011):
+#ANNOTATION: for every ip in tuple containing 3 elements: self._ipython, self._ipython_pre_100 and self._ipython_pre_011,
+            try:
+#ANNOTATION: try,
+                ip()
+#ANNOTATION: call the function ip.
+            except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+            else:
+#ANNOTATION: if not,
+                return
+#ANNOTATION: return nothing.
+        # no IPython, raise ImportError
+        raise ImportError("No IPython")
+#ANNOTATION: raise an ImportError exception with an argument string "No IPython".
+
+    def bpython(self):
+#ANNOTATION: define the method bpython with an argument self.
+        import bpython
+#ANNOTATION: import bpython.
+        bpython.embed()
+#ANNOTATION: call the method bpython.embed.
+
+    def run_shell(self, shell=None):
+#ANNOTATION: define the method run_shell with an arguments self and shell set to None.
+        available_shells = [shell] if shell else self.shells
+#ANNOTATION: if shell is true substitute list with element shell for available_shells, if not substitute self.shells for available_shells.
+
+        for shell in available_shells:
+#ANNOTATION: for every shell in available_shells,
+            try:
+#ANNOTATION: try,
+                return getattr(self, shell)()
+#ANNOTATION: get shell attribute of the self object, call it and return the result.
+            except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+        raise ImportError
+#ANNOTATION: raise an ImportError exception.
+
+    def handle(self, **options):
+#ANNOTATION: define the method handle with 3 arguments: self and unpacked dictionary options.
+        try:
+#ANNOTATION: try,
+            if options['plain']:
+#ANNOTATION: if value under 'plain' key of the options dictionary is true, 
+                # Don't bother loading IPython, because the user wants plain Python.
+                raise ImportError
+#ANNOTATION: raise an ImportError exception.
+
+            self.run_shell(shell=options['interface'])
+#ANNOTATION: call the method self.run_shell with an argument shell set to value under the 'interface' key of the options dictionary. 
+        except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+            import code
+#ANNOTATION: import code.
+            # Set up a dictionary to serve as the environment for the shell, so
+            # that tab completion works on objects that are imported at runtime.
+            # See ticket 5082.
+            imported_objects = {}
+#ANNOTATION: imported_objects is an empty dictionary.
+            try:  # Try activating rlcompleter, because it's handy.
+#ANNOTATION: try,
+                import readline
+#ANNOTATION: import readline.
+            except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+                pass
+#ANNOTATION: do nothing.
+            else:
+#ANNOTATION: if not,
+                # We don't have to wrap the following import in a 'try', because
+                # we already know 'readline' was imported successfully.
+                import rlcompleter
+#ANNOTATION: import rlcompleter.
+                readline.set_completer(rlcompleter.Completer(imported_objects).complete)
+#ANNOTATION: call the method rlcompleter.Completer with an argument imported_objects, use the complete field of the result as an argument for the call to the method readline.set_completer.
+                readline.parse_and_bind("tab:complete")
+#ANNOTATION: call the method readline.parse_and_bind with an argument string "tab:complete".
+
+            # We want to honor both $PYTHONSTARTUP and .pythonrc.py, so follow system
+            # conventions and get $PYTHONSTARTUP first then .pythonrc.py.
+            if not options['no_startup']:
+#ANNOTATION: get the value under the 'no_startup' key of the options dictionary, if it evaluates to false,
+                for pythonrc in (os.environ.get("PYTHONSTARTUP"), '~/.pythonrc.py'):
+#ANNOTATION: for every pythonrc in tuple containing 2 elements: return value of the function os.environ.get called with a string "PYTHONSTARTUP",
+#ANNOTATION: and string '~/.pythonrc.py' as tuples second element.
+                    if not pythonrc:
+#ANNOTATION: if pythonrc is true,
+                        continue
+#ANNOTATION: skip this loop iteration.
+                    pythonrc = os.path.expanduser(pythonrc)
+#ANNOTATION: call the function os.path.expanduser with an argument pythonrc, substitute the result for pythonrc.
+                    if not os.path.isfile(pythonrc):
+#ANNOTATION: if pythonrc is not a file,
+                        continue
+#ANNOTATION: skip this loop iteration.
+                    try:
+#ANNOTATION: try,
+                        with open(pythonrc) as handle:
+#ANNOTATION: open pythonrc, with the file handle renamed to handle perform the following,
+                            exec(compile(handle.read(), pythonrc, 'exec'), imported_objects)
+#ANNOTATION: compile the handle.read in mode 'exec' source is read from file pythonrc, execute the compiled script with imported_objects variables.
+                    except NameError:
+#ANNOTATION: if NameError exception is caught,
+                        pass
+#ANNOTATION: do nothing.
+            code.interact(local=imported_objects)
+#ANNOTATION: call the method code.interact with an argument local set to imported_objects. 

@@ -1,0 +1,275 @@
+"""
+Extra HTML Widget classes
+"""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import datetime
+#ANNOTATION: import module datetime.
+import re
+#ANNOTATION: import module re.
+
+from django.forms.widgets import Widget, Select
+#ANNOTATION: from django.forms.widgets import Widget and Select into default name space.
+from django.utils import datetime_safe
+#ANNOTATION: from django.utils import datetime_safe into default name space.
+from django.utils.dates import MONTHS
+#ANNOTATION: from django.utils.dates import MONTHS into default name space.
+from django.utils.encoding import force_str
+#ANNOTATION: from django.utils.encoding import force_str into default name space.
+from django.utils.safestring import mark_safe
+#ANNOTATION: from django.utils.safestring import mark_safe into default name space.
+from django.utils.formats import get_format
+#ANNOTATION: from django.utils.formats import get_format into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+
+__all__ = ('SelectDateWidget',)
+#ANNOTATION: __all__ is an tuple containing string 'SelectDateWidget'.
+
+RE_DATE = re.compile(r'(\d{4})-(\d\d?)-(\d\d?)$')
+#ANNOTATION: compile regex from the raw string '(\d{4})-(\d\d?)-(\d\d?)$', substitute it for RE_DATE.
+
+
+def _parse_date_fmt():
+#ANNOTATION: define the function _parse_date_fmt. 
+    fmt = get_format('DATE_FORMAT')
+#ANNOTATION: call the function get_format with an argument string 'DATE_FORMAT', substitute it for fmt.
+    escaped = False
+#ANNOTATION: escaped is boolean False.
+    for char in fmt:
+#ANNOTATION: for every char in fmt,
+        if escaped:
+#ANNOTATION: if escaped is true,
+            escaped = False
+#ANNOTATION: escaped is boolean False.
+        elif char == '\\':
+#ANNOTATION: otherwise if cahr equals a string '\\',
+            escaped = True
+#ANNOTATION: escaped is boolean True.
+        elif char in 'Yy':
+#ANNOTATION: otherwis if char is contained in string 'Yy',
+            yield 'year'
+#ANNOTATION: yield string 'year' as an return value of the generator.
+        elif char in 'bEFMmNn':
+#ANNOTATION: otherwise if char is contained in string 'bEFMmNn',
+            yield 'month'
+#ANNOTATION: yield string 'month' as an return value of the generator.
+        elif char in 'dj':
+#ANNOTATION: otherwise if char is contained in string 'dj',
+            yield 'day'
+#ANNOTATION: yield string 'day' as an return value of the generator.
+
+
+class SelectDateWidget(Widget):
+#ANNOTATION: derive the class SelectDateWidget for the Widget base class.
+    """
+    A Widget that splits date input into three <select> boxes.
+
+    This also serves as an example of a Widget that has more than one HTML
+    element and hence implements value_from_datadict.
+    """
+#ANNOTATION: docstring
+    none_value = (0, '---')
+#ANNOTATION: none_value is a tuple containing 2 elements: integer 0 and string '---'.
+    month_field = '%s_month'
+#ANNOTATION: month_field is a string '%s_month'.
+    day_field = '%s_day'
+#ANNOTATION: day_field is a string '%s_day'.
+    year_field = '%s_year'
+#ANNOTATION: year_field is a string '%s_year'.
+
+    def __init__(self, attrs=None, years=None, months=None, empty_label=None):
+#ANNOTATION: define the method __init__ with 5 arguments: self, attrs set to None, years set to None, months set to None and empty_label set to None.
+        self.attrs = attrs or {}
+#ANNOTATION: if attrs is not None substitute it for self.attrs, or if not self.attrs is an empty dictionary.
+
+        # Optional list or tuple of years to use in the "year" select box.
+        if years:
+#ANNOTATION: if years is true,
+            self.years = years
+#ANNOTATION: substitute years for self.years.
+        else:
+#ANNOTATION: if not,
+            this_year = datetime.date.today().year
+#ANNOTATION: call the function datetime.date.today, substitute the year field of the result for this_year.
+            self.years = range(this_year, this_year + 10)
+#ANNOTATION: self.years is list containing 10 successive integers from this_year.
+
+        # Optional dict of months to use in the "month" select box.
+        if months:
+#ANNOTATION: if months is true,
+            self.months = months
+#ANNOTATION: substitute months for self.months.
+        else:
+#ANNOTATION: if not,
+            self.months = MONTHS
+#ANNOTATION: substitute MONTHS for self.months.
+
+        # Optional string, list, or tuple to use as empty_label.
+        if isinstance(empty_label, (list, tuple)):
+#ANNOTATION: if empty_label is an instance of list or tuple type,
+            if not len(empty_label) == 3:
+#ANNOTATION: if length of empty_label is not equal to integer 3.
+                raise ValueError('empty_label list/tuple must have 3 elements.')
+#ANNOTATION: raise an ValueError with an argument string 'empty_label list/tuple must have 3 elements.'.
+
+            self.year_none_value = (0, empty_label[0])
+#ANNOTATION: self.year_none_value is a tuple containing 2 elements: integer 0 and first element of empty_label.
+            self.month_none_value = (0, empty_label[1])
+#ANNOTATION: self.month_none_value is a tuple containing 2 elements: integer 0 and second element of empty_label.
+            self.day_none_value = (0, empty_label[2])
+#ANNOTATION: self.day_none_value is a tuple containing 2 elements: integer 0 and third element of empty_label.
+        else:
+#ANNOTATION: if not,
+            if empty_label is not None:
+#ANNOTATION: if empty_label is not None,
+                self.none_value = (0, empty_label)
+#ANNOTATION: self.none_value is a tuple containing 2 elements: integer 0 and empty_label.
+
+            self.year_none_value = self.none_value
+#ANNOTATION: substitute self.none_value for self.year_none_value.
+            self.month_none_value = self.none_value
+#ANNOTATION: substitute self.none_value for self.month_none_value.
+            self.day_none_value = self.none_value
+#ANNOTATION: substitute self.none_value for self.day_none_value.
+
+    def render(self, name, value, attrs=None):
+#ANNOTATION: define the method render with 4 arguments: self, name, value and attrs set to None.
+        try:
+#ANNOTATION: try,
+            year_val, month_val, day_val = value.year, value.month, value.day
+#ANNOTATION: substitute value.year, value.month and value.day for year_val, month_val and day_val, respectively.
+        except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+            year_val = month_val = day_val = None
+#ANNOTATION: year_val and month_val and day_val are set to None.
+            if isinstance(value, six.string_types):
+#ANNOTATION: if value is an instance of six.string_types,
+                if settings.USE_L10N:
+#ANNOTATION: if settings.USE_L10N is true,
+                    try:
+#ANNOTATION: try,
+                        input_format = get_format('DATE_INPUT_FORMATS')[0]
+#ANNOTATION: call the function get_format with an argument string 'DATE_INPUT_FORMATS', substitute the first element of the result for input_format.
+                        v = datetime.datetime.strptime(force_str(value), input_format)
+#ANNOTATION: call the method datetime.datetime.strptime with 2 arguments: return value of the function force_str called with an argument value,
+#ANNOTATION: and input_format, substitute the result for v.
+                        year_val, month_val, day_val = v.year, v.month, v.day
+#ANNOTATION: substitute v.year, v.month and v.day for year_val, month_val and day_val, respectively.
+                    except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+                        pass
+#ANNOTATION: do nothing.
+                else:
+#ANNOTATION: if not,
+                    match = RE_DATE.match(value)
+#ANNOTATION: call the method RE_DATE.match with an argument value, substitute the result for match.
+                    if match:
+#ANNOTATION: if match is true,
+                        year_val, month_val, day_val = [int(v) for v in match.groups()]
+#ANNOTATION: for v in return value of the function match.groups, convert v into an integer and append i to a list,
+#ANNOTATION: assign the result for year_val, month_val and day_val, respectively.
+        html = {}
+#ANNOTATION: html is an empty dictionary.
+        choices = [(i, i) for i in self.years]
+#ANNOTATION: for every i in self.years append tuple containing i and i elements into a list, substitute the resulting string for choices.
+        html['year'] = self.create_select(name, self.year_field, value, year_val, choices, self.year_none_value)
+#ANNOTATION: call the method self.create_select with 6 arguments: name, self.year_field, value, year_val, choices and self.year_none_value,
+#ANNOTATION: substitute the result for the value under the 'year' key of the html dictionary.
+        choices = list(six.iteritems(self.months))
+#ANNOTATION: call the function six.iteritems with an argument self.months, convert the result to a list and substitute it for choices.
+        html['month'] = self.create_select(name, self.month_field, value, month_val, choices, self.month_none_value)
+#ANNOTATION: call the method self.create_select with 6 arguments: name, self.month_field, value, month_val, choices and self.month_none_value,
+#ANNOTATION: substitute the result for the value under the 'month' key of the html dictionary.
+        choices = [(i, i) for i in range(1, 32)]
+#ANNOTATION: for every i in successive list of integers from 1 to 30, append tuple containing i and i elements into a list, 
+#ANNOTATION: substitute the resulting string for choices.
+        html['day'] = self.create_select(name, self.day_field, value, day_val, choices, self.day_none_value)
+#ANNOTATION: call the method self.create_select with 6 arguments: name, self.year_field, value, day_val, choices and self.day_none_value,
+#ANNOTATION: substitute the result for the value under the 'day' key of the html dictionary.
+
+        output = []
+#ANNOTATION: output is an empty list.
+        for field in _parse_date_fmt():
+#ANNOTATION: for every field in return value of the function _parse_date_fmt,
+            output.append(html[field])
+#ANNOTATION: get the value under the field key of the html dictionary, append it to output.
+        return mark_safe('\n'.join(output))
+#ANNOTATION: join output into a string, separated by newline characters, use it as an argument for the call to the mark_safe, return the result.
+
+    def id_for_label(self, id_):
+#ANNOTATION: define the method id_for_label with arguments self and id.
+        for first_select in _parse_date_fmt():
+#ANNOTATION: for every first_select in return value of the function _parse_date_fmt.
+            return '%s_%s' % (id_, first_select)
+#ANNOTATION: substitute '%s' in string '%s_%s' with id_ and first_select, return it.
+        else:
+#ANNOTATION: if not,
+            return '%s_month' % id_
+#ANNOTATION: convert if into a string append to it a string '_month', return the result.
+
+    def value_from_datadict(self, data, files, name):
+#ANNOTATION: define the method id_for_label with arguments self, data, files and name.
+        y = data.get(self.year_field % name)
+#ANNOTATION: format self.year_field string with name, use it as the key for the data dictionary, substitute the result for y.
+        m = data.get(self.month_field % name)
+#ANNOTATION: format self.month_field string with name, use it as the key for the data dictionary, substitute the result for m.
+        d = data.get(self.day_field % name)
+#ANNOTATION: format self.day_field string with name, use it as the key for the data dictionary, substitute the result for d.
+        if y == m == d == "0":
+#ANNOTATION: if y, m and d are all equal to string '0',
+            return None
+#ANNOTATION: return None.
+        if y and m and d:
+#ANNOTATION: if y and m and d are all true,
+            if settings.USE_L10N:
+#ANNOTATION: if settings.USE_L10N is true,
+                input_format = get_format('DATE_INPUT_FORMATS')[0]
+#ANNOTATION: call the function get_format with an argument string 'DATE_INPUT_FORMATS', substitute the first element of the result for input_format.
+                try:
+#ANNOTATION: try,
+                    date_value = datetime.date(int(y), int(m), int(d))
+#ANNOTATION: call the function datetime.date with 3 arguments: y, m and d all converted into a integers, substitute the result for date_value.
+                except ValueError:
+#ANNOTATION: if ValueError exception is caught,
+                    return '%s-%s-%s' % (y, m, d)
+#ANNOTATION: substitute '%s' in string '%s-%s-%s' with y,m and d, return the result.
+                else:
+#ANNOTATION: if not,
+                    date_value = datetime_safe.new_date(date_value)
+#ANNOTATION: call the method datetime_safe.new_date with an argument date_value, substitute the result for date_value.
+                    return date_value.strftime(input_format)
+#ANNOTATION: call the method date_value.strftime with an argument input_format, return the result.
+            else:
+#ANNOTATION: if not,
+                return '%s-%s-%s' % (y, m, d)
+#ANNOTATION: substitute '%s' in string '%s-%s-%s' with y, m and d, return the result.
+        return data.get(name, None)
+#ANNOTATION: get the name key of the data dictionary, if the key exists return it, if not return None.
+
+    def create_select(self, name, field, value, val, choices, none_value):
+#ANNOTATION: define the method id_for_label with arguments self, name, field, value, val, choices and none_value.
+        if 'id' in self.attrs:
+#ANNOTATION: if 'id' is contained in self.attrs,
+            id_ = self.attrs['id']
+#ANNOTATION: get the value under the 'id' key of the attrs dictionary, substitute the return value field of the self object for id_.
+        else:
+#ANNOTATION: if not,
+            id_ = 'id_%s' % name
+#ANNOTATION: substitute '%s' in string 'id_%s' with name, return it.
+        if not self.is_required:
+#ANNOTATION: if self.is_required is false,
+            choices.insert(0, none_value)
+#ANNOTATION: insert none_value at the beginning of the choices list.
+        local_attrs = self.build_attrs(id=field % id_)
+#ANNOTATION: call the method self.build_attrs with an argument id set to field modulus id_, substitute the result for local_attrs.
+        s = Select(choices=choices)
+#ANNOTATION: s is an instance of the Select class, created with choices set to choices.
+        select_html = s.render(field % name, val, local_attrs)
+#ANNOTATION: call the method s.render with 3 arguments: field string formated with name, val and local_attrs, substitute the result for select_html.
+        return select_html
+#ANNOTATION: return select_html.

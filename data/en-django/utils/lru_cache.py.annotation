@@ -1,0 +1,291 @@
+try:
+#ANNOTATION: try,
+    from functools import lru_cache
+#ANNOTATION: from functools import lru_cache.
+
+except ImportError:
+#ANNOTATION: if ImportError exception is caught.
+    # backport of Python's 3.3 lru_cache, written by Raymond Hettinger and
+    # licensed under MIT license, from:
+    # <http://code.activestate.com/recipes/578078-py26-and-py30-backport-of-python-33s-lru-cache/>
+    # Should be removed when Django only supports Python 3.2 and above.
+
+    from collections import namedtuple
+#ANNOTATION: from collections import namedtuple.
+    from functools import update_wrapper
+#ANNOTATION: from functools import update_wrapper.
+    from threading import RLock
+#ANNOTATION: from threading import RLock.
+
+    _CacheInfo = namedtuple("CacheInfo", ["hits", "misses", "maxsize", "currsize"])
+#ANNOTATION: _CacheInfo is an instance of namedtuple class created with 2 arguments: string "CacheInfo" and a list with 4 elements: string 'hits',
+#ANNOTATION: "misses", "maxsize" and "currsize".
+
+    class _HashedSeq(list):
+#ANNOTATION: derive class _HashedSeq from list base class.
+        __slots__ = 'hashvalue'
+#ANNOTATION: __slots__ is a string 'hashvalue'. 
+
+        def __init__(self, tup, hash=hash):
+#ANNOTATION: define the method __init__ with 3 arguments: self, tup and hash set to hash.
+            self[:] = tup
+#ANNOTATION: substitute tup for elements of self.
+            self.hashvalue = hash(tup)
+#ANNOTATION: get the hash value of the tup, substitute it for self.hashvalue.
+
+        def __hash__(self):
+#ANNOTATION: define the method __hash__ with an argument self.
+            return self.hashvalue
+#ANNOTATION: return self.hashvalue.
+
+    def _make_key(args, kwds, typed,
+                 kwd_mark = (object(),),
+                 fasttypes = {int, str, frozenset, type(None)},
+                 sorted=sorted, tuple=tuple, type=type, len=len):
+#ANNOTATION: define the function _make_key with 9 arguments: args, kwds, typed, kwd_mark as a tuple with an element result of the function object,
+#ANNOTATION: fasttypes is a set with 4 elements: int, str, frozenset and type of None object, sorted set to sorted, tuple set to tuple, 
+#ANNOTATION: type set to type and len set to len.
+        'Make a cache key from optionally typed positional and keyword arguments'
+#ANNOTATION: docstring
+        key = args
+#ANNOTATION: substitute args for key.
+        if kwds:
+#ANNOTATION: if kwds is true,
+            sorted_items = sorted(kwds.items())
+#ANNOTATION: sort elements of kwds, substitute the result for sorted_items.
+            key += kwd_mark
+#ANNOTATION: increment key by kwd_mark.
+            for item in sorted_items:
+#ANNOTATION: for every item in sorted_items,
+                key += item
+#ANNOTATION: increment key by item.
+        if typed:
+#ANNOTATION: if typed is true,
+            key += tuple(type(v) for v in args)
+#ANNOTATION: create a tuple out of types of v, for every v in args, extend key tuple with the result.
+            if kwds:
+#ANNOTATION: if kwds is true,
+                key += tuple(type(v) for k, v in sorted_items)
+#ANNOTATION: create a tuple out of types of v, for every k and v in sorted_items, extend key tuple with the result.
+        elif len(key) == 1 and type(key[0]) in fasttypes:
+#ANNOTATION: otherwise if length of key equals integer 1 and type of first element of key is contained in fasttypes,
+            return key[0]
+#ANNOTATION: return first element of key.
+        return _HashedSeq(key)
+#ANNOTATION: return instance of _HashedSeq class, created with an argument key.
+
+    def lru_cache(maxsize=100, typed=False):
+#ANNOTATION: define the function lru_cache with 2 arguments maxsize set to integer 100 and typed set to boolean False.
+        """Least-recently-used cache decorator.
+
+        If *maxsize* is set to None, the LRU features are disabled and the cache
+        can grow without bound.
+
+        If *typed* is True, arguments of different types will be cached separately.
+        For example, f(3.0) and f(3) will be treated as distinct calls with
+        distinct results.
+
+        Arguments to the cached function must be hashable.
+
+        View the cache statistics named tuple (hits, misses, maxsize, currsize) with
+        f.cache_info().  Clear the cache and statistics with f.cache_clear().
+        Access the underlying function with f.__wrapped__.
+
+        See:  http://en.wikipedia.org/wiki/Cache_algorithms#Least_Recently_Used
+
+        """
+#ANNOTATION: docstring
+
+        # Users should only access the lru_cache through its public API:
+        #       cache_info, cache_clear, and f.__wrapped__
+        # The internals of the lru_cache are encapsulated for thread safety and
+        # to allow the implementation to change (including a possible C version).
+
+        def decorating_function(user_function):
+#ANNOTATION: define the function decorating_function with an argument user_function.
+
+            cache = dict()
+#ANNOTATION: cache is an empty dictionary.
+            stats = [0, 0]                  # make statistics updateable non-locally
+#ANNOTATION: stats is an list with 2 elements: 2 integers 0.
+            HITS, MISSES = 0, 1             # names for the stats fields
+#ANNOTATION: HITS and MISSES are integer 0 and 1, respectively.
+            make_key = _make_key
+#ANNOTATION: substitute _make_key for make_key.
+            cache_get = cache.get           # bound method to lookup key or return None
+#ANNOTATION: substitute cache.get for cache_get.
+            _len = len                      # localize the global len() function
+#ANNOTATION: substitute len for _len.
+            lock = RLock()                  # because linkedlist updates aren't threadsafe
+#ANNOTATION: lock is an instance of RLock class.
+            root = []                       # root of the circular doubly linked list
+#ANNOTATION: root is an empty list.
+            root[:] = [root, root, None, None]      # initialize by pointing to self
+#ANNOTATION: root is a list with elements: root, root, None and None.
+            nonlocal_root = [root]                  # make updateable non-locally
+#ANNOTATION: nonlocal_root is an list with an element root.
+            PREV, NEXT, KEY, RESULT = 0, 1, 2, 3    # names for the link fields
+#ANNOTATION: substitute integers 0, 1, 2 and 3 for PREV, NEXT, KEY and RESULT, respectivley.
+
+            if maxsize == 0:
+#ANNOTATION: if maxsize equals integer 0,
+
+                def wrapper(*args, **kwds):
+#ANNOTATION: define the function wrapper with 2 arguments: unpacked list args and unpacked dictionary kwds.
+                    # no caching, just do a statistics update after a successful call
+                    result = user_function(*args, **kwds)
+#ANNOTATION: call the function user_function with 2 arguments: unpacked list args and unpacked dictionary kwds, substitute the result for result.
+                    stats[MISSES] += 1
+#ANNOTATION: increment stats dictionary value under the MISSES key by integer 1.
+                    return result
+#ANNOTATION: return result.
+
+            elif maxsize is None:
+#ANNOTATION: otherwise if maxsize is None,
+
+                def wrapper(*args, **kwds):
+#ANNOTATION: define the function wrapper with 2 arguments: unpacked list args and unpacked dictionary kwds.
+                    # simple caching without ordering or size limit
+                    key = make_key(args, kwds, typed)
+#ANNOTATION: call the function make_key with 3 arguments: args, kwds and typed, substitute the result for key.
+                    result = cache_get(key, root)   # root used here as a unique not-found sentinel
+#ANNOTATION: call the function cache_get with 2 arguments: key and root, substitute the result for result.
+                    if result is not root:
+#ANNOTATION: if result is not root,
+                        stats[HITS] += 1
+#ANNOTATION: increment stats dictionary value under the HITS key by integer 1.
+                        return result
+#ANNOTATION: return result.
+                    result = user_function(*args, **kwds)
+#ANNOTATION: call the function user_function with 2 arguments unpacked list args and unpacked dictionary kwds, substitute the result for result.
+                    cache[key] = result
+#ANNOTATION: substitute result for cache dictionary value under the key key.
+                    stats[MISSES] += 1
+#ANNOTATION: increment stats dictionary value under the MISSES key by integer 1.
+                    return result
+#ANNOTATION: return result.
+
+            else:
+#ANNOTATION: if not,
+
+                def wrapper(*args, **kwds):
+#ANNOTATION: define the function wrapper with 2 arguments: unpacked list args and unpacked dictionary kwds.
+                    # size limited caching that tracks accesses by recency
+                    key = make_key(args, kwds, typed) if kwds or typed else args
+#ANNOTATION: if kwds is true or typed is true, call the function make_key with 3 arguments: args, kwds and typed, substitute the result for key,
+#ANNOTATION: otherwise substitute args for key.
+                    with lock:
+#ANNOTATION: with lock,
+                        link = cache_get(key)
+#ANNOTATION: call the function cache_get with an argument key, substitute the result for link.
+                        if link is not None:
+#ANNOTATION: if link is not None,
+                            # record recent use of the key by moving it to the front of the list
+                            root, = nonlocal_root
+#ANNOTATION: substitute nonlocal_root for a tuple with an element root.
+                            link_prev, link_next, key, result = link
+#ANNOTATION: substitute link for link_prev, link_next, key and result, respectively.
+                            link_prev[NEXT] = link_next
+#ANNOTATION: substitute link_next for value under the NEXT key of the link_prev dictionary.
+                            link_next[PREV] = link_prev
+#ANNOTATION: substitute link_prev for value under the PREV key of the link_next dictionary.
+                            last = root[PREV]
+#ANNOTATION: substitute value under the PREV key of the root dictionary for last.
+                            last[NEXT] = root[PREV] = link
+#ANNOTATION: substitute link for values under the NEXT key of the last dictionary and PREV key of the root dictionary.
+                            link[PREV] = last
+#ANNOTATION: substitute last for value under the PREV key of the link dictionary.
+                            link[NEXT] = root
+#ANNOTATION: substitute root for value under the NEXT key of the link dictionary.
+                            stats[HITS] += 1
+#ANNOTATION: increment stats dictionary value under the HITS key by integer 1.
+                            return result
+#ANNOTATION: return result.
+                    result = user_function(*args, **kwds)
+#ANNOTATION: call the function user_function with 2 arguments: unpacked list args and unpacked dictionary kwds, substitute the result for result.
+                    with lock:
+#ANNOTATION: with lock,
+                        root, = nonlocal_root
+#ANNOTATION: substitute nonlocal_root for tuple root.
+                        if key in cache:
+#ANNOTATION: if key is contained in cache,
+                            # getting here means that this same key was added to the
+                            # cache while the lock was released.  since the link
+                            # update is already done, we need only return the
+                            # computed result and update the count of misses.
+                            pass
+#ANNOTATION: do nothing.
+                        elif _len(cache) >= maxsize:
+#ANNOTATION: otherwise if result of the call to the function _len with an argument cache is greater than or equal to maxsize,
+                            # use the old root to store the new key and result
+                            oldroot = root
+#ANNOTATION: substitute root for oldroot.
+                            oldroot[KEY] = key
+#ANNOTATION: substitute key for value under the KEY key of the oldroot dictionary.
+                            oldroot[RESULT] = result
+#ANNOTATION: substitute result for value under the RESULT key of the oldroot dictionary.
+                            # empty the oldest link and make it the new root
+                            root = nonlocal_root[0] = oldroot[NEXT]
+#ANNOTATION: substitute value under the NEXT key of the oldroot dictionary for root and first element of nonlocal_root.
+                            oldkey = root[KEY]
+#ANNOTATION:  substitute value under the KEY key of the root dictionary for oldkey.
+                            oldvalue = root[RESULT]
+#ANNOTATION:  substitute value under the RESULT key of the root dictionary for oldvalue.
+                            root[KEY] = root[RESULT] = None
+#ANNOTATION: root dictionary values under the KEY and RESULT keys are both None.
+                            # now update the cache dictionary for the new links
+                            del cache[oldkey]
+#ANNOTATION: delete entry under the oldkey key of the cache dictionary.
+                            cache[key] = oldroot
+#ANNOTATION: substitute oldroot for value under the key key of the cache dictionary.
+                        else:
+#ANNOTATION: if not,
+                            # put result in a new link at the front of the list
+                            last = root[PREV]
+#ANNOTATION:  substitute value under the PREV key of the root dictionary for last.
+                            link = [last, root, key, result]
+#ANNOTATION: link is a list with 4 elements: last, root, key and result.
+                            last[NEXT] = root[PREV] = cache[key] = link
+#ANNOTATION: substitute link for value under the NEXT key of the last dictionary, for value under the PREV key of the root dictionary,
+#ANNOTATION: for value under the key key of the cache dictionary.
+                        stats[MISSES] += 1
+#ANNOTATION: increment stats dictionary value under the MISSES key by integer 1.
+                    return result
+#ANNOTATION: return result.
+
+            def cache_info():
+#ANNOTATION: define the function cache_info.
+                """Report cache statistics"""
+#ANNOTATION: docstring
+                with lock:
+#ANNOTATION: with lock,
+                    return _CacheInfo(stats[HITS], stats[MISSES], maxsize, len(cache))
+#ANNOTATION: return an instance of _CacheInfo class, created with 4 arguments: value under the HITS key of the stats dictionary,
+#ANNOTATION: value under the MISSES key of the stats dictionary, maxsize and length of cache.
+
+            def cache_clear():
+#ANNOTATION: define the function cache_clear.
+                """Clear the cache and cache statistics"""
+#ANNOTATION: docstring
+                with lock:
+#ANNOTATION: with lock,
+                    cache.clear()
+#ANNOTATION: call the method cache.clear.
+                    root = nonlocal_root[0]
+#ANNOTATION: substitute first element of nonlocal_root for root. 
+                    root[:] = [root, root, None, None]
+#ANNOTATION: root is an list with 4 elements: root, root, None and None.
+                    stats[:] = [0, 0]
+#ANNOTATION: stats is a list with 2 elements: 2 integers 0.
+
+            wrapper.__wrapped__ = user_function
+#ANNOTATION: substitute user_function for wrapper.__wrapped__.
+            wrapper.cache_info = cache_info
+#ANNOTATION: substitute cache_info for wrapper.cache_info. 
+            wrapper.cache_clear = cache_clear
+#ANNOTATION: substitute cache_clear for wrapper.cache_clear.
+            return update_wrapper(wrapper, user_function)
+#ANNOTATION: call the function update_wrapper with 2 arguments: wrapper and user_function, return the result.
+
+        return decorating_function
+#ANNOTATION: return decorating_function.

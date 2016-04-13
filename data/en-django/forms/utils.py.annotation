@@ -1,0 +1,292 @@
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import json
+#ANNOTATION: import module json.
+import sys
+#ANNOTATION: import module sys.
+
+try:
+#ANNOTATION: try,
+    from collections import UserList
+#ANNOTATION: from collections import UserList into default namespace.
+except ImportError:  # Python 2
+#ANNOTATION: if ImportError exception is caught.
+    from UserList import UserList
+#ANNOTATION: from UserList import UserList into default namespace.
+
+from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+from django.utils.encoding import force_text, python_2_unicode_compatible
+#ANNOTATION: from django.utils.encoding import force_text and python_2_unicode_compatible into default name space.
+from django.utils.html import format_html, format_html_join, escape
+#ANNOTATION: from django.utils.html import format_html, format_html_join and escape into default name space.
+from django.utils import timezone
+#ANNOTATION: from django.utils import timezone into default name space.
+from django.utils.translation import ugettext_lazy as _
+#ANNOTATION: from django.utils.translation import ugettext_lazy as _ into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+# Import ValidationError so that it can be imported from this
+# module to maintain backwards compatibility.
+from django.core.exceptions import ValidationError
+#ANNOTATION: from django.core.exceptions import ValidationError into default name space.
+
+
+def flatatt(attrs):
+#ANNOTATION: define the function flatatt with an argument attrs.
+    """
+    Convert a dictionary of attributes to a single string.
+    The returned string will contain a leading space followed by key="value",
+    XML-style pairs.  It is assumed that the keys do not need to be XML-escaped.
+    If the passed dictionary is empty, then return an empty string.
+
+    The result is passed through 'mark_safe'.
+    """
+#ANNOTATION: docstring
+    boolean_attrs = []
+#ANNOTATION: boolean_attrs is an empty list.
+    for attr, value in list(attrs.items()):
+#ANNOTATION: convert items of attrs dictionary to list of tuples, for every attr and value in it, 
+        if value is True:
+#ANNOTATION: if value is boolean True,
+            boolean_attrs.append((attr,))
+#ANNOTATION: append tuple containing element attr to boolean_attrs.
+            del attrs[attr]
+#ANNOTATION: delete entry under the attr key of the attrs dictionary.
+        elif value is False:
+#ANNOTATION: otherwise if value is boolean False,
+            del attrs[attr]
+#ANNOTATION: delete entry under the attr key of the attrs dictionary.
+
+    return (
+        format_html_join('', ' {0}="{1}"', sorted(attrs.items())) +
+        format_html_join('', ' {0}', sorted(boolean_attrs))
+    )
+#ANNOTATION: call the function format_html_join twice, first time with 3 elements: an empty string, string ' {0}="{1}"'
+#ANNOTATION: and sorted return value of the items of the attrs dictionary, and second time with 3 arguments: an empty string, string ' {0}',
+#ANNOTATION: and sorted list of boolean_attrs elements, concatenate the results and return the resulting list.
+
+
+@python_2_unicode_compatible
+#ANNOTATION: python_2_unicode_compatible decorator,
+class ErrorDict(dict):
+#ANNOTATION: derive the class ErrorDict from the dict base class.
+    """
+    A collection of errors that knows how to display itself in various formats.
+
+    The dictionary keys are the field names, and the values are the errors.
+    """
+#ANNOTATION: docstring
+    def as_data(self):
+#ANNOTATION: define the method as_data with an argument self.
+        return {f: e.as_data() for f, e in self.items()}
+#ANNOTATION: return a dictionary generated with an expression, return value of the method e.as_data for f,
+#ANNOTATION: for every f and e in list of tuples of self dictionary key, pair entries.
+
+    def as_json(self, escape_html=False):
+#ANNOTATION: define the method as_json with 2 argumens self and escape_html set to boolean False.
+        return json.dumps({f: e.get_json_data(escape_html) for f, e in self.items()})
+#ANNOTATION: call the method json.dumps with a dictionary generate with an expression as an argument, return value of the function e.get_json_data,
+#ANNOTATION: with an argument escape_html for f, for every f and e in list of tuples of self dictionary key, pair entries, return the result.
+
+    def as_ul(self):
+#ANNOTATION: define the method as_ul with an argument self.
+        if not self:
+#ANNOTATION: if self is false,
+            return ''
+#ANNOTATION: return an empty string.
+        return format_html(
+            '<ul class="errorlist">{0}</ul>',
+            format_html_join('', '<li>{0}{1}</li>', ((k, force_text(v)) for k, v in self.items()))
+        )
+#ANNOTATION: call the function format_html with 2 arguments: string '<ul class="errorlist">{0}</ul>', and return value of the function,
+#ANNOTATION: format_html_join, called with 3 arguments: empty string, string '<li>{0}{1}</li>', tuple containing tuples with 2 elements:
+#ANNOTATION: k and result of the function force_text with an argument v, for every k and v in items of the dictionary self, return the result.
+
+    def as_text(self):
+#ANNOTATION: define the method as_text with an argument self.
+        output = []
+#ANNOTATION: output is an empty list.
+        for field, errors in self.items():
+#ANNOTATION: call the method self.items, for every field and errors in the result.
+            output.append('* %s' % field)
+#ANNOTATION: convert field into a string and concatenate it to a string '* ', append the result to output.
+            output.append('\n'.join('  * %s' % e for e in errors))
+#ANNOTATION: for every e in errors convert e into a string and append it to a string '  * ', 
+#ANNOTATION: join all the results into a string separated by newlines, append the result to output.
+        return '\n'.join(output)
+#ANNOTATION: join elements of output into a string, separated by newline characters, return the result.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        return self.as_ul()
+#ANNOTATION: call the method self.as_ul, return the result.
+
+
+@python_2_unicode_compatible
+#ANNOTATION: python_2_unicode_compatible decorator,
+class ErrorList(UserList, list):
+#ANNOTATION: derive the class ErrorList from the UserList and list base classes.
+    """
+    A collection of errors that knows how to display itself in various formats.
+    """
+#ANNOTATION: docstring
+    def __init__(self, initlist=None, error_class=None):
+#ANNOTATION: define the method __init__ with 3 arguments: self, initlist set to None and error_class set to None.
+        super(ErrorList, self).__init__(initlist)
+#ANNOTATION: call the method __init__ with an argument initlist from the base class of the class ErrorList.
+
+        if error_class is None:
+#ANNOTATION: if error_class is None,
+            self.error_class = 'errorlist'
+#ANNOTATION: self.error_class is a string 'errorlist'.
+        else:
+#ANNOTATION: if not,
+            self.error_class = 'errorlist {}'.format(error_class)
+#ANNOTATION: append error_class converted into a string to string 'errorlist ', substitute the result for self.error_class.
+
+    def as_data(self):
+#ANNOTATION: define the method as_text with an argument self.
+        return ValidationError(self.data).error_list
+#ANNOTATION: instantiate ValidationError class with an argument self.data, return its field error_list.
+
+    def get_json_data(self, escape_html=False):
+#ANNOTATION: define the method get_json_data with 2 arguments self and escape_html set to boolean False.
+        errors = []
+#ANNOTATION: errors is an empty list.
+        for error in self.as_data():
+#ANNOTATION: call the method self.as_data, for every error in the result.
+            message = list(error)[0]
+#ANNOTATION: convert elements of error into a list, substitute the first element for message.
+            errors.append({
+                'message': escape(message) if escape_html else message,
+                'code': error.code or '',
+            })
+#ANNOTATION: append to errors list a dictionary created with 2 etries, if escape_html is true, return value of the function escape
+#ANNOTATION: with an argument message for 'message', or if not message for 'message' and error.code for 'code' in error.code is true,
+#ANNOTATION: if not, an empty string for 'code'.
+        return errors
+#ANNOTATION: return errors.
+
+    def as_json(self, escape_html=False):
+#ANNOTATION: define the method as_json with 2 arguments self and escape_html set to boolean False.
+        return json.dumps(self.get_json_data(escape_html))
+#ANNOTATION: call the method self.get_json_data with an argument escape_html, 
+#ANNOTATION: use the result as an argument for the call to the json.dumps function, return the result.
+
+    def as_ul(self):
+#ANNOTATION: define the method as_text with an argument self.
+        if not self.data:
+#ANNOTATION: if self.data is false,
+            return ''
+#ANNOTATION: return an empty string.
+
+        return format_html(
+            '<ul class="{0}">{1}</ul>',
+            self.error_class,
+            format_html_join('', '<li>{0}</li>', ((force_text(e),) for e in self))
+        )
+#ANNOTATION: call the function format_html with 3 arguments: string '<ul class="{0}">{1}</ul>', self.error_class and return value of the function,
+#ANNOTATION: format_html_join, called with 3 arguments: empty string, string '<li>{0}</li>', tuple containing results of the function,
+#ANNOTATION: force_text with an argument e, for every e in self, return the result.
+
+    def as_text(self):
+#ANNOTATION: define the method as_text with an argument self.
+        return '\n'.join('* %s' % e for e in self)
+#ANNOTATION: for every e in self, append convert e to an string and append it to string '* ', 
+#ANNOTATION: join all of the results into a string separated by newline character, return the result.
+
+    def __str__(self):
+#ANNOTATION: define the method __str__ with an argument self.
+        return self.as_ul()
+#ANNOTATION: call the method self.as_ul, return the result.
+
+    def __repr__(self):
+#ANNOTATION: define the method __repr__ with an argument self.
+        return repr(list(self))
+#ANNOTATION: convert elements of self into a list, return the its printable representation.
+
+    def __contains__(self, item):
+#ANNOTATION: define the method __contains__ with an argument self.
+        return item in list(self)
+#ANNOTATION: if item is contained in the list of the elements of self, return boolean True, otherwise return boolean False.
+
+    def __eq__(self, other):
+#ANNOTATION: define the method __eq__ with an argument self.
+        return list(self) == other
+#ANNOTATION: if other equals list containing elements of self, return boolean True, otherwise return boolean False.
+
+    def __ne__(self, other):
+#ANNOTATION: define the method __ne__ with an argument self.
+        return list(self) != other
+#ANNOTATION: if other is not equal to list containing elements of self, return boolean True, otherwise return boolean False.
+
+    def __getitem__(self, i):
+#ANNOTATION: define the method __getitem__ with an argument self.
+        error = self.data[i]
+#ANNOTATION: substitute i-th element of self.data for error.
+        if isinstance(error, ValidationError):
+#ANNOTATION: if error is an instance of ValidationError,
+            return list(error)[0]
+#ANNOTATION: return first element of the list containing elements of error.
+        return force_text(error)
+#ANNOTATION: call the function force_text with an argument error, return the result.
+
+
+# Utilities for time zone support in DateTimeField et al.
+
+def from_current_timezone(value):
+#ANNOTATION: define the function from_current_timezone with an argument value.
+    """
+    When time zone support is enabled, convert naive datetimes
+    entered in the current time zone to aware datetimes.
+    """
+#ANNOTATION: docstring
+    if settings.USE_TZ and value is not None and timezone.is_naive(value):
+#ANNOTATION: if settings.USE_TZ is true and value is not None and call to the function timezone.is_naive with an argument value, evaluates to true,
+        current_timezone = timezone.get_current_timezone()
+#ANNOTATION: call the method timezone.get_current_timezone, substitute the result for current_timezone.
+        try:
+#ANNOTATION: try,
+            return timezone.make_aware(value, current_timezone)
+#ANNOTATION: call the function timezone.make_aware with arguments value and current_timezone, return the result.
+        except Exception:
+#ANNOTATION: if Exception exception is caught, 
+            message = _(
+                '%(datetime)s couldn\'t be interpreted '
+                'in time zone %(current_timezone)s; it '
+                'may be ambiguous or it may not exist.'
+            )
+#ANNOTATION: call the function _ with an argument string '%(datetime)s couldn\'t be interpreted in time zone %(current_timezone)s; it '
+#ANNOTATION: 'may be ambiguous or it may not exist.', substitute the result for message.
+            params = {'datetime': value, 'current_timezone': current_timezone}
+#ANNOTATION: params is an dictionary containing 2 initial entries: value for 'datetime' and current_timezone for 'current_timezone'.
+            six.reraise(ValidationError, ValidationError(
+                message,
+                code='ambiguous_timezone',
+                params=params,
+            ), sys.exc_info()[2])
+#ANNOTATION: call the function six.reraise with 3 arguments: class ValidationError, class ValidationError, created with 3 arguments:
+#ANNOTATION: message, code as a string 'ambiguous_timezone' and params as params, 
+#ANNOTATION: and third element of the return value of the function sys.exc_info.
+    return value
+#ANNOTATION: return value.
+
+
+def to_current_timezone(value):
+#ANNOTATION: define the function to_current_timezone with an argument value.
+    """
+    When time zone support is enabled, convert aware datetimes
+    to naive dateimes in the current time zone for display.
+    """
+#ANNOTATION: docstring
+    if settings.USE_TZ and value is not None and timezone.is_aware(value):
+#ANNOTATION: if settings.USE_TZ is true and value is not None and call to the function timezone.is_aware with an argument value, evaluates to true,
+        current_timezone = timezone.get_current_timezone()
+#ANNOTATION: call the function timezone.get_current_timezone, substitute the result for current_timezone.
+        return timezone.make_naive(value, current_timezone)
+#ANNOTATION: call the function timezone.make_naive with 2 arguments value, current_timezone, return the result.
+    return value
+#ANNOTATION: return value.

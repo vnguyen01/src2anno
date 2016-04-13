@@ -1,0 +1,197 @@
+"""
+HTTP server that implements the Python WSGI protocol (PEP 333, rev 1.21).
+
+Based on wsgiref.simple_server which is part of the standard library since 2.5.
+
+This is a simple server for use in testing or debugging Django apps. It hasn't
+been reviewed for security issues. DON'T USE IT FOR PRODUCTION USE!
+"""
+#ANNOTATION: docstring
+
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+
+import socket
+#ANNOTATION: import module socket.
+import sys
+#ANNOTATION: import module sys.
+from wsgiref import simple_server
+#ANNOTATION: from wsgiref import simple_server into default name space.
+from wsgiref.util import FileWrapper   # NOQA: for backwards compatibility
+#ANNOTATION: from wsgiref.util import FileWrapper 
+
+from django.core.exceptions import ImproperlyConfigured
+#ANNOTATION: from django.core.exceptions import ImproperlyConfigured into default name space.
+from django.core.management.color import color_style
+#ANNOTATION: from django.core.management.color import color_style into default name space.
+from django.core.wsgi import get_wsgi_application
+#ANNOTATION: from django.core.wsgi import get_wsgi_application into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+from django.utils.module_loading import import_string
+#ANNOTATION: from django.utils.module_loading import import_string into default name space.
+from django.utils.six.moves import socketserver
+#ANNOTATION: from django.utils.six.moves import socketserver into default name space.
+
+__all__ = ('WSGIServer', 'WSGIRequestHandler')
+#ANNOTATION: __all__ is a tuple containing 2 initial elements: strigs 'WSGIServer' and 'WSGIRequestHandler'. 
+
+
+def get_internal_wsgi_application():
+#ANNOTATION: define the funtion get_internal_wsgi_application.
+    """
+    Loads and returns the WSGI application as configured by the user in
+    ``settings.WSGI_APPLICATION``. With the default ``startproject`` layout,
+    this will be the ``application`` object in ``projectname/wsgi.py``.
+
+    This function, and the ``WSGI_APPLICATION`` setting itself, are only useful
+    for Django's internal servers (runserver, runfcgi); external WSGI servers
+    should just be configured to point to the correct application object
+    directly.
+
+    If settings.WSGI_APPLICATION is not set (is ``None``), we just return
+    whatever ``django.core.wsgi.get_wsgi_application`` returns.
+
+    """
+#ANNOTATION: docstring
+    from django.conf import settings
+#ANNOTATION: from django.conf import settings into default name space.
+    app_path = getattr(settings, 'WSGI_APPLICATION')
+#ANNOTATION: get 'WSGI_APPLICATION' attribute from the settings, substitute it for app_path.
+    if app_path is None:
+#ANNOTATION: if app_path is None,
+        return get_wsgi_application()
+#ANNOTATION: call the function get_wsgi_application, return the result.
+
+    try:
+#ANNOTATION: try,
+        return import_string(app_path)
+#ANNOTATION: call the import_string with app_path as an argument, return the result.
+    except ImportError as e:
+#ANNOTATION: if ImportError, rename it to e, exception is caught,
+        msg = (
+            "WSGI application '%(app_path)s' could not be loaded; "
+            "Error importing module: '%(exception)s'" % ({
+                'app_path': app_path,
+                'exception': e,
+            })
+        )
+#ANNOTATION: msg is a tuple containing one initial entry: a string "WSGI application '%(app_path)s' could not be loaded; Error importing module: '%(exception)s'", where '%(app_path)s' is replaced by app_path and '%(exception)s' is replaced by e. 
+        six.reraise(ImproperlyConfigured, ImproperlyConfigured(msg),
+                    sys.exc_info()[2])
+#ANNOTATION: call the function six.reraise with 3 arguments: ImproperlyConfigured, ImproperlyConfigured(msg) and third element of return value of the function sys.exc_info.
+
+
+class WSGIServer(simple_server.WSGIServer, object):
+#ANNOTATION: derive the class WSGIServer from simple_server.WSGIServer and object base classes.
+    """BaseHTTPServer that implements the Python WSGI protocol"""
+#ANNOTATION: docstring
+
+    request_queue_size = 10
+#ANNOTATION: request_queue_size is integer 10.
+
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the __init__ method with 3 arguments: self, unpacked list args and unpacked dictionary **kwargs.
+        if kwargs.pop('ipv6', False):
+#ANNOTATION: pop value under the 'ipv6' key of the kwargs dictionary, if it is true,
+            self.address_family = socket.AF_INET6
+#ANNOTATION: substitute socket.AF_INET6 for self.address_family.
+        super(WSGIServer, self).__init__(*args, **kwargs)
+#ANNOTATION: call the __init__ method from the base class of the WSGIServer class, with 2 arguments: unpacked list args and unpacked dictionary kwargs. 
+
+    def server_bind(self):
+#ANNOTATION: define the function server_bind with an argument self. 
+        """Override server_bind to store the server name."""
+#ANNOTATION: docstring
+        super(WSGIServer, self).server_bind()
+#ANNOTATION: call the server_bind method from the base class of the WSGIServer class.
+        self.setup_environ()
+#ANNOTATION: call the self.setup_environ method.
+
+
+class WSGIRequestHandler(simple_server.WSGIRequestHandler, object):
+#ANNOTATION: derive the class WSGIRequestHandler from simple_server.WSGIRequestHandler and object base classes.
+
+    def __init__(self, *args, **kwargs):
+#ANNOTATION: define the __init__ method with 3 arguments: self, unpacked list args and unpacked dictionary **kwargs.
+        self.style = color_style()
+#ANNOTATION: call the color_style method, substitute the result for self.style.
+        super(WSGIRequestHandler, self).__init__(*args, **kwargs)
+#ANNOTATION: call the __init__ method from the base class of the WSGIRequestHandler class, with 2 arguments: unpacked list args and unpacked dictionary kwargs. 
+
+    def address_string(self):
+#ANNOTATION: define the function address_string with an argument self.
+        # Short-circuit parent method to not call socket.getfqdn
+        return self.client_address[0]
+#ANNOTATION: return the first element of self.client_address.
+
+    def log_message(self, format, *args):
+#ANNOTATION: define the function server_bind with an argument self.
+        msg = "[%s] %s\n" % (self.log_date_time_string(), format % args)
+#ANNOTATION: msg is a string "[%s] %s\n", where '%s' are replaced with return value of the method self.log_date_time_string and formated args. 
+
+        # Utilize terminal colors, if available
+        if args[1][0] == '2':
+#ANNOTATION: if first element of the second row of args equals a string '2',
+            # Put 2XX first, since it should be the common case
+            msg = self.style.HTTP_SUCCESS(msg)
+#ANNOTATION: call the self.style.HTTP_SUCCESS with an argument msg, substitute it for msg.
+        elif args[1][0] == '1':
+#ANNOTATION: otherwise if first element of second row of args equals a string '1',
+            msg = self.style.HTTP_INFO(msg)
+#ANNOTATION: call the self.style.HTTP_INFO with an argument msg, substitute it for msg.
+        elif args[1] == '304':
+#ANNOTATION: otherwise if second element of args equals a string '304', 
+            msg = self.style.HTTP_NOT_MODIFIED(msg)
+#ANNOTATION: call the self.style.HTTP_NOT_MODIFIED with an argument msg, substitute it for msg.
+        elif args[1][0] == '3':
+#ANNOTATION: otherwise if first element of second row of args equals a string '3',
+            msg = self.style.HTTP_REDIRECT(msg)
+#ANNOTATION: call the self.style.HTTP_REDIRECT with an argument msg, substitute it for msg.
+        elif args[1] == '404':
+#ANNOTATION: otherwise if second element of args equals a string '404', 
+            msg = self.style.HTTP_NOT_FOUND(msg)
+#ANNOTATION: call the self.style.HTTP_NOT_FOUND with an argument msg, substitute it for msg.
+        elif args[1][0] == '4':
+#ANNOTATION: otherwise if first element of second row of args equals a string '4',
+            msg = self.style.HTTP_BAD_REQUEST(msg)
+#ANNOTATION: call the self.style.HTTP_BAD_REQUEST with an argument msg, substitute it for msg.
+        else:
+#ANNOTATION: if not,
+            # Any 5XX, or any other response
+            msg = self.style.HTTP_SERVER_ERROR(msg)
+#ANNOTATION: call the self.style.HTTP_SERVER_ERROR with an argument msg, substitute it for msg.
+
+        sys.stderr.write(msg)
+#ANNOTATION: call the sys.stderr.write function with an argument msg.
+
+
+def run(addr, port, wsgi_handler, ipv6=False, threading=False):
+#ANNOTATION: define the function run with 5 arguments: addr, port, wsgi_handler, ipv6 set to boolean False and threading set to boolean False.
+    server_address = (addr, port)
+#ANNOTATION: server_address is a tuple containing 2 initial elements: addr and port. 
+    if threading:
+#ANNOTATION: if threading is true,
+        httpd_cls = type(str('WSGIServer'), (socketserver.ThreadingMixIn, WSGIServer), {})
+#ANNOTATION: call the function type with 3 arguments: string 'WSGIServer', tuple containing 2 elements: socketserver.ThreadingMixIn and WSGIServer,
+#ANNOTATION: and an empty dictionary, substitute the result for httpd_cls.
+    else:
+#ANNOTATION: if not,
+        httpd_cls = WSGIServer
+#ANNOTATION: substitute WSGIServer for httpd_cls.
+    httpd = httpd_cls(server_address, WSGIRequestHandler, ipv6=ipv6)
+#ANNOTATION: call the httpd_cls function with 4 arguments: server_address, WSGIRequestHandler and ipv6 set to ipv6, substitute the result for httpd.
+    if threading:
+#ANNOTATION: if threading is true,
+        # ThreadingMixIn.daemon_threads indicates how threads will behave on an
+        # abrupt shutdown; like quitting the server by the user or restarting
+        # by the auto-reloader. True means the server will not wait for thread
+        # termination before it quits. This will make auto-reloader faster
+        # and will prevent the need to kill the server manually if a thread
+        # isn't terminating correctly.
+        httpd.daemon_threads = True
+#ANNOTATION: httpd.daemon_threads is boolean True.
+    httpd.set_app(wsgi_handler)
+#ANNOTATION: call the method httpd.set_app with an argument wsgi_handler.
+    httpd.serve_forever()
+#ANNOTATION: call the method httpd.serve_forever.

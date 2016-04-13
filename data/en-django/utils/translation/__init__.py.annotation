@@ -1,0 +1,361 @@
+"""
+Internationalization support.
+"""
+#ANNOTATION: docstring
+from __future__ import unicode_literals
+#ANNOTATION: from __future__ import unicode_literals into default name space.
+import re
+#ANNOTATION: import module re.
+from django.utils.encoding import force_text
+#ANNOTATION: from django.utils.encoding import force_text into default name space.
+from django.utils.functional import lazy
+#ANNOTATION: from django.utils.functional import lazy into default name space.
+from django.utils import six
+#ANNOTATION: from django.utils import six into default name space.
+
+
+__all__ = [
+    'activate', 'deactivate', 'override', 'deactivate_all',
+    'get_language', 'get_language_from_request',
+    'get_language_info', 'get_language_bidi',
+    'check_for_language', 'to_locale', 'templatize', 'string_concat',
+    'gettext', 'gettext_lazy', 'gettext_noop',
+    'ugettext', 'ugettext_lazy', 'ugettext_noop',
+    'ngettext', 'ngettext_lazy',
+    'ungettext', 'ungettext_lazy',
+    'pgettext', 'pgettext_lazy',
+    'npgettext', 'npgettext_lazy',
+    'LANGUAGE_SESSION_KEY',
+]
+#ANNOTATION: __all__ is an list containing strings: 'activate', 'deactivate', 'override', 'deactivate_all', 'get_language', 
+#ANNOTATION: 'get_language_from_request', 'get_language_info', 'get_language_bidi', 'check_for_language', 'to_locale', 'templatize',
+#ANNOTATION: 'string_concat', 'gettext', 'gettext_lazy', 'gettext_noop', 'ugettext', 'ugettext_lazy', 'ugettext_noop', 'ngettext', 'ngettext_lazy',
+#ANNOTATION: 'ungettext', 'ungettext_lazy', 'pgettext', 'pgettext_lazy', 'npgettext', 'npgettext_lazy' and 'LANGUAGE_SESSION_KEY'.
+
+LANGUAGE_SESSION_KEY = '_language'
+#ANNOTATION: LANGUAGE_SESSION_KEY is an string '_language'.
+
+
+class TranslatorCommentWarning(SyntaxWarning):
+#ANNOTATION: derive the class TranslatorCommentWarning from the SyntaxWarning base class.
+    pass
+#ANNOTATION: do nothing.
+
+
+# Here be dragons, so a short explanation of the logic won't hurt:
+# We are trying to solve two problems: (1) access settings, in particular
+# settings.USE_I18N, as late as possible, so that modules can be imported
+# without having to first configure Django, and (2) if some other code creates
+# a reference to one of these functions, don't break that reference when we
+# replace the functions with their real counterparts (once we do access the
+# settings).
+
+class Trans(object):
+#ANNOTATION: derive the class Trans from the object base class.
+    """
+    The purpose of this class is to store the actual translation function upon
+    receiving the first call to that function. After this is done, changes to
+    USE_I18N will have no effect to which function is served upon request. If
+    your tests rely on changing USE_I18N, you can delete all the functions
+    from _trans.__dict__.
+
+    Note that storing the function with setattr will have a noticeable
+    performance effect, as access to the function goes the normal path,
+    instead of using __getattr__.
+    """
+#ANNOTATION: docstring
+
+    def __getattr__(self, real_name):
+#ANNOTATION: define the method __getattr__ with 2 arguments: self and real_name.
+        from django.conf import settings
+#ANNOTATION: from django.conf import settings.
+        if settings.USE_I18N:
+#ANNOTATION: if settings.USE_I18N is true, 
+            from django.utils.translation import trans_real as trans
+#ANNOTATION: from django.utils.translation import trans_real as trans.
+        else:
+#ANNOTATION: if not,
+            from django.utils.translation import trans_null as trans
+#ANNOTATION: from django.utils.translation import trans_null as trans.
+        setattr(self, real_name, getattr(trans, real_name))
+#ANNOTATION: set real_name attribute of the self object to value of real_name attribute of trans object.
+        return getattr(trans, real_name)
+#ANNOTATION: get attribute real_name from the trans object, return it.
+
+_trans = Trans()
+#ANNOTATION: _trans is an instance of Trans class.
+
+# The Trans class is no more needed, so remove it from the namespace.
+del Trans
+#ANNOTATION: delete Trans.
+
+
+def gettext_noop(message):
+#ANNOTATION: define the function gettext_noop with an argument message.
+    return _trans.gettext_noop(message)
+#ANNOTATION: call the method _trans.gettext_noop with an argument message.
+
+ugettext_noop = gettext_noop
+#ANNOTATION: substitute gettext_noop for ugettext_noop.
+
+
+def gettext(message):
+#ANNOTATION: define the function gettext_noop with an argument message.
+    return _trans.gettext(message)
+#ANNOTATION: call the method _trans.gettext with an argument message.
+
+
+def ngettext(singular, plural, number):
+#ANNOTATION: define the function ngettext with 3 arguments: singular, plural and number.
+    return _trans.ngettext(singular, plural, number)
+#ANNOTATION: call the method _trans.ngettext with 3 arguments singular, plural and number.
+
+
+def ugettext(message):
+#ANNOTATION: define the method ugettext with an argument message.
+    return _trans.ugettext(message)
+#ANNOTATION: call the method _trans.gettext_noop with an argument message.
+
+
+def ungettext(singular, plural, number):
+#ANNOTATION: define the function ungettext with 3 arguments: singular, plural and number.
+    return _trans.ungettext(singular, plural, number)
+#ANNOTATION: call the method _trans.ungettext with 3 arguments singular, plural and number.
+
+
+def pgettext(context, message):
+#ANNOTATION: define the function pgettext with 2 arguments: context and message.
+    return _trans.pgettext(context, message)
+#ANNOTATION: call the method _trans.pgettext with 2 arguments context and message.
+
+
+def npgettext(context, singular, plural, number):
+#ANNOTATION: define the function npgettext with 4 arguments: context, singular, plural and number.
+    return _trans.npgettext(context, singular, plural, number)
+#ANNOTATION: call the method _trans.npgettext with 4 arguments context, singular, plural and number.
+
+gettext_lazy = lazy(gettext, str)
+#ANNOTATION: call the function lazy with 2 arguments: gettext and str, substitute gettext_lazy.
+ugettext_lazy = lazy(ugettext, six.text_type)
+#ANNOTATION: call the function lazy with 2 arguments: ugettext and six.text_type, substitute ugettext_lazy.
+pgettext_lazy = lazy(pgettext, six.text_type)
+#ANNOTATION: call the function lazy with 2 arguments: pgettext and six.text_type, substitute pgettext_lazy.
+
+
+def lazy_number(func, resultclass, number=None, **kwargs):
+#ANNOTATION: define the function lazy_number with 4 arguments: func, resultclass, number set to None and unpacked dictionary kwargs.
+    if isinstance(number, int):
+#ANNOTATION: if number is an instance of int type.
+        kwargs['number'] = number
+#ANNOTATION: substitute number for value under the 'number' key of the kwargs dictionary.
+        proxy = lazy(func, resultclass)(**kwargs)
+#ANNOTATION: call the function lazy with 2 arguments: func and resultclass, call the result with an argument, unpacked dictionary kwargs, 
+#ANNOTATION: substitute the result for proxy.
+    else:
+#ANNOTATION: if not,
+        class NumberAwareString(resultclass):
+#ANNOTATION: derive the class NumberAwareString from the resultclass base class.
+            def __mod__(self, rhs):
+#ANNOTATION: define the method __mod__ with 2 arguments: self and rhs.
+                if isinstance(rhs, dict) and number:
+#ANNOTATION: if rhs is an instance of dict type and number is true,
+                    try:
+#ANNOTATION: try,
+                        number_value = rhs[number]
+#ANNOTATION: substitute value under the number key of the rhs dictionary for number_value.
+                    except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+                        raise KeyError('Your dictionary lacks key \'%s\'. '
+                            'Please provide it, because it is required to '
+                            'determine whether string is singular or plural.'
+                            % number)
+#ANNOTATION: raise an KeyError with an argument string 'Your dictionary lacks key \'%s\'. Please provide it, because it is required to '
+#ANNOTATION: 'determine whether string is singular or plural.', where '%s' is replaced with number.
+                else:
+#ANNOTATION: if not,
+                    number_value = rhs
+#ANNOTATION: substitute rhs for number_value.
+                kwargs['number'] = number_value
+#ANNOTATION: substitute number_value for kwargs dictionary value under the 'number' key.
+                translated = func(**kwargs)
+#ANNOTATION: call the function func with unpacked dictionary kwargs as an argument, substitute the result for translated.
+                try:
+#ANNOTATION: try,
+                    translated = translated % rhs
+#ANNOTATION: format translated with rhs, substitute the result for translated.
+                except TypeError:
+#ANNOTATION: if TypeError exception is caught,
+                    # String doesn't contain a placeholder for the number
+                    pass
+#ANNOTATION: do nothing.
+                return translated
+#ANNOTATION: return translated.
+
+        proxy = lazy(lambda **kwargs: NumberAwareString(), NumberAwareString)(**kwargs)
+#ANNOTATION: call the function lazy with 2 arguments: lambda function with unpacked dictionary kwargs as an argument and return value an instance of NumberAwareString class and NumberAwareString, call the result with an argument unpacked dictionary kwargs, substitute the result for proxy.
+    return proxy
+#ANNOTATION: return proxy.
+
+
+def ngettext_lazy(singular, plural, number=None):
+#ANNOTATION: define the function ngettext_lazy with 3 arguments: singular, plural and number set to None.
+    return lazy_number(ngettext, str, singular=singular, plural=plural, number=number)
+#ANNOTATION: call the function lazy_number with 5 arguments: ngettext, str, singular set to singular, plural set to plural,
+#ANNOTATION: and number set to number, return the result.
+
+
+def ungettext_lazy(singular, plural, number=None):
+#ANNOTATION: define the function ungettext_lazy with 3 arguments: singular, plural and number set to None.
+    return lazy_number(ungettext, six.text_type, singular=singular, plural=plural, number=number)
+#ANNOTATION: call the function lazy_number with 5 arguments: ungettext, six.text_type, singular set to singular, plural set to plural,
+#ANNOTATION: and number set to number, return the result.
+
+
+def npgettext_lazy(context, singular, plural, number=None):
+#ANNOTATION: define the function npgettext_lazy with 4 arguments: context, singular, plural and number set to None.
+    return lazy_number(npgettext, six.text_type, context=context, singular=singular, plural=plural, number=number)
+#ANNOTATION: call the function lazy_number with 6 arguments: npgettext, six.text_type, context set to context, singular set to singular, 
+#ANNOTATION: plural set to plural and number set to number, return the result.
+
+
+def activate(language):
+#ANNOTATION: define the function activate with an argument language.
+    return _trans.activate(language)
+#ANNOTATION: call the function _trans.activate with an argument language, return the result.
+
+
+def deactivate():
+#ANNOTATION: define the function deactivate.
+    return _trans.deactivate()
+#ANNOTATION: call the function _trans.deactivate, return the result.
+
+
+class override(object):
+#ANNOTATION: derive the class override from the object base class.
+    def __init__(self, language, deactivate=False):
+#ANNOTATION: define the method __init__ with 3 arguments: self, language and deactivate set to boolean False.
+        self.language = language
+#ANNOTATION: substitute language for self.language.
+        self.deactivate = deactivate
+#ANNOTATION: substitute deactivate for self.deactivate.
+        self.old_language = get_language()
+#ANNOTATION: call the function get_language, substitute the result for self.old_language.
+
+    def __enter__(self):
+#ANNOTATION: define the method __enter__ with an argument self.
+        if self.language is not None:
+#ANNOTATION: if self.language is not None,
+            activate(self.language)
+#ANNOTATION: call the function activate with an argument self.language.
+        else:
+#ANNOTATION: if not,
+            deactivate_all()
+#ANNOTATION: call the function deactivate_all.
+
+    def __exit__(self, exc_type, exc_value, traceback):
+#ANNOTATION: define the method __exit__ with 4 arguments: self, exc_type, exc_value and traceback.
+        if self.deactivate:
+#ANNOTATION: if self.deactivate is true,
+            deactivate()
+#ANNOTATION: call the method deactivate.
+        else:
+#ANNOTATION: if not,
+            activate(self.old_language)
+#ANNOTATION: call the method activate with an argument self.old_language.
+
+
+def get_language():
+#ANNOTATION: define the function get_language.
+    return _trans.get_language()
+#ANNOTATION: call the function _trans.get_language, return the result.
+
+
+def get_language_bidi():
+#ANNOTATION: define the function get_language_bidi.
+    return _trans.get_language_bidi()
+#ANNOTATION: call the function _trans.get_language_bidi, return the result.
+
+
+def check_for_language(lang_code):
+#ANNOTATION: define the function check_for_language with an argument lang_code.
+    return _trans.check_for_language(lang_code)
+#ANNOTATION: call the function _trans.check_for_language with an argument lang_code, return the result.
+
+
+def to_locale(language):
+#ANNOTATION: define the function to_locale with an argument language.
+    return _trans.to_locale(language)
+#ANNOTATION: call the function _trans.to_locale with an argument language, return the result.
+
+
+def get_language_from_request(request, check_path=False):
+#ANNOTATION: define the function get_language_from_request with 2 arguments: request and check_path set to boolean False.
+    return _trans.get_language_from_request(request, check_path)
+#ANNOTATION: call the function _trans.get_language_from_request with 2 arguments: request and check_path, return the result.
+
+
+def get_language_from_path(path):
+#ANNOTATION: define the function get_language_from_path with an argument path.
+    return _trans.get_language_from_path(path)
+#ANNOTATION: call the function _trans.get_language_from_path with an argument path, return the result.
+
+
+def templatize(src, origin=None):
+#ANNOTATION: define the function templatize with 2 arguments: src and origin set to None.
+    return _trans.templatize(src, origin)
+#ANNOTATION: call the function _trans.templatize with 2 arguments: src and origin, return the result.
+
+
+def deactivate_all():
+#ANNOTATION: define the function deactivate_all.
+    return _trans.deactivate_all()
+#ANNOTATION: call the function _trans.deactivate_all, return the result.
+
+
+def _string_concat(*strings):
+#ANNOTATION: define the function _string_concat with an argument unpacked list strings.
+    """
+    Lazy variant of string concatenation, needed for translations that are
+    constructed from multiple parts.
+    """
+#ANNOTATION: docstring
+    return ''.join(force_text(s) for s in strings)
+#ANNOTATION: for every s in strings, call the function force_text with an argument s, join the results in a string, return the result.
+string_concat = lazy(_string_concat, six.text_type)
+#ANNOTATION: call the function lazy with 2 arguments: _string_concat and six.text_type, substitute the result for string_concat.
+
+
+def get_language_info(lang_code):
+#ANNOTATION: define the function get_language_info with an argument lang_code.
+    from django.conf.locale import LANG_INFO
+#ANNOTATION: from django.conf.locale import LANG_INFO.
+    try:
+#ANNOTATION: try,
+        return LANG_INFO[lang_code]
+#ANNOTATION: get the value under the lang_code key of the LANG_INFO dictionary, return it.
+    except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+        if '-' not in lang_code:
+#ANNOTATION: if character '-' is not contained  in lang_code,
+            raise KeyError("Unknown language code %s." % lang_code)
+#ANNOTATION: raise an KeyError with an argument "Unknown language code %s.", where '%s' is replaced with lang_code.
+        generic_lang_code = lang_code.split('-')[0]
+#ANNOTATION: split lang_code by character '-', substitute the first element of the result for generic_lang_code.
+        try: 
+#ANNOTATION: try,
+            return LANG_INFO[generic_lang_code]
+#ANNOTATION: get the LANG_INFO dictionary value under the generic_lang_code key, return the result.
+        except KeyError:
+#ANNOTATION: if KeyError exception is caught,
+            raise KeyError("Unknown language code %s and %s." % (lang_code, generic_lang_code))
+#ANNOTATION: raise an KeyError with an argument string "Unknown language code %s and %s.", where '%s' is replaced with lang_code,
+#ANNOTATION: and generic_lang_code.
+
+trim_whitespace_re = re.compile('\s*\n\s*')
+#ANNOTATION: call the function re.compile with an argument string '\s*\n\s*', substitute the result for trim_whitespace_re.
+
+
+def trim_whitespace(s):
+#ANNOTATION: define the function trim_whitespace with an argument s.
+    return trim_whitespace_re.sub(' ', s.strip())
+#ANNOTATION: call strip s of the surrounding whitespaces, substitute every occurrence of the whitespace in the trim_whitespace_re with previous result, return the result.

@@ -1,0 +1,93 @@
+"""
+Sets up the terminal color scheme.
+"""
+#ANNOTATION: docstring
+
+import os
+#ANNOTATION: import module os.
+import sys
+#ANNOTATION: import module sys.
+
+from django.utils import termcolors
+#ANNOTATION: from django.utils import termcolors into default name space.
+
+
+def supports_color():
+#ANNOTATION: define the function supports_color, without arguments.
+    """
+    Returns True if the running system's terminal supports color, and False
+    otherwise.
+    """
+#ANNOTATION: docstring
+    plat = sys.platform
+#ANNOTATION: substitute sys.platform for plat.
+    supported_platform = plat != 'Pocket PC' and (plat != 'win32' or
+                                                  'ANSICON' in os.environ)
+#ANNOTATION: evaluate the logic expression, plat does not equals to string 'Pocket PC', and plat does not equals to string 'win32' 
+#ANNOTATION: or string 'ANICON' is in os.environ, substitute the evaluated boolean for supported_platform. 
+    # isatty is not always implemented, #6223.
+    is_a_tty = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+#ANNOTATION: if sys.stdout has an attribute named 'isatty' and call to the sys.stdout.isatty returns boolean True, substitute True for is_a_tty.
+    if not supported_platform or not is_a_tty:
+#ANNOTATION: if supported_platform is False or is_a_tty is False,
+        return False
+#ANNOTATION: return boolean False.
+    return True
+#ANNOTATION: return boolean True.
+
+
+def color_style():
+#ANNOTATION: define function color_style, without input arguments.
+    """Returns a Style object with the Django color scheme."""
+#ANNOTATION: docstring
+    if not supports_color():
+#ANNOTATION: call the function supports_color, if evaluates to False,
+        style = no_style()
+#ANNOTATION: substitute return value of function no_style for style.
+    else:
+#ANNOTATION: if not,
+        DJANGO_COLORS = os.environ.get('DJANGO_COLORS', '')
+#ANNOTATION: get the value under the key 'DJANGO_COLORS' of os.environ dictionary, if key doesnt exists return empty string, assign the result to DJANGO_COLORS.
+        color_settings = termcolors.parse_color_setting(DJANGO_COLORS)
+#ANNOTATION: call the function termcolors.parse_color_setting with DJANGO_COLORS as an argument, assign the result to color_settings.
+        if color_settings:
+#ANNOTATION: if color_setting is True,
+            class dummy:
+#ANNOTATION: define class dummy.
+                pass
+#ANNOTATION: do nothing.
+            style = dummy()
+#ANNOTATION: style is an instance of the dummy class.
+            # The nocolor palette has all available roles.
+            # Use that palette as the basis for populating
+            # the palette as defined in the environment.
+            for role in termcolors.PALETTES[termcolors.NOCOLOR_PALETTE]:
+#ANNOTATION: for every role in termcolors.PALETTES list at the index termcolors.NOCOLOR_PALETTE,
+                format = color_settings.get(role, {})
+#ANNOTATION: assign the value of the dictionary color_settings under the key role to format, if key doesnt exist assign the empty dictionary.
+                setattr(style, role, termcolors.make_style(**format))
+#ANNOTATION: sets the role attribute of the style object to the value of the call to the termcolors.make_style function with dictionary format as an argument.
+            # For backwards compatibility,
+            # set style for ERROR_OUTPUT == ERROR
+            style.ERROR_OUTPUT = style.ERROR
+#ANNOTATION: substitute style.ERROR for style.ERROR_OUTPUT. 
+        else:
+#ANNOTATION: if not,
+            style = no_style()
+#ANNOTATION: substitute return value of function no_style for style.
+    return style
+#ANNOTATION: return style.
+
+
+def no_style():
+#ANNOTATION: define function no_style, without input arguments.
+    """Returns a Style object that has no colors."""
+#ANNOTATION: docstring
+    class dummy:
+#ANNOTATION: define class dummy.
+        def __getattr__(self, attr):
+#ANNOTATION: define private method __getattr__ with self class instance and attr as the arguments.
+            return lambda x: x
+#ANNOTATION: create lambda identity function which returns x for input parameter x, return the function.
+    return dummy()
+#ANNOTATION: return an instance of a dummy class.

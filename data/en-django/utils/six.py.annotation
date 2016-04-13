@@ -1,0 +1,1122 @@
+"""Utilities for writing code that runs on Python 2 and 3"""
+#ANNOTATION: docstring
+
+# Copyright (c) 2010-2014 Benjamin Peterson
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+import operator
+#ANNOTATION: import module opera.
+import sys
+#ANNOTATION: import module sys.
+import types
+#ANNOTATION: import module types.
+
+__author__ = "Benjamin Peterson <benjamin@python.org>"
+#ANNOTATION: __author__ is a string "Benjamin Peterson <benjamin@python.org>".
+__version__ = "1.6.1"
+#ANNOTATION: __version__ is a string "1.6.1".
+
+
+# Useful for very coarse version differentiation.
+PY2 = sys.version_info[0] == 2
+#ANNOTATION: if first element of sys.version_info equals integer 2, PY2 is boolean True, otherwise it is boolean False. 
+PY3 = sys.version_info[0] == 3
+#ANNOTATION: if first element of sys.version_info equals integer 3, PY3 is boolean True, otherwise it is boolean False.
+
+if PY3:
+#ANNOTATION: if PY3 is true,
+    string_types = str,
+#ANNOTATION: substitute str for string_types.
+    integer_types = int,
+#ANNOTATION: substitute int for integer_types.
+    class_types = type,
+#ANNOTATION: substitute type for class_types.
+    text_type = str
+#ANNOTATION: substitute str for text_type.
+    binary_type = bytes
+#ANNOTATION: substitute bytes for binary_type.
+
+    MAXSIZE = sys.maxsize
+#ANNOTATION: substitute sys.maxsize for MAXSIZE.
+else:
+#ANNOTATION: if not,
+    string_types = basestring,
+#ANNOTATION: substitute basestring for string_types.
+    integer_types = (int, long)
+#ANNOTATION: integer_types is a tuple with 2 elements int and long.
+    class_types = (type, types.ClassType)
+#ANNOTATION: class_types is a tuple with 2 elements: type and types.ClassType.
+    text_type = unicode
+#ANNOTATION: substitute unicode for text_type.
+    binary_type = str
+#ANNOTATION: substitute str for binary_type.
+
+    if sys.platform.startswith("java"):
+#ANNOTATION: if sys.platform starts with string 'java',
+        # Jython always uses 32 bits.
+        MAXSIZE = int((1 << 31) - 1)
+#ANNOTATION: bitwise shift integer 1 to the left by 31 spaces, substitute integer 1 from the result, convert the result to a integer, substitute it for MAXSIZE.
+    else:
+#ANNOTATION: if not,
+        # It's possible to have sizeof(long) != sizeof(Py_ssize_t).
+        class X(object):
+#ANNOTATION: derive class X from the object base class.
+            def __len__(self):
+#ANNOTATION: define the method __len__ with an argument self.
+                return 1 << 31
+#ANNOTATION: bitwise shift integer 1 to the left by 31 spaces, return the result.
+        try:
+#ANNOTATION: try
+            len(X())
+#ANNOTATION: instantiate class X, get its length.
+        except OverflowError:
+#ANNOTATION: if OverflowError exception is caught,
+            # 32-bit
+            MAXSIZE = int((1 << 31) - 1)
+#ANNOTATION: bitwise shift integer 1 to the left by 31 spaces, substitute integer 1 from the result, convert the result to a integer, substitute it for MAXSIZE.
+        else:
+#ANNOTATION: if not,
+            # 64-bit
+            MAXSIZE = int((1 << 63) - 1)
+#ANNOTATION: bitwise shift integer 1 to the left by 63 spaces, substitute integer 1 from the result, convert the result to a integer, substitute it for MAXSIZE.
+        del X
+#ANNOTATION: delete X.
+
+
+def _add_doc(func, doc):
+#ANNOTATION: define the function _add_doc with 2 arguments: func and doc.
+    """Add documentation to a function."""
+#ANNOTATION: docstring
+    func.__doc__ = doc
+#ANNOTATION: substitute doc for func.__doc__.
+
+
+def _import_module(name):
+#ANNOTATION: define the function _import_module with an argument name.
+    """Import module, returning the module after the last dot."""
+#ANNOTATION: docstring
+    __import__(name)
+#ANNOTATION: call the function __import__ with an argument name.
+    return sys.modules[name]
+#ANNOTATION: return value under the name key of the sys.modules dictionary.
+
+
+class _LazyDescr(object):
+#ANNOTATION: derive class _LazyDescr from the object base class.
+
+    def __init__(self, name):
+#ANNOTATION: define the method __init__ with 2 arguments: self and name.
+        self.name = name
+#ANNOTATION: substitute name for self.name.
+
+    def __get__(self, obj, tp):
+#ANNOTATION: define the method __get__ with 3 arguments: self, obj and tp.
+        try:
+#ANNOTATION: try,
+            result = self._resolve()
+#ANNOTATION: call the method self._resolve, substitute the result for result.
+        except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+            # See the nice big comment in MovedModule.__getattr__.
+            raise AttributeError("%s could not be imported " % self.name)
+#ANNOTATION: raise an AttributeError with an argument string "%s could not be imported ", formated with self.name.
+        setattr(obj, self.name, result) # Invokes __set__.
+#ANNOTATION: set self.name attribute of the obj object to result.
+        # This is a bit ugly, but it avoids running this again.
+        delattr(obj.__class__, self.name)
+#ANNOTATION: delete self.name attribute from the obj.__class__ object.
+        return result
+#ANNOTATION: return result.
+
+
+class MovedModule(_LazyDescr):
+#ANNOTATION: derive class MovedModule from the _LazyDescr base class.
+
+    def __init__(self, name, old, new=None):
+#ANNOTATION: define the method __init__ with 4 arguments: self, name, old and new set to None.
+        super(MovedModule, self).__init__(name)
+#ANNOTATION: call the __init__ method with an argument name from the base class of the MovedModule class.
+        if PY3:
+#ANNOTATION: if PY3 is true, 
+            if new is None:
+#ANNOTATION: if new is None,
+                new = name
+#ANNOTATION: substitute name for new.
+            self.mod = new
+#ANNOTATION: substitute new for self.mod.
+        else:
+#ANNOTATION: if not,
+            self.mod = old
+#ANNOTATION: substitute old for self.mod.
+
+    def _resolve(self):
+#ANNOTATION: define the method _resolve with an argument self.
+        return _import_module(self.mod)
+#ANNOTATION: call the function _import_module with an argument self.mod, return the result.
+
+    def __getattr__(self, attr):
+#ANNOTATION: define the method __getattr__ with 2 arguments: self and attr set to None.
+        # It turns out many Python frameworks like to traverse sys.modules and
+        # try to load various attributes. This causes problems if this is a
+        # platform-specific module on the wrong platform, like _winreg on
+        # Unixes. Therefore, we silently pretend unimportable modules do not
+        # have any attributes. See issues #51, #53, #56, and #63 for the full
+        # tales of woe.
+        #
+        # First, if possible, avoid loading the module just to look at __file__,
+        # __name__, or __path__.
+        if (attr in ("__file__", "__name__", "__path__") and
+            self.mod not in sys.modules):
+#ANNOTATION: if attr equals any of the strings "__file__", "__name__" or "__path__" and self.mod is not contained in sys.modules,
+            raise AttributeError(attr)
+#ANNOTATION: raise an AttributeError with an argument attr.
+        try:
+#ANNOTATION: try,
+            _module = self._resolve()
+#ANNOTATION: call the method self._resolve, substitute the result for _module.
+        except ImportError:
+#ANNOTATION: if ImportError exception is caught,
+            raise AttributeError(attr)
+#ANNOTATION: raise an AttributeError with an argument attr.
+        value = getattr(_module, attr)
+#ANNOTATION: get attr attribute from the _module object, substitute it for value.
+        setattr(self, attr, value)
+#ANNOTATION: set attr attribute of the self object to value.
+        return value
+#ANNOTATION: return value.
+
+
+class _LazyModule(types.ModuleType):
+#ANNOTATION: derive class _LazyModule from the types.ModuleType base class.
+
+    def __init__(self, name):
+#ANNOTATION: define the method __init__ with 2 arguments: self and name.
+        super(_LazyModule, self).__init__(name)
+#ANNOTATION: call the method __init__ with an argument name form the base class of the class _LazyModule.
+        self.__doc__ = self.__class__.__doc__
+#ANNOTATION: substitute self.__class__.__doc__ for self.__doc__.
+
+    def __dir__(self):
+#ANNOTATION: define the method __dir__ with an argument self.
+        attrs = ["__doc__", "__name__"]
+#ANNOTATION: attrs is a list with 2 elements: strings "__doc__" and "__name__".
+        attrs += [attr.name for attr in self._moved_attributes]
+#ANNOTATION: append attr.name to attrs for every attr in self._moved_attributes.
+        return attrs
+#ANNOTATION: return attrs.
+
+    # Subclasses should override this
+    _moved_attributes = []
+#ANNOTATION: _moved_attributes is an empty list. 
+
+
+class MovedAttribute(_LazyDescr):
+#ANNOTATION: derive class MovedAttribute from the _LazyDescr base class.
+
+    def __init__(self, name, old_mod, new_mod, old_attr=None, new_attr=None):
+#ANNOTATION: define the method __init__ with 6 arguments: self, name, old_mod, new_mod, old_attr set to None, new_attr set to None.
+        super(MovedAttribute, self).__init__(name)
+#ANNOTATION: call the method __init__ with an argument name form the base class of the class MovedAttribute.
+        if PY3:
+#ANNOTATION: if PY3 is true,
+            if new_mod is None:
+#ANNOTATION: if new_mod is None,
+                new_mod = name
+#ANNOTATION: substitute name for new_mod.
+            self.mod = new_mod
+#ANNOTATION: substitute new_mod for self.mod.
+            if new_attr is None:
+#ANNOTATION: if new_attr is None,
+                if old_attr is None:
+#ANNOTATION: if old_attr is None,
+                    new_attr = name
+#ANNOTATION: substitute name for new_attr.
+                else:
+#ANNOTATION: if not,
+                    new_attr = old_attr
+#ANNOTATION: substitute old_attr for new_attr.
+            self.attr = new_attr
+#ANNOTATION: substitute new_attr for self.attr.
+        else:
+#ANNOTATION: if not,
+            self.mod = old_mod
+#ANNOTATION: substitute old_mod for self.mod.
+            if old_attr is None:
+#ANNOTATION: if old_attr is None,
+                old_attr = name
+#ANNOTATION: substitute name for old_attr.
+            self.attr = old_attr
+#ANNOTATION: substitute old_attr for self.attr.
+
+    def _resolve(self):
+#ANNOTATION: define the method _resolve with an argument self.
+        module = _import_module(self.mod)
+#ANNOTATION: call the function _import_module with an argument self.mod, substitute the result for module.
+        return getattr(module, self.attr)
+#ANNOTATION: gett self.attr from the module object, return it.
+
+
+
+class _MovedItems(_LazyModule):
+#ANNOTATION: derive class _MovedItems from the _LazyModule base class.
+    """Lazy loading of moved objects"""
+#ANNOTATION: docstring
+
+
+_moved_attributes = [
+    MovedAttribute("cStringIO", "cStringIO", "io", "StringIO"),
+    MovedAttribute("filter", "itertools", "builtins", "ifilter", "filter"),
+    MovedAttribute("filterfalse", "itertools", "itertools", "ifilterfalse", "filterfalse"),
+    MovedAttribute("input", "__builtin__", "builtins", "raw_input", "input"),
+    MovedAttribute("map", "itertools", "builtins", "imap", "map"),
+    MovedAttribute("range", "__builtin__", "builtins", "xrange", "range"),
+    MovedAttribute("reload_module", "__builtin__", "imp", "reload"),
+    MovedAttribute("reduce", "__builtin__", "functools"),
+    MovedAttribute("StringIO", "StringIO", "io"),
+    MovedAttribute("UserString", "UserString", "collections"),
+    MovedAttribute("xrange", "__builtin__", "builtins", "xrange", "range"),
+    MovedAttribute("zip", "itertools", "builtins", "izip", "zip"),
+    MovedAttribute("zip_longest", "itertools", "itertools", "izip_longest", "zip_longest"),
+
+    MovedModule("builtins", "__builtin__"),
+    MovedModule("configparser", "ConfigParser"),
+    MovedModule("copyreg", "copy_reg"),
+    MovedModule("dbm_gnu", "gdbm", "dbm.gnu"),
+    MovedModule("http_cookiejar", "cookielib", "http.cookiejar"),
+    MovedModule("http_cookies", "Cookie", "http.cookies"),
+    MovedModule("html_entities", "htmlentitydefs", "html.entities"),
+    MovedModule("html_parser", "HTMLParser", "html.parser"),
+    MovedModule("http_client", "httplib", "http.client"),
+    MovedModule("email_mime_multipart", "email.MIMEMultipart", "email.mime.multipart"),
+    MovedModule("email_mime_text", "email.MIMEText", "email.mime.text"),
+    MovedModule("email_mime_base", "email.MIMEBase", "email.mime.base"),
+    MovedModule("BaseHTTPServer", "BaseHTTPServer", "http.server"),
+    MovedModule("CGIHTTPServer", "CGIHTTPServer", "http.server"),
+    MovedModule("SimpleHTTPServer", "SimpleHTTPServer", "http.server"),
+    MovedModule("cPickle", "cPickle", "pickle"),
+    MovedModule("queue", "Queue"),
+    MovedModule("reprlib", "repr"),
+    MovedModule("socketserver", "SocketServer"),
+    MovedModule("_thread", "thread", "_thread"),
+    MovedModule("tkinter", "Tkinter"),
+    MovedModule("tkinter_dialog", "Dialog", "tkinter.dialog"),
+    MovedModule("tkinter_filedialog", "FileDialog", "tkinter.filedialog"),
+    MovedModule("tkinter_scrolledtext", "ScrolledText", "tkinter.scrolledtext"),
+    MovedModule("tkinter_simpledialog", "SimpleDialog", "tkinter.simpledialog"),
+    MovedModule("tkinter_tix", "Tix", "tkinter.tix"),
+    MovedModule("tkinter_ttk", "ttk", "tkinter.ttk"),
+    MovedModule("tkinter_constants", "Tkconstants", "tkinter.constants"),
+    MovedModule("tkinter_dnd", "Tkdnd", "tkinter.dnd"),
+    MovedModule("tkinter_colorchooser", "tkColorChooser",
+                "tkinter.colorchooser"),
+    MovedModule("tkinter_commondialog", "tkCommonDialog",
+                "tkinter.commondialog"),
+    MovedModule("tkinter_tkfiledialog", "tkFileDialog", "tkinter.filedialog"),
+    MovedModule("tkinter_font", "tkFont", "tkinter.font"),
+    MovedModule("tkinter_messagebox", "tkMessageBox", "tkinter.messagebox"),
+    MovedModule("tkinter_tksimpledialog", "tkSimpleDialog",
+                "tkinter.simpledialog"),
+    MovedModule("urllib_parse", __name__ + ".moves.urllib_parse", "urllib.parse"),
+    MovedModule("urllib_error", __name__ + ".moves.urllib_error", "urllib.error"),
+    MovedModule("urllib", __name__ + ".moves.urllib", __name__ + ".moves.urllib"),
+    MovedModule("urllib_robotparser", "robotparser", "urllib.robotparser"),
+    MovedModule("xmlrpc_client", "xmlrpclib", "xmlrpc.client"),
+    MovedModule("xmlrpc_server", "xmlrpclib", "xmlrpc.server"),
+    MovedModule("winreg", "_winreg"),
+]
+#ANNOTATION: _moved_attributes is a list with 55 initial elements, 13 of them are the results of the call to the function MovedAttribute,
+#ANNOTATION: with different 3 string arguments, the others are results of the call to the function MovedModule called with 3 string arguments.
+for attr in _moved_attributes:
+#ANNOTATION: for every attr in _moved_attributes,
+    setattr(_MovedItems, attr.name, attr)
+#ANNOTATION: set attr.name attribute of the _MovedItemst object to attr.
+    if isinstance(attr, MovedModule):
+#ANNOTATION: if attr is an instance of MovedModule.
+        sys.modules[__name__ + ".moves." + attr.name] = attr
+#ANNOTATION: concatenate __name__, string '.moves' and attr.name together, use it as an key to get the value from the sys.modules dictionary,
+#ANNOTATION: substitute attr for the obtained value.
+del attr
+#ANNOTATION: delete attr.
+
+_MovedItems._moved_attributes = _moved_attributes
+#ANNOTATION: substitute _moved_attributes for _MovedItems._moved_attributes.
+
+moves = sys.modules[__name__ + ".moves"] = _MovedItems(__name__ + ".moves")
+#ANNOTATION: append string '.moves' to __name__, use it as an argument to instantiate _MovedItems class, assign it to moves,
+#ANNOTATION: and to value under the '.moves' appended to __name__ key of the sys.modules dictionary.
+
+
+class Module_six_moves_urllib_parse(_LazyModule):
+#ANNOTATION: derive class Module_six_moves_urllib_parse from the _LazyModule base class.
+    """Lazy loading of moved objects in six.moves.urllib_parse"""
+#ANNOTATION: docstring
+
+
+_urllib_parse_moved_attributes = [
+    MovedAttribute("ParseResult", "urlparse", "urllib.parse"),
+    MovedAttribute("SplitResult", "urlparse", "urllib.parse"),
+    MovedAttribute("parse_qs", "urlparse", "urllib.parse"),
+    MovedAttribute("parse_qsl", "urlparse", "urllib.parse"),
+    MovedAttribute("urldefrag", "urlparse", "urllib.parse"),
+    MovedAttribute("urljoin", "urlparse", "urllib.parse"),
+    MovedAttribute("urlparse", "urlparse", "urllib.parse"),
+    MovedAttribute("urlsplit", "urlparse", "urllib.parse"),
+    MovedAttribute("urlunparse", "urlparse", "urllib.parse"),
+    MovedAttribute("urlunsplit", "urlparse", "urllib.parse"),
+    MovedAttribute("quote", "urllib", "urllib.parse"),
+    MovedAttribute("quote_plus", "urllib", "urllib.parse"),
+    MovedAttribute("unquote", "urllib", "urllib.parse"),
+    MovedAttribute("unquote_plus", "urllib", "urllib.parse"),
+    MovedAttribute("urlencode", "urllib", "urllib.parse"),
+    MovedAttribute("splitquery", "urllib", "urllib.parse"),
+]
+#ANNOTATION: _urllib_parse_moved_attributes is a list with 16 elemetns, all of them are the results of the call to the function MovedAttribute with different 3 string arguments.
+for attr in _urllib_parse_moved_attributes:
+#ANNOTATION: for every attr in _urllib_parse_moved_attributes,
+    setattr(Module_six_moves_urllib_parse, attr.name, attr)
+#ANNOTATION: set attr.name attribute of the Module_six_moves_urllib_parse object to attr.
+del attr
+#ANNOTATION: delete attr.
+
+Module_six_moves_urllib_parse._moved_attributes = _urllib_parse_moved_attributes
+#ANNOTATION: substitute _urllib_parse_moved_attributes for Module_six_moves_urllib_parse._moved_attributes.
+
+sys.modules[__name__ + ".moves.urllib_parse"] = sys.modules[__name__ + ".moves.urllib.parse"] = Module_six_moves_urllib_parse(__name__ + ".moves.urllib_parse")
+#ANNOTATION: call the method Module_six_moves_urllib_request with an argument: string ".moves.urllib_parse" appended to __name__,
+#ANNOTATION: assign the result to the value under the string ".moves.urllib_parse" appended to __name__ key of the sys.modules dictionary,
+#ANNOTATION: and to the value under the string ".moves.urllib.parse" appended to __name__ key of the sys.modules dictionary.
+
+
+class Module_six_moves_urllib_error(_LazyModule):
+#ANNOTATION: derive class Module_six_moves_urllib_error from the _LazyModule base class.
+    """Lazy loading of moved objects in six.moves.urllib_error"""
+#ANNOTATION: docstring
+
+
+_urllib_error_moved_attributes = [
+    MovedAttribute("URLError", "urllib2", "urllib.error"),
+    MovedAttribute("HTTPError", "urllib2", "urllib.error"),
+    MovedAttribute("ContentTooShortError", "urllib", "urllib.error"),
+]
+#ANNOTATION: _urllib_error_moved_attributes is a list with 3 elements: result of the call to the function MovedAttribute with 3 arguments:
+#ANNOTATION: strings "URLError", "urllib2", "urllib.error", result of the call to the function MovedAttribute with 3 arguments:
+#ANNOTATION: strings "HTTPError", "urllib2", "urllib.error" and result of the call to the function MovedAttribute with 3 arguments:
+#ANNOTATION: strings "ContentTooShortError", "urllib", "urllib.error".
+for attr in _urllib_error_moved_attributes:
+#ANNOTATION: for every attr in _urllib_error_moved_attributes,
+    setattr(Module_six_moves_urllib_error, attr.name, attr)
+#ANNOTATION: set attr.name attribute of the Module_six_moves_urllib_error object to attr.
+del attr
+#ANNOTATION: delete attr.
+
+Module_six_moves_urllib_error._moved_attributes = _urllib_error_moved_attributes
+#ANNOTATION: substitute _urllib_error_moved_attributes for Module_six_moves_urllib_error._moved_attributes.
+
+sys.modules[__name__ + ".moves.urllib_error"] = sys.modules[__name__ + ".moves.urllib.error"] = Module_six_moves_urllib_error(__name__ + ".moves.urllib.error")
+#ANNOTATION: call the method Module_six_moves_urllib_request with an argument: string ".moves.urllib.error" appended to __name__,
+#ANNOTATION: assign the result to the value under the string ".moves.urllib_error" appended to __name__ key of the sys.modules dictionary,
+#ANNOTATION: and to the value under the string ".moves.urllib.error" appended to __name__ key of the sys.modules dictionary.
+
+
+class Module_six_moves_urllib_request(_LazyModule):
+#ANNOTATION: derive class Module_six_moves_urllib_request from the _LazyModule base class.
+    """Lazy loading of moved objects in six.moves.urllib_request"""
+#ANNOTATION: docstring
+
+
+_urllib_request_moved_attributes = [
+    MovedAttribute("urlopen", "urllib2", "urllib.request"),
+    MovedAttribute("install_opener", "urllib2", "urllib.request"),
+    MovedAttribute("build_opener", "urllib2", "urllib.request"),
+    MovedAttribute("pathname2url", "urllib", "urllib.request"),
+    MovedAttribute("url2pathname", "urllib", "urllib.request"),
+    MovedAttribute("getproxies", "urllib", "urllib.request"),
+    MovedAttribute("Request", "urllib2", "urllib.request"),
+    MovedAttribute("OpenerDirector", "urllib2", "urllib.request"),
+    MovedAttribute("HTTPDefaultErrorHandler", "urllib2", "urllib.request"),
+    MovedAttribute("HTTPRedirectHandler", "urllib2", "urllib.request"),
+    MovedAttribute("HTTPCookieProcessor", "urllib2", "urllib.request"),
+    MovedAttribute("ProxyHandler", "urllib2", "urllib.request"),
+    MovedAttribute("BaseHandler", "urllib2", "urllib.request"),
+    MovedAttribute("HTTPPasswordMgr", "urllib2", "urllib.request"),
+    MovedAttribute("HTTPPasswordMgrWithDefaultRealm", "urllib2", "urllib.request"),
+    MovedAttribute("AbstractBasicAuthHandler", "urllib2", "urllib.request"),
+    MovedAttribute("HTTPBasicAuthHandler", "urllib2", "urllib.request"),
+    MovedAttribute("ProxyBasicAuthHandler", "urllib2", "urllib.request"),
+    MovedAttribute("AbstractDigestAuthHandler", "urllib2", "urllib.request"),
+    MovedAttribute("HTTPDigestAuthHandler", "urllib2", "urllib.request"),
+    MovedAttribute("ProxyDigestAuthHandler", "urllib2", "urllib.request"),
+    MovedAttribute("HTTPHandler", "urllib2", "urllib.request"),
+    MovedAttribute("HTTPSHandler", "urllib2", "urllib.request"),
+    MovedAttribute("FileHandler", "urllib2", "urllib.request"),
+    MovedAttribute("FTPHandler", "urllib2", "urllib.request"),
+    MovedAttribute("CacheFTPHandler", "urllib2", "urllib.request"),
+    MovedAttribute("UnknownHandler", "urllib2", "urllib.request"),
+    MovedAttribute("HTTPErrorProcessor", "urllib2", "urllib.request"),
+    MovedAttribute("urlretrieve", "urllib", "urllib.request"),
+    MovedAttribute("urlcleanup", "urllib", "urllib.request"),
+    MovedAttribute("URLopener", "urllib", "urllib.request"),
+    MovedAttribute("FancyURLopener", "urllib", "urllib.request"),
+    MovedAttribute("proxy_bypass", "urllib", "urllib.request"),
+]
+#ANNOTATION: _urllib_request_moved_attributes is an list with 33 elements, all of them are the results of the call to the function MovedAttribute with 3 different string arguments.
+for attr in _urllib_request_moved_attributes:
+#ANNOTATION: for every attr in _urllib_request_moved_attributes,
+    setattr(Module_six_moves_urllib_request, attr.name, attr)
+#ANNOTATION: set attr.name attribute of the Module_six_moves_urllib_request object to attr. 
+del attr
+#ANNOTATION: delete attr.
+
+Module_six_moves_urllib_request._moved_attributes = _urllib_request_moved_attributes
+#ANNOTATION: substitute _urllib_request_moved_attributes for Module_six_moves_urllib_request._moved_attributes.
+
+sys.modules[__name__ + ".moves.urllib_request"] = sys.modules[__name__ + ".moves.urllib.request"] = Module_six_moves_urllib_request(__name__ + ".moves.urllib.request")
+#ANNOTATION: call the method Module_six_moves_urllib_request with an argument: string ".moves.urllib.request" appended to __name__,
+#ANNOTATION: assign the result to the value under the string ".moves.urllib_request" appended to __name__ key of the sys.modules dictionary,
+#ANNOTATION: and to the value under the string ".moves.urllib.request" appended to __name__ key of the sys.modules dictionary.
+
+class Module_six_moves_urllib_response(_LazyModule):
+#ANNOTATION: derive class Module_six_moves_urllib_response from the _LazyModule base class.
+    """Lazy loading of moved objects in six.moves.urllib_response"""
+#ANNOTATION: docstring
+
+
+_urllib_response_moved_attributes = [
+    MovedAttribute("addbase", "urllib", "urllib.response"),
+    MovedAttribute("addclosehook", "urllib", "urllib.response"),
+    MovedAttribute("addinfo", "urllib", "urllib.response"),
+    MovedAttribute("addinfourl", "urllib", "urllib.response"),
+]
+#ANNOTATION: _urllib_response_moved_attributes is a list with 4 elements: result of the function MovedAttribute, called with 3 arguments:
+#ANNOTATION: strings "addbase", "urllib" and "urllib.response", result of the function MovedAttribute, called with 3 arguments:
+#ANNOTATION: strings "addclosehook", "urllib", "urllib.response", result of the function MovedAttribute, called with 3 arguments:
+#ANNOTATION: strings "addinfo", "urllib", "urllib.response" and result of the function MovedAttribute, called with 3 arguments:
+#ANNOTATION: strings "addinfourl", "urllib", "urllib.response".
+for attr in _urllib_response_moved_attributes:
+#ANNOTATION: for every attr in _urllib_response_moved_attributes,
+    setattr(Module_six_moves_urllib_response, attr.name, attr)
+#ANNOTATION: set attr.name attribute of Module_six_moves_urllib_response object to attr.
+del attr
+#ANNOTATION: delete attr.
+
+Module_six_moves_urllib_response._moved_attributes = _urllib_response_moved_attributes
+#ANNOTATION: substitute _urllib_response_moved_attributes for Module_six_moves_urllib_response._moved_attributes.
+
+sys.modules[__name__ + ".moves.urllib_response"] = sys.modules[__name__ + ".moves.urllib.response"] = Module_six_moves_urllib_response(__name__ + ".moves.urllib.response")
+#ANNOTATION: instantiate class Module_six_moves_urllib_response with an argument, string ".moves.urllib.response" appended to __name__,
+#ANNOTATION: assign it to value under the string ".moves.urllib_response" appended to __name__ key of the sys.modules dictionary,
+#ANNOTATION: and to value under the string ".moves.urllib.response" appended to __name__ key of the sys.modules dictionary.
+
+
+class Module_six_moves_urllib_robotparser(_LazyModule):
+#ANNOTATION: derive class Module_six_moves_urllib_robotparser from the _LazyModule base class.
+    """Lazy loading of moved objects in six.moves.urllib_robotparser"""
+#ANNOTATION: docstring
+
+
+_urllib_robotparser_moved_attributes = [
+    MovedAttribute("RobotFileParser", "robotparser", "urllib.robotparser"),
+]
+#ANNOTATION: _urllib_robotparser_moved_attributes is a list containing an instance of MovedAttribute class, created with 3 argument: strings,
+#ANNOTATION: "RobotFileParser", "robotparser", "urllib.robotparser".
+for attr in _urllib_robotparser_moved_attributes:
+#ANNOTATION: for every attr in _urllib_robotparser_moved_attributes,
+    setattr(Module_six_moves_urllib_robotparser, attr.name, attr)
+#ANNOTATION: set attr.name attribute of Module_six_moves_urllib_robotparser object to attr.
+del attr
+#ANNOTATION: delete attr.
+
+Module_six_moves_urllib_robotparser._moved_attributes = _urllib_robotparser_moved_attributes
+#ANNOTATION: substitute _urllib_robotparser_moved_attributes for Module_six_moves_urllib_robotparser._moved_attributes.
+
+sys.modules[__name__ + ".moves.urllib_robotparser"] = sys.modules[__name__ + ".moves.urllib.robotparser"] = Module_six_moves_urllib_robotparser(__name__ + ".moves.urllib.robotparser")
+#ANNOTATION: instantiate class Module_six_moves_urllib_robotparser with an argument, string ".moves.urllib.robotparser" appended to __name__,
+#ANNOTATION: assign it to value under the string ".moves.urllib_robotparser" appended to __name__ key of the sys.modules dictionary,
+#ANNOTATION: and to value under the string ".moves.urllib.robotparser" appended to __name__ key of the sys.modules dictionary.
+
+
+class Module_six_moves_urllib(types.ModuleType):
+#ANNOTATION: derive class Module_six_moves_urllib from the types.ModuleType base class.
+    """Create a six.moves.urllib namespace that resembles the Python 3 namespace"""
+#ANNOTATION: docstring
+    parse = sys.modules[__name__ + ".moves.urllib_parse"]
+#ANNOTATION: append string ".moves.urllib_parse" to __name__, use it as an key to get the value from the sys.modules dictionary, substitute it for parse.
+    error = sys.modules[__name__ + ".moves.urllib_error"]
+#ANNOTATION: append string ".moves.urllib_error" to __name__, use it as an key to get the value from the sys.modules dictionary, substitute it for error.
+    request = sys.modules[__name__ + ".moves.urllib_request"]
+#ANNOTATION: append string ".moves.urllib_request" to __name__, use it as an key to get the value from the sys.modules dictionary, substitute it for request.
+    response = sys.modules[__name__ + ".moves.urllib_response"]
+#ANNOTATION: append string ".moves.urllib_response" to __name__, use it as an key to get the value from the sys.modules dictionary, substitute it for response.
+    robotparser = sys.modules[__name__ + ".moves.urllib_robotparser"]
+#ANNOTATION: append string ".moves.urllib_robotparser" to __name__, use it as an key to get the value from the sys.modules dictionary, substitute it for robotparser.
+
+    def __dir__(self):
+#ANNOTATION: define the method __dir__ with an argument self.
+        return ['parse', 'error', 'request', 'response', 'robotparser']
+#ANNOTATION: return a list with 5 elements: strings 'parse', 'error', 'request', 'response' and 'robotparser'.
+
+
+sys.modules[__name__ + ".moves.urllib"] = Module_six_moves_urllib(__name__ + ".moves.urllib")
+#ANNOTATION: instantiate class Module_six_moves_urllib with an argument, string ".moves.urllib" appended to __name__,
+#ANNOTATION: substitute it for value under the string ".moves.urllib" appended to __name__ key of the sys.modules dictionary.
+
+
+def add_move(move):
+#ANNOTATION: define the function add_move with an argument move.
+    """Add an item to six.moves."""
+#ANNOTATION: docstring
+    setattr(_MovedItems, move.name, move)
+#ANNOTATION: set move.name attribute of the _MovedItems to move.
+
+
+def remove_move(name):
+#ANNOTATION: define the function remove_move with an argument name.
+    """Remove item from six.moves."""
+#ANNOTATION: docstring
+    try:
+#ANNOTATION: try,
+        delattr(_MovedItems, name)
+#ANNOTATION: delete name attribute of the _MovedItems object.
+    except AttributeError:
+#ANNOTATION: if AttributeError exception is caught,
+        try:
+#ANNOTATION: try,
+            del moves.__dict__[name]
+#ANNOTATION: delete entry under the name key of the moves.__dict__ dictionary.
+        except KeyError:
+#ANNOTATION: if NameError exception is caught,
+            raise AttributeError("no such move, %r" % (name,))
+#ANNOTATION: raise an AttributeError with an argument string "no such move, %r", formated with a tuple with an element name.
+
+
+if PY3:
+#ANNOTATION: if PY3 is true,
+    _meth_func = "__func__"
+#ANNOTATION: _meth_func is a string "__func__".
+    _meth_self = "__self__"
+#ANNOTATION: _meth_self is a string "__self__".
+
+    _func_closure = "__closure__"
+#ANNOTATION: _func_closure is a string "__closure__".
+    _func_code = "__code__"
+#ANNOTATION: _func_code is a string "__code__".
+    _func_defaults = "__defaults__"
+#ANNOTATION: _func_defaults is a string "__defaults__".
+    _func_globals = "__globals__"
+#ANNOTATION: _func_globals is a string "__globals__".
+
+    _iterkeys = "keys"
+#ANNOTATION: _iterkeys is a string "keys".
+    _itervalues = "values"
+#ANNOTATION: _itervalues is a string "values".
+    _iteritems = "items"
+#ANNOTATION: _iteritems is a string "items".
+    _iterlists = "lists"
+#ANNOTATION: _iterlists is a string "lists".
+else:
+#ANNOTATION: if not,
+    _meth_func = "im_func"
+#ANNOTATION: _meth_func is a string "im_func".
+    _meth_self = "im_self"
+#ANNOTATION: _meth_self is a string "im_self".
+
+    _func_closure = "func_closure"
+#ANNOTATION: _func_closure is a string "func_closure".
+    _func_code = "func_code"
+#ANNOTATION: _func_code is a string "func_code".
+    _func_defaults = "func_defaults"
+#ANNOTATION: _func_defaults is a string "func_defaults".
+    _func_globals = "func_globals"
+#ANNOTATION: _func_globals is a string "func_globals".
+
+    _iterkeys = "iterkeys"
+#ANNOTATION: _iterkeys is a string "iterkeys".
+    _itervalues = "itervalues"
+#ANNOTATION: _iterkeys is a string "iterkeys".
+    _iteritems = "iteritems"
+#ANNOTATION: _iteritems is a string "iteritems".
+    _iterlists = "iterlists"
+#ANNOTATION: _iterlists is a string "iterlists".
+
+
+try:
+#ANNOTATION: try,
+    advance_iterator = next
+#ANNOTATION: substitute next for advance_iterator.
+except NameError:
+#ANNOTATION: if NameError exception is caught,
+    def advance_iterator(it):
+#ANNOTATION: define the function advance_iterator with an argument it.
+        return it.next()
+#ANNOTATION: return next element of the iterable it.
+next = advance_iterator
+#ANNOTATION: substitute klass.__dict__ for next.
+
+
+try:
+#ANNOTATION: try,
+    callable = callable
+#ANNOTATION: substitute callable for callable.
+except NameError:
+#ANNOTATION: if NameError exception is caught,
+    def callable(obj):
+#ANNOTATION: define the function callable with an argument obj.
+        return any("__call__" in klass.__dict__ for klass in type(obj).__mro__)
+#ANNOTATION: if "__call__" is contained in klass.__dict__ for any klass in __mro__ field of the obj class, return boolean True, otherwise return False.
+
+
+if PY3:
+#ANNOTATION: if PY3 is true,
+    def get_unbound_function(unbound):
+#ANNOTATION: define the function get_unbound_function with an argument unbound.
+        return unbound
+#ANNOTATION: return unbound.
+
+    create_bound_method = types.MethodType
+#ANNOTATION: substitute Iterator for create_bound_method.
+
+    Iterator = object
+#ANNOTATION: substitute object for Iterator.
+else:
+#ANNOTATION: if not,
+    def get_unbound_function(unbound):
+#ANNOTATION: define the function get_unbound_function with an argument unbound.
+        return unbound.im_func
+#ANNOTATION: return unbound.im_func.
+
+    def create_bound_method(func, obj):
+#ANNOTATION: define the function create_bound_function with 2 arguments: func and obj.
+        return types.MethodType(func, obj, obj.__class__)
+#ANNOTATION: call the method types.MethodType with 3 arguments: func, obj and obj.__class__, return the result.
+
+    class Iterator(object):
+#ANNOTATION: derive the class Iterator from the base class object.
+
+        def next(self):
+#ANNOTATION: define the method next with an argument self.
+            return type(self).__next__(self)
+#ANNOTATION: call the function type with an argument self, on the result call the method __next__ with an argument self, return the result.
+
+    callable = callable
+#ANNOTATION: substitute callable for callable.
+_add_doc(get_unbound_function,
+         """Get the function out of a possibly unbound function""")
+#ANNOTATION: call the function _add_doc with 2 arguments: get_unbound_function and string """Get the function out of a possibly unbound function""".
+
+
+get_method_function = operator.attrgetter(_meth_func)
+#ANNOTATION: call the method operator.attrgetter with an argument _meth_func, substitute the result for get_method_function. 
+get_method_self = operator.attrgetter(_meth_self)
+#ANNOTATION: call the method operator.attrgetter with an argument _meth_self, substitute the result for get_method_self. 
+get_function_closure = operator.attrgetter(_func_closure)
+#ANNOTATION: call the method operator.attrgetter with an argument _func_closure, substitute the result for get_method_closure. 
+get_function_code = operator.attrgetter(_func_code)
+#ANNOTATION: call the method operator.attrgetter with an argument _func_code, substitute the result for get_method_code. 
+get_function_defaults = operator.attrgetter(_func_defaults)
+#ANNOTATION: call the method operator.attrgetter with an argument _func_defaults, substitute the result for get_method_defaults. 
+get_function_globals = operator.attrgetter(_func_globals)
+#ANNOTATION: call the method operator.attrgetter with an argument _func_globals, substitute the result for get_method_globals. 
+
+
+def iterkeys(d, **kw):
+#ANNOTATION: define the function iterkeys with 2 arguments: d and unpacked dictionary  kw.
+    """Return an iterator over the keys of a dictionary."""
+#ANNOTATION: docstring
+    return iter(getattr(d, _iterkeys)(**kw))
+#ANNOTATION: get _iterkeys attribute of the class d, call the result with an argument unpacked dictionary kw, convert the result to a iterable,
+#ANNOTATION: return it.
+
+def itervalues(d, **kw):
+#ANNOTATION: define the function itervalues with 2 arguments: d and unpacked dictionary  kw.
+    """Return an iterator over the values of a dictionary."""
+#ANNOTATION: docstring
+    return iter(getattr(d, _itervalues)(**kw))
+#ANNOTATION: get _itervalues attribute of the class d, call the result with an argument unpacked dictionary kw, convert the result to a iterable,
+#ANNOTATION: return it.
+
+def iteritems(d, **kw):
+#ANNOTATION: define the function iteritems with 2 arguments: d and unpacked dictionary  kw.
+    """Return an iterator over the (key, value) pairs of a dictionary."""
+#ANNOTATION: docstring
+    return iter(getattr(d, _iteritems)(**kw))
+#ANNOTATION: get _iteritems attribute of the class d, call the result with an argument unpacked dictionary kw, convert the result to a iterable,
+#ANNOTATION: return it.
+
+def iterlists(d, **kw):
+#ANNOTATION: define the function iterlists with 2 arguments: d and unpacked dictionary  kw.
+    """Return an iterator over the (key, [values]) pairs of a dictionary."""
+#ANNOTATION: docstring
+    return iter(getattr(d, _iterlists)(**kw))
+#ANNOTATION: get _iterlists attribute of the class d, call the result with an argument unpacked dictionary kw, convert the result to a iterable,
+#ANNOTATION: return it.
+
+
+if PY3:
+#ANNOTATION: if PY3 is true,
+    def b(s):
+#ANNOTATION: define the function b with an argument s.
+        return s.encode("latin-1")
+#ANNOTATION: call the method e.encode with an argument string "latin-1".
+    def u(s):
+#ANNOTATION: define the function u with an argument s.
+        return s
+#ANNOTATION: return s.
+    unichr = chr
+#ANNOTATION: substitute chr for unichr.
+    if sys.version_info[1] <= 1:
+#ANNOTATION: if second element of sys.version_info is smaller than or equal to integer 1,
+        def int2byte(i):
+#ANNOTATION: define the function int2byte with an argument i.
+            return bytes((i,))
+#ANNOTATION: call the function bytes with an argument tuple with an element i, return the result.
+    else:
+#ANNOTATION: if not,
+        # This is about 2x faster than the implementation above on 3.2+
+        int2byte = operator.methodcaller("to_bytes", 1, "big")
+#ANNOTATION: call the method operator.methodcaller with 3 arguments: string 'to_bytes', integer 1 and string 'big', substitute the result for int2byte.
+    byte2int = operator.itemgetter(0)
+#ANNOTATION: call te method operator.itemgetter with an argument integer 0, substitute the result for byte2int.
+    indexbytes = operator.getitem
+#ANNOTATION: substitute operator.getitem for indexbytes.
+    iterbytes = iter
+#ANNOTATION: substitute iter for iterbytes.
+    import io
+#ANNOTATION: import io.
+    StringIO = io.StringIO
+#ANNOTATION: substitute io.StringIO for StringIO.
+    BytesIO = io.BytesIO
+#ANNOTATION: substitute io.BytesIO for BytesIO.
+else:
+#ANNOTATION: if not,
+    def b(s):
+#ANNOTATION: define the function b with an argument s.
+        return s
+#ANNOTATION: return s.
+    # Workaround for standalone backslash
+    def u(s):
+#ANNOTATION: define the function u with an argument s.
+        return unicode(s.replace(r'\\', r'\\\\'), "unicode_escape")
+#ANNOTATION: replace every occurrence of raw string '\\' in s with a raw string '\\\\', use the result and string "unicode_escape",
+#ANNOTATION: as arguments for the call to the unicode function, return the result.
+    unichr = unichr
+#ANNOTATION:substitute unichr for unichr. 
+    int2byte = chr
+#ANNOTATION: substitute chr for int2byte.
+    def byte2int(bs):
+#ANNOTATION: define the function byte2int with an argument bs.
+        return ord(bs[0])
+#ANNOTATION: get the integer representation of the first element of bs, return it.
+    def indexbytes(buf, i):
+#ANNOTATION: define the function indexbytes with 2 arguments buf and i.
+        return ord(buf[i])
+#ANNOTATION: get the integer representation of the i-th element of buf, return it.
+    def iterbytes(buf):
+#ANNOTATION: define the function iterbytes with an argument buf.
+        return (ord(byte) for byte in buf)
+#ANNOTATION: convert byte to its integer representation, return all of the results for every byte in buf.
+    import StringIO
+#ANNOTATION: import StringIO.
+    StringIO = BytesIO = StringIO.StringIO
+#ANNOTATION: assign StringIO.StringIO to StringIO and BytesIO.
+_add_doc(b, """Byte literal""")
+#ANNOTATION: call the function _add_doc with 2 arguments: b and string """Byte literal""".
+_add_doc(u, """Text literal""")
+#ANNOTATION: call the function _add_doc with 2 arguments: u and string """Text literal""".
+
+
+if PY3:
+#ANNOTATION: if PY3 is true,
+    exec_ = getattr(moves.builtins, "exec")
+#ANNOTATION: get 'exec' attribute from the moves.builtins object, substitute it for exec_.
+
+
+    def reraise(tp, value, tb=None):
+#ANNOTATION: define the function reraise with 3 arguments: tp, value and tb set to None.
+        if value.__traceback__ is not tb:
+#ANNOTATION: if value.__traceback__ is not tb,
+            raise value.with_traceback(tb)
+#ANNOTATION: raise an value.with_traceback exception with an argument tb.
+        raise value
+#ANNOTATION: raise an exception value.
+
+else:
+#ANNOTATION: if not,
+    def exec_(_code_, _globs_=None, _locs_=None):
+#ANNOTATION: define the function exec with 3 arguments: _code_, _globs_ set to None and _locs_ set to None.
+        """Execute code in a namespace."""
+#ANNOTATION: docstring
+        if _globs_ is None:
+#ANNOTATION: if _globs_ is None,
+            frame = sys._getframe(1)
+#ANNOTATION: call the method sys._getframe with an argument 1, substitute the result for frame.
+            _globs_ = frame.f_globals
+#ANNOTATION: substitute frame.f_globals for _globs_.
+            if _locs_ is None:
+#ANNOTATION: if _locs_ is None,
+                _locs_ = frame.f_locals
+#ANNOTATION: substitute if _locs_ is None for _locs_.
+            del frame
+#ANNOTATION: delete frame.
+        elif _locs_ is None:
+#ANNOTATION: otherwise if _locs_ is None,
+            _locs_ = _globs_
+#ANNOTATION: substitute _globs_ with an argument _locs_.
+        exec("""exec _code_ in _globs_, _locs_""")
+#ANNOTATION: execute code statement """exec _code_ in _globs_, _locs_""".
+
+
+    exec_("""def reraise(tp, value, tb=None):
+    raise tp, value, tb
+""")
+#ANNOTATION: call the function exec_ with an argument string """def reraise(tp, value, tb=None):    raise tp, value, tb""".
+
+
+print_ = getattr(moves.builtins, "print", None)
+#ANNOTATION: get attribute 'print' from the moves.builtins object, if it exists substitute it for print_, if not print_ is None.
+if print_ is None:
+#ANNOTATION: if print_ is None,
+    def print_(*args, **kwargs):
+#ANNOTATION: define the function print_ with 2 arguments: unpacked list args and unpacked dictionary kwargs.
+        """The new-style print function for Python 2.4 and 2.5."""
+#ANNOTATION: docstring
+        fp = kwargs.pop("file", sys.stdout)
+#ANNOTATION: remover 'file' key from the kwargs dictionary, if it exists substitute it for fp, if not substitute sys.stdout for fp.
+        if fp is None:
+#ANNOTATION: if fp is None,
+            return
+#ANNOTATION: return nothing.
+        def write(data):
+#ANNOTATION: define the function write with an argument data.
+            if not isinstance(data, basestring):
+#ANNOTATION: if data is not an instance of basestring,
+                data = str(data)
+#ANNOTATION: convert data to string, substitute it for data.
+            # If the file has an encoding, encode unicode with it.
+            if (isinstance(fp, file) and
+                isinstance(data, unicode) and
+                fp.encoding is not None):
+#ANNOTATION: if fp is an instance of file and data is an instance of unicode and fp.encoding is not None,
+                errors = getattr(fp, "errors", None)
+#ANNOTATION: get 'errors' attribute from fp object, substitute it for errors if it exists, if not errors is None.
+                if errors is None:
+#ANNOTATION: if errors is None,
+                    errors = "strict"
+#ANNOTATION: errors is a string "strict".
+                data = data.encode(fp.encoding, errors)
+#ANNOTATION: call the method data.encode with 2 arguments: fp.encoding and errors, substitute the result for data.
+            fp.write(data)
+#ANNOTATION: write data to fp.
+        want_unicode = False
+#ANNOTATION: want_unicode is boolean False.
+        sep = kwargs.pop("sep", None)
+#ANNOTATION: remove 'sep' key from the kwargs dictionary, if it exists substitute it for sep, if not sep is None.
+        if sep is not None:
+#ANNOTATION: if sep is not None,
+            if isinstance(sep, unicode):
+#ANNOTATION: if sep is an instance of unicode,
+                want_unicode = True
+#ANNOTATION: want_unicode is boolean True.
+            elif not isinstance(sep, str):
+#ANNOTATION: otherwise if sep is not an instance of string type,
+                raise TypeError("sep must be None or a string")
+#ANNOTATION: raise an TypeError exception with an argument string "sep must be None or a string".
+        end = kwargs.pop("end", None)
+#ANNOTATION: remove 'end' key from the kwargs dictionary, if it exists substitute it for end, if not end is None.
+        if end is not None:
+#ANNOTATION: if end is not None,
+            if isinstance(end, unicode):
+#ANNOTATION: if end is an instance of unicode,
+                want_unicode = True
+#ANNOTATION: want_unicode is boolean True.
+            elif not isinstance(end, str):
+#ANNOTATION: otherwise if end is not an instance of string type,
+                raise TypeError("end must be None or a string")
+#ANNOTATION: raise an TypeError exception with an argument string "end must be None or a string".
+        if kwargs:
+#ANNOTATION: if kwargs is true,
+            raise TypeError("invalid keyword arguments to print()")
+#ANNOTATION: raise an TypeError exception with an argument string "invalid keyword arguments to print()".
+        if not want_unicode:
+#ANNOTATION: if want_unicode is false,
+            for arg in args:
+#ANNOTATION: for every arg in args,
+                if isinstance(arg, unicode):
+#ANNOTATION: if arg is an instance of unicode,
+                    want_unicode = True
+#ANNOTATION: want_unicode is boolean True.
+                    break
+#ANNOTATION: break from the loop execution.
+        if want_unicode:
+#ANNOTATION: if want_unicode is true,
+            newline = unicode("\n")
+#ANNOTATION: convert newline character to unicode and substitute the result for newline.
+            space = unicode(" ")
+#ANNOTATION: convert whitespace character to unicode and substitute the result for space.
+        else:
+#ANNOTATION: if not,
+            newline = "\n"
+#ANNOTATION: substitute newline character for newline.
+            space = " "
+#ANNOTATION: substitute string " " for space.
+        if sep is None:
+#ANNOTATION: if sep is None,
+            sep = space
+#ANNOTATION: substitute space for sep. 
+        if end is None:
+#ANNOTATION: if end is None
+            end = newline
+#ANNOTATION: substitute space for end.
+        for i, arg in enumerate(args):
+#ANNOTATION: for every i and arg in enumerated iterable args,
+            if i:
+#ANNOTATION: if i is true,
+                write(sep)
+#ANNOTATION: call the function write with an argument sep.
+            write(arg)
+#ANNOTATION: call the function write with an argument arg.
+        write(end)
+#ANNOTATION: call the function write with an argument end.
+
+_add_doc(reraise, """Reraise an exception.""")
+#ANNOTATION: call the function _add_doc with 2 arguments: reraise and string """Reraise an exception.""".
+
+
+def with_metaclass(meta, *bases):
+#ANNOTATION: define the function with_metaclass with 2 arguments meta and unpacked list bases.
+    """Create a base class with a metaclass."""
+#ANNOTATION: docstring
+    # This requires a bit of explanation: the basic idea is to make a
+    # dummy metaclass for one level of class instantiation that replaces
+    # itself with the actual metaclass.  Because of internal type checks
+    # we also need to make sure that we downgrade the custom metaclass
+    # for one level to something closer to type (that's why __call__ and
+    # __init__ comes back from type etc.).
+    class metaclass(meta):
+#ANNOTATION: derive the class metaclass form the meta base class.
+        __call__ = type.__call__
+#ANNOTATION: substitute type.__call__ for __call__.
+        __init__ = type.__init__
+#ANNOTATION: substitute type.__init__ for __init__.
+        def __new__(cls, name, this_bases, d):
+#ANNOTATION: define the method __new__ with 4 arguments: cls, name, this_bases and d.
+            if this_bases is None:
+#ANNOTATION: if this_bases is None,
+                return type.__new__(cls, name, (), d)
+#ANNOTATION: call the method type.__new__ with 4 arguments: cls, name, empty tuple and d, return the result.
+            return meta(name, bases, d)
+#ANNOTATION: call the function meta with 3 arguments: name, base and d.
+    return metaclass('temporary_class', None, {})
+#ANNOTATION: return an instance of metaclass class, created with 3 arguments: string 'temporary_class', None and an empty dictionary.
+
+
+def add_metaclass(metaclass):
+#ANNOTATION: define the function add_metaclass with an argument metaclass.
+    """Class decorator for creating a class with a metaclass."""
+#ANNOTATION: docstring
+    def wrapper(cls):
+#ANNOTATION: define the function wrapper with an argument cls.
+        orig_vars = cls.__dict__.copy()
+#ANNOTATION: call the method cls.__dict__.copy substitute the result for orig_vars.
+        orig_vars.pop('__dict__', None)
+#ANNOTATION: remove '__dict__' key from the orig_vars dictionary.
+        orig_vars.pop('__weakref__', None)
+#ANNOTATION: remove '__weakref__' key from the orig_vars dictionary.
+        slots = orig_vars.get('__slots__')
+#ANNOTATION: get the value under the '__slots__' key of the orig_vars dictionary, substitute it for slots.
+        if slots is not None:
+#ANNOTATION: if slots is not None,
+            if isinstance(slots, str):
+#ANNOTATION: if slots is an instance of str,
+                slots = [slots]
+#ANNOTATION: slots is a list with an element, slots.
+            for slots_var in slots:
+#ANNOTATION: for every slots_var in slots,
+                orig_vars.pop(slots_var)
+#ANNOTATION: remove slots_var key from the orig_vars dictionary.
+        return metaclass(cls.__name__, cls.__bases__, orig_vars)
+#ANNOTATION: return an instance of metaclass class, created with 3 arguments: cls.__name__, cls.__bases__ and orig_vars.
+    return wrapper
+#ANNOTATION: return wrapper.
+
+
+### Additional customizations for Django ###
+
+if PY3:
+#ANNOTATION: if PY3 is true,
+    _assertCountEqual = "assertCountEqual"
+#ANNOTATION: _assertCountEqual is a strnig "assertCountEqual".
+    _assertRaisesRegex = "assertRaisesRegex"
+#ANNOTATION:  _assertRaisesRegex is a strnig "assertRaisesRegex".
+    _assertRegex = "assertRegex"
+#ANNOTATION: _assertRegex is a strnig "assertRegex".
+    memoryview = memoryview
+#ANNOTATION: substitute memoryview for memoryview.
+    buffer_types = (bytes, bytearray, memoryview)
+#ANNOTATION: buffer_types is a tuple with 3 elements: bytes, bytearray and memoryview.
+else:
+#ANNOTATION: if not,
+    _assertCountEqual = "assertItemsEqual"
+#ANNOTATION: _assertCountEqual is a strnig "assertItemsEqual".
+    _assertRaisesRegex = "assertRaisesRegexp"
+#ANNOTATION: _assertRaisesRegex is a strnig "assertRaisesRegexp".
+    _assertRegex = "assertRegexpMatches"
+#ANNOTATION: _assertRegex is a strnig "assertRegexpMatches".
+    # memoryview and buffer are not strictly equivalent, but should be fine for
+    # django core usage (mainly BinaryField). However, Jython doesn't support
+    # buffer (see http://bugs.jython.org/issue1521), so we have to be careful.
+    if sys.platform.startswith('java'):
+#ANNOTATION: if sys.platform starts with a string 'java',
+        memoryview = memoryview
+#ANNOTATION: substitute memoryview for memoryview.
+    else:
+#ANNOTATION: if not,
+        memoryview = buffer
+#ANNOTATION: substitute buffer for memoryview.
+    buffer_types = (bytearray, memoryview)
+#ANNOTATION: buffer_types is a tuple with 2 elements bytearray and memoryview.
+
+
+def assertCountEqual(self, *args, **kwargs):
+#ANNOTATION: define the function assertCountEqual with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+    return getattr(self, _assertCountEqual)(*args, **kwargs)
+#ANNOTATION: get _assertCountEqual attribute of the self object, call the result with 2 arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs, return the result.
+
+
+def assertRaisesRegex(self, *args, **kwargs):
+#ANNOTATION: define the function assertRaisesRegex with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+    return getattr(self, _assertRaisesRegex)(*args, **kwargs)
+#ANNOTATION: get _assertRaisesRegex attribute of the self object, call the result with 2 arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs, return the result.
+
+
+def assertRegex(self, *args, **kwargs):
+#ANNOTATION: define the function assertRegex with 3 arguments: self, unpacked list args and unpacked dictionary kwargs.
+    return getattr(self, _assertRegex)(*args, **kwargs)
+#ANNOTATION: get _assertRegex attribute of the self object, call the result with 2 arguments: unpacked list args,
+#ANNOTATION: and unpacked dictionary kwargs, return the result.
+
+
+add_move(MovedModule("_dummy_thread", "dummy_thread"))
+#ANNOTATION: call the function MovedModule with 2 arguments: strings "_dummy_thread" and "dummy_thread", 
+#ANNOTATION: use the result as an argument for the call to the add_move function.
+add_move(MovedModule("_thread", "thread"))
+#ANNOTATION: call the function MovedModule with 2 arguments: strings "_thread" and "thread", 
+#ANNOTATION: use the result as an argument for the call to the add_move function.
