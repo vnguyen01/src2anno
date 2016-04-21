@@ -1,0 +1,3761 @@
+if not e . connection_reset :
+self . attachments . append ( filename )
+@ register . filter ( is_safe = True )
+d = d [ idx ]
+_dict = func ( * resolved_args , ** resolved_kwargs )
+if self . _leftover :
+return self . _caches . caches [ alias ]
+pass
+message_context = context_match . group ( 1 )
+from django . conf import settings
+help = "Returns a list of the SQL statements required to return all tables in the database to the state they were in just after they were installed."
+numbers = [  MigrationAutodetector . parse_number ( migration . name )  for migration in merge_migrations  ]
+def render ( self ) :
+if len ( words ) > length :
+else :
+if not self . required :
+self . reader_leaves ( )
+dig1 , dig2 = inner . copy ( ) , outer . copy ( )
+def _findall ( text , substr ) :
+if app_config . models_module is None :
+return _cached_filenames
+self . _namespace_dict [ language_code ] = namespaces
+from django . utils . http import http_date
+pass
+class Loader ( BaseLoader ) :
+else :
+acceptable_endblocks = ( 'endblock' , 'endblock %s' % block_name )
+def display ( self ) :
+def convert_old_style_list ( list_ ) :
+try :
+dirs = [ ]
+def __init__ ( self , max_value = None , min_value = None , max_digits = None , decimal_places = None , * args , ** kwargs ) :
+if result is not None :
+dirname = os . path . dirname ( filename )
+self . domain = options . get ( 'domain' )
+if self . instance . pk is not None :
+return '\n' . join ( usage )
+for k , v in self . _iteritems ( ) :
+self . characters ( contents )
+base = sup_cls . media
+from django . utils import formats
+elif bytes < GB :
+return bytes ( ( i , ) )
+attrs = { 'form' : form , 'extra' : extra ,  'can_order' : can_order , 'can_delete' : can_delete ,  'min_num' : min_num , 'max_num' : max_num ,  'absolute_max' : absolute_max , 'validate_min' : validate_min ,  'validate_max' : validate_max }
+created_models = set ( )
+raise
+for node in compiled_parent . nodelist :
+def __repr__ ( self ) :
+sys . stderr . write ( "ERROR: %s\n" % e )
+po_path = os . path . join ( dirpath , f )
+if settings . is_overridden ( 'ADMINS' ) :
+if key in dict_ :
+args , varargs , varkw , defaults = getargspec ( func )
+except UnicodeDecodeError :
+text_value = force_text ( value )
+from django . utils . encoding import force_str
+return sign + int_part + dec_part
+pass
+def valid_ident ( s ) :
+return super ( BaseInlineFormSet , self ) . initial_form_count ( )
+self [ k ] = v
+filename = filename [ : - 9 ] + ".py"
+new_path = path [ match . end ( ) : ]
+elif g [ 0 ] == "'" :
+return True
+if not ext and content_type :
+zfile . close ( )
+utility = ManagementUtility ( argv )
+self . new_method_name = new_method_name
+def __init__ ( self , * args , ** kwargs ) :
+else :
+def id_for_label ( self , id_ ) :
+BUILTIN_SERIALIZERS = {  "xml" : "django.core.serializers.xml_serializer" ,  "python" : "django.core.serializers.python" ,  "json" : "django.core.serializers.json" ,  "yaml" : "django.core.serializers.pyyaml" ,  }
+slug_re = re . compile ( r'^[-a-zA-Z0-9_]+$' )
+def auto_id ( self ) :
+return not self . _is_expired ( f )
+from django . forms . models import *
+return new_value
+if self . _errors is None :
+kwargs [ 'safe' ] = safe
+self . reason_phrase = REASON_PHRASES . get ( self . status_code ,  'UNKNOWN STATUS CODE' )
+if not response . has_header ( 'Cache-Control' ) :
+self . cc = list ( cc )
+return
+if options [ 'verbosity' ] > 0 :
+self . tagtype = tagtype
+self . xml . startElement ( "object" , attrs )
+from django . core import serializers
+recipients = [ sanitize_address ( addr , email_message . encoding )  for addr in email_message . recipients ( ) ]
+prefix = 'django_%s_template_' % self . app_or_project
+if '/' in path and ( ( '\\' in path and path . find ( '/' ) < path . find ( '\\' ) )  or '\\' not in path ) :
+with lock :
+self . name = name
+hextets [ best_doublecolon_start : best_doublecolon_end ] = [ '' ]
+else :
+logging_config_func ( DEFAULT_LOGGING )
+else :
+super ( MultiValueField , self ) . __init__ ( * args , ** kwargs )
+instance . keyOrder = [ ]
+return urljoin ( self . base_url , filepath_to_uri ( name ) )
+curs . execute ( statement )
+if value :
+message = ungettext_lazy (  'Ensure this value has at least %(limit_value)d character (it has %(show_value)d).' ,  'Ensure this value has at least %(limit_value)d characters (it has %(show_value)d).' ,  'limit_value' )
+if settings . TEMPLATE_DEBUG :
+from django . utils . _os import safe_join
+return getattr ( caches [ DEFAULT_CACHE_ALIAS ] , name )
+import sys
+from django . utils . deprecation import RemovedInDjango19Warning
+logger . removeHandler ( handler )
+return str ( self )
+return mark_safe ( '\n' . join ( output ) )
+except signing . BadSignature :
+parser . add_argument ( '--plain' , action = 'store_true' , dest = 'plain' ,  help = 'Tells Django to use plain Python, not IPython or bpython.' )
+else :
+self . sysid = sysid
+parser . add_argument ( '--noinput' , action = 'store_false' , dest = 'interactive' , default = True ,  help = 'Tells Django to NOT prompt the user for input of any kind.' )
+else :
+common_prefix = None
+else :
+class TypedMultipleChoiceField ( MultipleChoiceField ) :
+end , next = boundary
+last = max ( 0 , end - 1 )
+for widget in self . get_renderer ( name , value , attrs , choices ) :
+self . value = value
+return output
+now = timezone . now ( )
+digit = x % len ( to_digits )
+if illegal_formatting :
+try :
+if opname not in roots :
+app_labels = set ( app_labels )
+return IfChangedNode ( nodelist_true , nodelist_false , * values )
+def get_date_error_message ( self , date_check ) :
+if not m :
+return e
+def to_python ( self , data ) :
+fields = list ( six . iteritems ( base . base_fields ) ) + fields
+default_error_messages = {  'invalid_image' : _ ( "Upload a valid image. The file you uploaded was either not an image or a corrupted image." ) ,  }
+else :
+if run_syncdb and executor . loader . unmigrated_apps :
+val , encoded = super ( SimpleCookie , self ) . value_encode ( val )
+self . remove_potfiles ( )
+logging . captureWarnings ( True )
+class SafeBytes ( bytes , SafeData ) :
+regex = re . compile ( regex , re . UNICODE )
+else :
+def make_writeable ( self , filename ) :
+if ch :
+class SafeMIMEMessage ( MIMEMixin , MIMEMessage ) :
+def items ( self ) :
+return mark_safe ( template % substitutions )
+BaseCache . __init__ ( self , * args , ** kwargs )
+return False
+WEEKDAYS_ABBR = {  0 : _ ( 'Mon' ) , 1 : _ ( 'Tue' ) , 2 : _ ( 'Wed' ) , 3 : _ ( 'Thu' ) , 4 : _ ( 'Fri' ) ,  5 : _ ( 'Sat' ) , 6 : _ ( 'Sun' )  }
+return '' . join ( output )
+ULONG_PTR = c_ulong
+raise CommandError ( "Incompatible values of 'leave_locale_alone' "  "(%s) and 'can_import_settings' (%s) command "  "options." % ( self . leave_locale_alone ,  self . can_import_settings ) )
+class Parser ( object ) :
+if y and m and d :
+if self . settings_exception is not None :
+max_entries = params . get ( 'max_entries' , options . get ( 'MAX_ENTRIES' , 300 ) )
+return usage
+fixture_dirs = [ os . path . dirname ( fixture_name ) ]
+return fp . getvalue ( )
+if regex is not None :
+def __str__ ( self ) :
+self . conditions_nodelists = conditions_nodelists
+if self . merge and not conflicts :
+final_attrs = self . build_attrs ( attrs )
+basedirs = [ os . path . join ( 'conf' , 'locale' ) , 'locale' ]
+rendering_attrs = [ 'template_name' , 'context_data' , '_post_render_callbacks' ]
+@ content . setter
+self . flo = flo
+elif isinstance ( o , decimal . Decimal ) :
+self . _meta = META
+class RWLock ( object ) :
+import re
+from django . utils . encoding import smart_text , force_text
+return False
+if param not in params and varkw is None :
+def extend_nodelist ( self , nodelist , node , token ) :
+def upath ( path ) :
+from django . utils import six
+from __future__ import unicode_literals
+reversed_text = ' reversed' if self . is_reversed else ''
+if f . name in cleaned_data :
+child_nodelists = ( 'nodelist_true' , 'nodelist_false' )
+if self . _pk_field == self . fk :
+super ( BaseInlineFormSet , self ) . __init__ ( data , files , prefix = prefix ,  queryset = qs , ** kwargs )
+def write_message ( self , message ) :
+data [ field . attname ] = value
+def __init__ ( self , language ) :
+def __init__ ( self , file ) :
+try :
+hidden_fields . append ( six . text_type ( bf ) )
+class SerializerDoesNotExist ( KeyError ) :
+return time_format ( value , arg )
+seen_models = connection . introspection . installed_models ( tables )
+if new_name . startswith ( '_' ) :
+month = MONTHS . index ( m . group ( 'mon' ) . lower ( ) ) + 1
+created_models = self . sync_apps ( connection , executor . loader . unmigrated_apps )
+def getvalue ( self ) :
+parser . add_argument ( '--database' , default = DEFAULT_DB_ALIAS ,  help = 'Nominates a database to print the SQL for. Defaults to the '  '"default" database.' )
+if PY3 :
+else :
+return LANG_INFO [ lang_code ]
+except ( ValueError , TypeError ) :
+return self . new_objects
+else :
+self . namespaces = [ x for x in namespaces if x ]
+def __init__ ( self , limit_value ) :
+def previous_page_number ( self ) :
+first_item , second_item = list_
+parser . add_argument ( '-v' , '--verbosity' , action = 'store' , dest = 'verbosity' , default = '1' ,  type = int , choices = [ 0 , 1 , 2 , 3 ] ,  help = 'Verbosity level; 0=minimal output, 1=normal output, 2=verbose output, 3=very verbose output' )
+tok = toks [ name ]
+cache_timeout = 0
+cursor = connection . cursor ( )
+self . _reset_dicts ( dict_ )
+except ValueError :
+if not isinstance ( s , six . string_types ) :
+def get_digit ( value , arg ) :
+return localtime ( value ) if should_convert else value
+root [ : ] = [ root , root , None , None ]
+in_index = - 3 if is_reversed else - 2
+pass
+def __nonzero__ ( self ) :
+self . stdout . write ( self . style . NOTICE ( "  Your models have changes that are not yet reflected in a migration, and so won't be applied." ) )
+args = [ self . program ] + self . program_options + [ '-o' ,  npath ( base_path + '.mo' ) , npath ( base_path + '.po' ) ]
+raise SerializerDoesNotExist ( format )
+key = self . make_key ( key , version = version )
+def __init__ ( self ) :
+sign , digits , exponent = d . quantize ( exp , ROUND_HALF_UP ,  Context ( prec = prec ) ) . as_tuple ( )
+return func
+s = StringIO ( )
+class MultiPartParser ( object ) :
+warnings . warn ( 'A secure pseudo-random number generator is not available '  'on your system. Falling back to Mersenne Twister.' )
+try :
+name = match . lastgroup
+import warnings
+if not self . initial_forms :
+raise TemplateSyntaxError (  "'%s' received some positional argument(s) after some "  "keyword argument(s)" % name )
+def __init__ ( self , stream , limit , buf_size = 64 * 1024 * 1024 ) :
+if construct :
+if hasattr ( self , 'error_dict' ) :
+def __iter__ ( self ) :
+scheme , netloc , path , query , fragment = urlsplit ( value )
+num_loopvars = len ( self . loopvars )
+value = ungettext ( "%(size)d byte" , "%(size)d bytes" , 0 ) % { 'size' : 0 }
+return self . represent_scalar ( 'tag:yaml.org,2002:str' , str ( data ) )
+cur_lineno = t . lineno + t . contents . count ( '\n' )
+return '\n\n' . join ( paras )
+def list ( self , * args , ** kwargs ) :
+if csrf_token :
+def push ( self , * args , ** kwargs ) :
+try :
+ch , escaped = next ( pattern_iter )
+form = self . form (  auto_id = self . auto_id ,  prefix = self . add_prefix ( '__prefix__' ) ,  empty_permitted = True ,  )
+if getattr ( ev , 'filename' , None ) is None :
+walk_to_end ( ch , pattern_iter )
+help = 'Compiles .po files to .mo files for use with builtin gettext support.'
+try :
+else :
+norm_patterns = [ p [ : - len ( dir_suffix ) ] if p . endswith ( dir_suffix ) else p for p in self . ignore_patterns ]
+return '' . join ( self . fed )
+def xreadlines ( self ) :
+def clear ( self ) :
+finally :
+setattr ( base , new_method_name , old_method )
+def __iter__ ( self ) :
+warnings . warn (  "No fixture data found for '%s'. (File format may be "  "invalid.)" % fixture_name ,  RuntimeWarning  )
+msg = self . _create_message ( msg )
+if isinstance ( cache , BaseDatabaseCache ) :
+guts = re . sub ( r"\\.|." , escape_quotes , tok [ 1 : - 1 ] )
+return 'StopUpload: Halt current upload.'
+getattr ( combined , 'add_' + name ) ( getattr ( other , '_' + name , None ) )
+raise ValueError ( e )
+self . default_validators = validators . ip_address_validators ( protocol , unpack_ipv4 ) [ 0 ]
+return False
+return result
+base , ext = os . path . splitext ( base )
+def __init__ ( self , conditions_nodelists ) :
+try :
+self . registered_checks . append ( check )
+else :
+result . append ( Group ( ( ( "%%(%s)s" % param ) , None ) ) )
+self . _setup ( )
+handler . endElement ( "entry" )
+logger . warning (  'Forbidden (Permission denied): %s' , request . path ,  extra = {  'status_code' : 403 ,  'request' : request  } )
+return '' . join ( c )
+def is_silenced ( self ) :
+def __init__ ( self , options = None ) :
+self . write_po_file ( potfile , locale )
+if self . is_localized :
+def add_arguments ( self , parser ) :
+j = day_of_year + ( 7 - weekday ) + ( jan1_weekday - 1 )
+assert len ( version ) == 5
+def __getitem__ ( self , i ) :
+yield "#   * Make sure each model has one field with primary_key=True"
+def created_time ( self , name ) :
+def __deepcopy__ ( self , memo ) :
+else :
+with self . mutex :
+return ugettext_lazy ( value )
+try :
+pass
+shutdown_message = '\nServer stopped.\nNote that the test database, %r, has not been deleted. You can explore it on your own.' % db_name
+value = value . replace ( b'\\\\' , b'\\' ) . replace ( b'\\"' , b'"' )
+if self . _isdst ( dt ) :
+return self . token
+return output
+for format in self . input_formats :
+config [ 'fmt' ] = config . pop ( 'format' )
+obj . widgets = copy . deepcopy ( self . widgets )
+def catalog ( ) :
+__Y = r'(?P<year>\d{4})'
+return ( self . func , self . args , self . kwargs ) [ index ]
+signed_value = force_str ( signed_value )
+def clean ( self ) :
+self . old_timezone = getattr ( _active , 'value' , None )
+class HttpResponseRedirect ( HttpResponseRedirectBase ) :
+except ( ValueError , TypeError , OverflowError ) :
+def tzname ( self , dt ) :
+if item [ 'ttl' ] is not None :
+except ImportError :
+match = (  pattern == '*' or  pattern . startswith ( '.' ) and (  host . endswith ( pattern ) or host == pattern [ 1 : ]  ) or  pattern == host  )
+return "<WithNode>"
+raise InvalidCacheBackendError (  "Could not find backend '%s': %s" % ( backend , e ) )
+return False
+class _LazyModule ( types . ModuleType ) :
+attachment = SafeMIMEText ( content , subtype , encoding )
+if locations :
+file = open ( file_or_path , 'rb' )
+break
+elif getattr ( current , 'alters_data' , False ) :
+orig_file = os . path . join ( self . dirpath , self . file )
+test_runner_class . add_arguments ( parser )
+while field . rel is not None :
+full_path = self . path ( name )
+try :
+return json . dumps ( { f : e . get_json_data ( escape_html ) for f , e in self . items ( ) } )
+parser . add_argument ( '--pythonpath' ,  help = 'A directory to add to the Python path, e.g. "/home/djangoprojects/myproject".' )
+f = os . path . join ( root , f )
+current_expires = typecast_timestamp ( str ( current_expires ) )
+yield self [ key ]
+_ , ser_fmt , cmp_fmt = self . parse_name ( os . path . basename ( fixture_file ) )
+self . _current [ field . name ] = field . value_to_string ( obj )
+try :
+resolver_match = resolver . resolve ( request . path_info )
+import datetime
+return ''
+base_lang = get_language ( ) . split ( '-' ) [ 0 ]
+attrname , rest , attrvalue = m . group ( 1 , 2 , 3 )
+creation_counter = 0
+regex = re . compile (  r'^(?:[a-z0-9\.\-]*)://'  r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}(?<!-)\.?)|'  r'localhost|'  r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|'  r'\[?[A-F0-9]*:[A-F0-9:]+\]?)'  r'(?::\d+)?'  r'(?:/?|[/?]\S+)$' , re . IGNORECASE )
+def E ( self ) :
+from django . template import loader , Context , RequestContext
+tables = connection . introspection . table_names ( )
+if t . token_type != TOKEN_COMMENT :
+return not ( v is False or v is None or v == '' )
+def clear ( self ) :
+class RemovedInDjango19Warning ( DeprecationWarning ) :
+class QueryDict ( MultiValueDict ) :
+return False
+digits . append ( '-' )
+raise TemplateSyntaxError ( "Invalid filter: '%s'" % filter_name )
+return ''
+from django . utils import lru_cache
+def open ( self ) :
+check_for_language = lambda x : True
+for form in valid_forms :
+except http_cookies . CookieError :
+return False
+tupl = d . as_tuple ( )
+def delete ( self , name ) :
+pass
+from functools import total_ordering
+kwargs [ 'max_age' ] = min ( int ( cc [ 'max-age' ] ) , kwargs [ 'max_age' ] )
+return self . _urlconf_module
+self . choices = choices
+incomment = False
+_default = translation ( settings . LANGUAGE_CODE )
+def add_arguments ( self , parser ) :
+def end_index ( self ) :
+return ord ( bs [ 0 ] )
+finally :
+if i >= len ( subject ) :
+@ register . filter ( is_safe = True )
+return result
+f . save_form_data ( instance , cleaned_data [ f . name ] )
+app_config = apps . get_app_config ( app_label )
+parser . add_argument ( '--noinput' , action = 'store_false' , dest = 'interactive' , default = True ,  help = 'Tells Django to NOT prompt the user for input of any kind.' )
+return date ( datetime . now ( tz = tzinfo ) , self . format_string )
+except KeyError :
+def get_resolved_arguments ( self , context ) :
+six . reraise ( DeserializationError , DeserializationError ( e ) , sys . exc_info ( ) [ 2 ] )
+def has_key ( self , key , version = None ) :
+context . render_context . push ( )
+weight += 1
+return result
+if self . verbosity >= 2 :
+raise CommandError ( msg )
+self . bcc = [ ]
+self . widget . choices = self . choices
+if six . PY2 :
+from django . apps import apps
+lbp = 0
+MONTHS = {  1 : _ ( 'January' ) , 2 : _ ( 'February' ) , 3 : _ ( 'March' ) , 4 : _ ( 'April' ) , 5 : _ ( 'May' ) , 6 : _ ( 'June' ) ,  7 : _ ( 'July' ) , 8 : _ ( 'August' ) , 9 : _ ( 'September' ) , 10 : _ ( 'October' ) , 11 : _ ( 'November' ) ,  12 : _ ( 'December' )  }
+raise
+return date ( d . year , d . month , d . day )
+_wrapped = None
+from __future__ import unicode_literals
+raise CommandError ( "%r conflicts with the name of an existing "  "Python module and cannot be used as a "  "project name. Please try another name." %  project_name )
+finally :
+return self . _cache . incr ( key , - delta )
+if not isinstance ( value , ConvertingDict ) and isinstance ( value , dict ) :
+super ( Command , self ) . add_arguments ( parser )
+@ register . filter ( is_safe = False )
+Module_six_moves_urllib_request . _moved_attributes = _urllib_request_moved_attributes
+super ( NullBooleanSelect , self ) . __init__ ( attrs , choices )
+return six . text_type ( s ) . encode ( encoding , errors )
+return dict ( ( key , self [ key ] ) for key in self )
+else :
+self . __dict__ [ '_setupfunc' ] = func
+nodelist = parser . parse ( ( 'elif' , 'else' , 'endif' ) )
+if m :
+sort = complain
+else :
+def full_clean ( self ) :
+def __new__ ( cls , * args , ** kwargs ) :
+try :
+filter_name = match . group ( "filter_name" )
+import django . core . checks . model_checks
+from django . db import connections , DEFAULT_DB_ALIAS
+if lookup_view in self . _callback_strs :
+stream . unget ( chunk )
+context [ self . var_name ] = [  { 'grouper' : key , 'list' : list ( val ) }  for key , val in  groupby ( obj_list , lambda obj : self . resolve_expression ( obj , context ) )  ]
+self . stdout . write ( "Cleaning up temporary files.\n" )
+return self . compress ( [ ] )
+raise AttributeError ( "'%s' object has no attribute 'cleaned_data'" % self . __class__ . __name__ )
+widget = HiddenInput
+if tags and any ( not checks . tag_exists ( tag ) for tag in tags ) :
+comment_re = re . compile ( r"^((?:'[^']*'|[^'])*?)--.*$" )
+def ngettext_lazy ( singular , plural , number = None ) :
+ch , escaped = next ( input_iter )
+result = ungettext ( singular , plural , number )
+else :
+return int ( value ) + int ( arg )
+cull_num = num // self . _cull_frequency
+neg , value = self . convert ( i , self . decimal_digits , self . digits , '-' )
+if self . asvar :
+initLock = Lock ( )
+def __init__ ( self , filter_expression ) :
+widget . is_localized = True
+_mtimes = { }
+import mimetypes
+def to_python ( self , value ) :
+if isinstance ( file_name , Template ) :
+if plen < ( alen - dlen ) or plen > alen :
+week_number = 1
+raise InvalidTemplateLibrary ( "ImportError raised loading %s: %s" %  ( taglib_module , e ) )
+BLOCK_CONTEXT_KEY = 'block_context'
+self . timeout = timeout
+return [ format_html ( '<script type="text/javascript" src="{0}"></script>' , self . absolute_path ( path ) ) for path in self . _js ]
+from django . utils . translation import ugettext_lazy , ugettext as _ , pgettext
+return self . msg % tuple ( force_text ( p , errors = 'replace' ) for p in self . params )
+def set_cookie ( self , key , value = '' , max_age = None , expires = None , path = '/' ,  domain = None , secure = False , httponly = False ) :
+states = {   'div' : both_before + [  Tok ( "punct" , literals ( "/= /" ) , next = 'reg' ) ,  ] + both_after ,    'reg' : both_before + [  Tok ( "regex" ,  r"""                     /                       # opening slash                     # First character is..                     (   [^*\\/[]            # anything but * \ / or [                     |   \\.                 # or an escape sequence                     |   \[                  # or a class, which has                             (   [^\]\\]     #   anything but \ or ]                             |   \\.         #   or an escape sequence                             )*              #   many times                         \]                     )                     # Following characters are same, except for excluding a star                     (   [^\\/[]             # anything but \ / or [                     |   \\.                 # or an escape sequence                     |   \[                  # or a class, which has                             (   [^\]\\]     #   anything but \ or ]                             |   \\.         #   or an escape sequence                             )*              #   many times                         \]                     )*                      # many times                     /                       # closing slash                     [a-zA-Z0-9]*            # trailing flags                 """ , next = 'div' ) ,  ] + both_after ,  }
+if lang is None :
+if hasattr ( file , 'mode' ) :
+parser . add_argument ( '--ignorenonexistent' , '-i' , action = 'store_true' ,  dest = 'ignore' , default = False ,  help = 'Ignores entries in the serialized data for fields that do not '  'currently exist on the model.' )
+raise
+pass
+handler . addQuickElement ( "id" , self . feed [ 'id' ] )
+class Truncator ( SimpleLazyObject ) :
+self . value = force_text ( self . value )
+return html
+def read ( self ) :
+strip_entities = allow_lazy ( strip_entities , six . text_type )
+formfield_callback = attrs . pop ( 'formfield_callback' , None )
+config [ 'target' ] = self . config [ 'handlers' ] [ config [ 'target' ] ]
+self . verbosity = options . get ( 'verbosity' )
+def __text_cast ( self ) :
+integer_types = int ,
+return self . parent_instance
+def delete ( self , key , version = None ) :
+elif name == 'string' :
+import sys
+self . xml . endElement ( "object" )
+except ( OSError , NotImplementedError , AttributeError ) :
+RESET = '0'
+def __iter__ ( self ) :
+encoding = self . _encoding
+output_transaction = True
+try :
+else :
+rest = rest [ m . end ( ) : ]
+if top_errors :
+i = j + 1
+else :
+continue
+self . port = port or settings . EMAIL_PORT
+if hasattr ( _active , "value" ) :
+else :
+if terminal_char != ')' :
+request . resolver_match = resolver_match
+return value
+CONVERT_PATTERN = re . compile ( r'^(?P<prefix>[a-z]+)://(?P<suffix>.*)$' )
+return self . __dispatch [ t ] [ funcname ] ( res , * args , ** kw )
+from django . core . management import call_command
+raise ValueError (  "EMAIL_USE_TLS/EMAIL_USE_SSL are mutually exclusive, so only set "  "one of those settings to True." )
+else :
+raise ValidationError ( self . error_messages [ 'required' ] , code = 'required' )
+VARIABLE_TAG_START = '{{'
+def _proxy_method ( self , * args , ** kwargs ) :
+def __repr__ ( self ) :
+@ property
+param = elt [ 1 ]
+except ValueError :
+value = self . queryset . get ( ** { key : value } )
+last [ NEXT ] = root [ PREV ] = cache [ key ] = link
+def add ( self , key , value , timeout = DEFAULT_TIMEOUT , version = None ) :
+super ( EmailBackend , self ) . __init__ ( * args , ** kwargs )
+new_ip += hextet [ 1 ] . split ( ':' )
+import random as random_module
+lookups . appendlist ( pattern . name , ( bits , p_pattern , pattern . default_args ) )
+def ungettext_lazy ( singular , plural , number = None ) :
+def is_valid ( self ) :
+assert name , "The name argument is not allowed to be empty."
+self . _js . append ( path )
+except IOError :
+from __future__ import unicode_literals
+parser . add_argument ( '-o' , '--output' , default = None , dest = 'output' ,  help = 'Specifies file to which the output is written.' )
+if new_conn_created :
+if gettext_module . find ( 'django' , path , [ to_locale ( lang_code ) ] ) is not None :
+return tf . format ( format_string )
+return self . __text_cast ( )
+f . close ( )
+def __init__ ( self , func ) :
+from django . core . management . base import AppCommand
+label = bf . label_tag ( label ) or ''
+from django . core . management . base import BaseCommand , CommandError
+else :
+widget = SelectMultiple
+if self . _request_middleware is None :
+if not changed :
+lang = None
+return value
+return obj
+self . pubid = pubid
+raise MultiPartParserError ( 'Invalid boundary in multipart: %s' % boundary )
+handler . startElement ( "author" , { } )
+if value is None and attr in declared_fields :
+elif args [ - 2 ] == "as" :
+self . _cached_loaders = [ ]
+super ( CheckboxChoiceInput , self ) . __init__ ( * args , ** kwargs )
+none_model_fields = [ k for k , v in six . iteritems ( fields ) if not v ]
+os . mkdir ( target_dir )
+import signal
+def add_fields ( self , form , index ) :
+EMPTY_VALUES = ( None , '' , [ ] , ( ) , { } )
+@ property
+else :
+def handle_extensions ( extensions = ( 'html' , ) , ignored = ( 'py' , ) ) :
+raise ValidationError ( self . error_messages [ 'required' ] , code = 'required' )
+class WidthRatioNode ( Node ) :
+def copy ( self ) :
+self . content = self . rendered_content
+return ''
+nodelist . contains_nontext = True
+else :
+if i :
+return value . replace ( '\\' , '\\\\' ) . replace ( '"' , '\\"' ) . replace ( "'" , "\\'" )
+if fields is not None :
+except ( ValueError , TypeError ) :
+iterator = ChunkIter ( stream_or_iterable , 16384 )
+clean_data = [ ]
+final_attrs [ 'value' ] = force_text ( self . _format_value ( value ) )
+def modified_time ( self , name ) :
+class Http404 ( Exception ) :
+plural = [ ]
+return instance
+else :
+if isinstance ( callback , types . FunctionType ) :
+force_str = force_bytes
+class Choice ( list ) :
+if max_age is not None :
+class BaseModelFormSet ( BaseFormSet ) :
+else :
+def _get_media ( self ) :
+inplural = False
+f = os . path . join ( p , cmd )
+def reader_leaves ( self ) :
+source , display_name = loader ( name , dirs )
+import sys
+self . merge = options . get ( 'merge' , False )
+raise CommandError ( "You must supply at least one app label when using --empty." )
+if self . is_bound :
+return not bool ( self . option_list )
+if isinstance ( obj , models . signals . ModelSignal ) :
+raise BadSignature ( 'Signature "%s" does not match' % sig )
+import os
+if len ( compressed ) < ( len ( data ) - 1 ) :
+if ( field == NON_FIELD_ERRORS and opts . error_messages and  NON_FIELD_ERRORS in opts . error_messages ) :
+def inotify_code_changed ( ) :
+def __init__ ( self , callback ) :
+if not strict :
+def __lt__ ( self , other ) :
+if self . verbosity >= 1 :
+elif intrans :
+else :
+if path not in self . _js :
+class Page ( collections . Sequence ) :
+def timeuntil_filter ( value , arg = None ) :
+self . translate = True
+from django . utils . deconstruct import deconstructible
+if confirm == 'yes' :
+return avoid_wrapping ( ugettext ( '0 minutes' ) )
+total_forms = max ( initial_forms , self . min_num ) + self . extra
+return force_text ( self . prepare_value ( initial_value ) ) != force_text ( data_value )
+connection = connections [ options . get ( 'database' ) ]
+self . _stream = stream
+import os
+display_url = tmp + '/'
+content = template_file . read ( )
+for cat in item [ 'categories' ] :
+table = connections [ db ] . ops . quote_name ( self . _table )
+translation . _catalog = { }
+else :
+taglib = bits [ - 1 ]
+return self . file . size
+return bool ( self . name )
+if six . PY3 :
+def validate ( self , value ) :
+def localtime ( value , timezone = None ) :
+self . can_write . release ( )
+class IncludeNode ( Node ) :
+parser . add_argument ( '--version' , action = 'version' , version = self . get_version ( ) )
+base62 = BaseConverter ( BASE62_ALPHABET )
+changed = True
+yield ch , False
+sys . stdout . write ( django . get_version ( ) + '\n' )
+for option in option_label :
+self . cmd = cmd
+return
+try :
+left = t . nud ( self )
+else :
+parser . invalid_block_tag ( endblock , 'endblock' , acceptable_endblocks )
+ignored = [ ]
+self . warning = warning
+options [ 'secret_key' ] = get_random_string ( 50 , chars )
+yield buf . read ( )
+bits = urlsplit ( location )
+class Deserializer ( six . Iterator ) :
+return self . _text_chars ( length , truncate , text , truncate_len )
+return datetime . time ( ** kw )
+path = [ path ]
+self . validate_key ( key )
+value = self . _resolve_lookup ( context )
+except UnicodeError :
+if not self . close_called :
+return result
+return self . content
+from decimal import Decimal , InvalidOperation , Context , ROUND_HALF_UP
+value = signing . get_cookie_signer ( salt = key + salt ) . unsign (  cookie_value , max_age = max_age )
+def compile_func ( parser , token ) :
+RemovedInNextVersionWarning = RemovedInDjango19Warning
+@ deconstructible
+self . stdout . write ( "  all instances of the codebase have applied the migrations you squashed," )
+else :
+ADDRESS_HEADERS = set ( [  'from' ,  'sender' ,  'reply-to' ,  'to' ,  'cc' ,  'bcc' ,  'resent-from' ,  'resent-sender' ,  'resent-to' ,  'resent-cc' ,  'resent-bcc' ,  ] )
+if supported_code . startswith ( generic_lang_code + '-' ) :
+def humanize ( dirname ) :
+def _long_to_bin ( x , hex_format_string ) :
+for tok in rules :
+def __init__ ( self , config ) :
+else :
+d = { }
+for field_name in self . fields :
+raise ValueError ( "Not a string literal: %r" % s )
+def _clean_fields ( self ) :
+for obj in self . queryset . all ( ) :
+from django . utils import six
+def __init__ ( self , tagtype ) :
+def reset_cache ( ** kwargs ) :
+for attr in _urllib_error_moved_attributes :
+continue
+except AttributeError :
+self . msguniq_options = self . msguniq_options [ : ] + [ '--no-location' ]
+self . connection = connection
+help = "Squashes an existing set of migrations (from first until specified) into a single new one."
+instance = construct_instance ( form , instance , fields , exclude )
+handler . addQuickElement ( "id" , unique_id )
+else :
+@ property
+else :
+return retval
+biggest_number = 1
+self . file . close ( )
+app_dirs . append ( old_app_dir )
+class RegexURLPattern ( LocaleRegexProvider ) :
+try :
+value = value . encode ( charset )
+def spaceless ( parser , token ) :
+import warnings
+if self . verbosity > 0 :
+saved_instances = [ ]
+if response is None :
+return
+localpart , domain = addr . split ( '@' , 1 )
+language_code = get_language ( )
+full_module_name = package_name + '.' + module_name
+if log in child_loggers :
+formatter = config . pop ( 'formatter' , None )
+if m is None :
+templatetags_modules_candidates = [ 'django.templatetags' ]
+validate_ipv4_address = RegexValidator ( ipv4_re , _ ( 'Enter a valid IPv4 address.' ) , 'invalid' )
+opts . fields = None
+rawdata = force_str ( rawdata )
+try :
+class ErrorDict ( dict ) :
+self . stdout . write ( "  Installing indexes...\n" )
+if last == 3 :
+if idstring is None :
+self . base_fields [ TOTAL_FORM_COUNT ] = IntegerField ( widget = HiddenInput )
+parsed = False
+raise TemplateSyntaxError (  "'%s' received unexpected keyword argument '%s'" %  ( name , param ) )
+form . fields [ ORDERING_FIELD_NAME ] = IntegerField ( label = _ ( 'Order' ) , initial = index + 1 , required = False )
+yield buffer_
+def configure_handler ( self , config ) :
+dot_re = re . compile ( r'\S' )
+import tempfile
+parser = command . create_parser ( '' , name )
+warnings . warn (  "FastCGI support has been deprecated and will be removed in Django 1.9." ,  RemovedInDjango19Warning )
+__call__ = type . __call__
+from pprint import pformat
+safe = force_bytes ( safe , self . encoding )
+result = self . configure_custom ( config )
+if self . timeout is not None :
+def get_language ( ) :
+import sys
+except LookupError :
+elif isinstance ( o , datetime . time ) :
+help = "Introspects the database tables in the given database and outputs a Django model module."
+if self . feed [ 'author_email' ] is not None :
+raise ValidationError (  self . error_messages [ 'invalid_pk_value' ] ,  code = 'invalid_pk_value' ,  params = { 'pk' : pk } ,  )
+continue
+from gzip import GzipFile
+from lib2to3 . pgen2 import token
+try :
+extra_classes = set ( extra_classes or [ ] )
+if unpack_ipv4 :
+def get_tag_uri ( url , date ) :
+return [ ]
+def _close_files ( self ) :
+output = localize ( output , use_l10n = context . use_l10n )
+for app_config in reversed ( list ( apps . get_app_configs ( ) ) ) :
+handler . addQuickElement ( "rights" , self . feed [ 'feed_copyright' ] )
+warnings . warn (  'Using SplitDateTimeWidget with DateTimeField is deprecated. '  'Use SplitDateTimeField instead.' ,  RemovedInDjango19Warning , stacklevel = 2 )
+if content_length > settings . FILE_UPLOAD_MAX_MEMORY_SIZE :
+length = int ( arg )
+ip_str = _explode_shorthand_ip_string ( ip_str )
+from lib2to3 . pytree import Leaf , Node
+return force_str ( '<%s %s %s>' % ( self . __class__ . __name__ , self . name , self . regex . pattern ) )
+x = x * len ( from_digits ) + from_digits . index ( digit )
+lookups . appendlist ( name , ( new_matches , p_pattern + pat , dict ( defaults , ** pattern . default_kwargs ) ) )
+except Model . DoesNotExist :
+else :
+parser . add_argument ( '--app' , action = 'store' , dest = 'app_label' ,  default = None , help = 'Only look for fixtures in the specified app.' )
+parser . add_argument ( 'args' , metavar = 'table_name' , nargs = '*' ,  help = 'Optional table names. Otherwise, settings.CACHES is used to '  'find cache tables.' )
+raise VariableDoesNotExist ( "Failed lookup for key "  "[%s] in %r" ,  ( bit , current ) )
+if len ( bits ) != 2 :
+obj . __class__ = cls
+self . error_list = [ self ]
+def _dec ( func ) :
+if not options . get ( 'addrport' ) :
+shutil . copymode ( old_path , new_path )
+import logging
+output = next ( self . _producer )
+if len ( bits ) != 2 :
+try :
+import warnings
+return ip_str . rsplit ( ':' , 1 ) [ 1 ]
+def add_initial_prefix ( self , field_name ) :
+class ChoiceFieldRenderer ( object ) :
+DNS_NAME = CachedDnsName ( )
+self . path , self . match , self . recursive = path , match , recursive
+class datetime ( real_datetime ) :
+ignored . append ( f . name )
+elif ch == '(' :
+return [ ( '' , [ ] ) ]
+if isinstance ( value , str ) :
+return field in self . errors
+cache_key = _generate_cache_header_key ( key_prefix , request )
+self . endChannelElement ( handler )
+pass
+from django . core . serializers . base import DeserializationError
+def _convert_to_charset ( self , value , charset , mime_encode = False ) :
+output , errors = p . communicate ( )
+raise NotImplementedError ( 'subclasses of Storage must provide a size() method' )
+from django . conf import settings
+try :
+warnings . warn (  "The django.forms.util module has been renamed. "  "Use django.forms.utils instead." , RemovedInDjango19Warning , stacklevel = 2 )
+return _dec
+self . _cache . set ( key , value , self . get_backend_timeout ( timeout ) )
+if parts [ - 1 ] in self . serialization_formats :
+else :
+def __init__ ( self ) :
+elif not options [ "socket" ] and not options [ "host" ] and not options [ "port" ] :
+for result , params in possibility :
+old_method = base . __dict__ . get ( old_method_name )
+start += len ( toktext )
+if len ( fks_to_parent ) == 1 :
+if localized_fields is not None :
+return NowNode ( format_string )
+else :
+return calendar . timegm ( result . utctimetuple ( ) )
+try :
+self . loaded_object_count += loaded_objects_in_fixture
+return MONTHS_3 [ self . data . month ] . title ( )
+return other in self . children
+from django . utils . encoding import smart_text
+zfile . close ( )
+if default is not RAISE_ERROR :
+def handle ( self , app_or_project , name , target = None , ** options ) :
+t = s . split ( '=' , 1 )
+p_pattern = p_pattern [ 1 : ]
+opts = instance . _meta
+pass
+allow_cascade = options . get ( 'allow_cascade' , False )
+else :
+else :
+import warnings
+def rfc3339_date ( date ) :
+def r ( self ) :
+return None
+deps . append ( rel_model )
+literal_regex = re . compile (   r'\[([A-f0-9:\.]+)\]$' ,  re . IGNORECASE )
+if sys . version_info [ : 2 ] == ( 3 , 2 ) :
+if not extra_context :
+if self . _isdst ( dt ) :
+getcallargs ( current )
+if last == 1 :
+output . append ( last_row )
+if not response . streaming :
+directory_created = { }
+def to_python ( self , value ) :
+return input_val
+hidden_widget = field . hidden_widget ( )
+except ImportError :
+return list_ [ - 1 ]
+_empty_value = None
+import os
+if self . no_obsolete :
+return
+except UnicodeError :
+def render ( self , name , value , attrs = None ) :
+default_error_messages = {  'invalid_choice' : _ ( 'Select a valid choice. %(value)s is not one of the available choices.' ) ,  'invalid_list' : _ ( 'Enter a list of values.' ) ,  }
+def next ( self ) :
+super ( AssignmentNode , self ) . __init__ ( takes_context , args , kwargs )
+trans_bit = [ bit ]
+self . _charset = settings . DEFAULT_CHARSET
+def _iterkeys ( self ) :
+raise CommandError ( "couldn't download URL %s to %s: %s" %  ( url , filename , e ) )
+title += " (%s squashed migrations)" % len ( graph . nodes [ plan_node ] . replaces )
+def id_for_label ( self ) :
+match = tagfind . match ( rawdata , i + 1 )
+def __repr__ ( self ) :
+readline . set_completer ( rlcompleter . Completer ( imported_objects ) . complete )
+def entity_decl ( self , name , is_parameter_entity , value , base ,  sysid , pubid , notation_name ) :
+if required and ( initial is not None ) :
+self . _set ( key , pickled , timeout )
+def get_block ( self , name ) :
+return super ( classonlymethod , self ) . __get__ ( instance , owner )
+if is_relation :
+if os . name == 'nt' :
+def _save ( self , name , content ) :
+model_list = [ ]
+except ( ValueError , InvalidOperation , TypeError , UnicodeEncodeError ) :
+words [ i ] = mark_safe ( word )
+import io
+self . name = name
+return self . _queryset
+return self . _create_attachments ( self . _create_alternatives ( msg ) )
+for smigration in migrations_to_squash :
+if isinstance ( self . warning , Exception ) :
+new_name = '%sfield' % new_name
+class AppCommand ( BaseCommand ) :
+else :
+value = related . natural_key ( )
+if len ( bits ) > 2 :
+if current_len == truncate_len :
+def __init__ ( self , name , params ) :
+if ( hasattr ( value , '__iter__' ) and  not isinstance ( value , six . text_type ) and  not hasattr ( value , '_meta' ) ) :
+for f in files :
+if self . verbosity >= 2 :
+total_forms = initial_forms
+models . add ( model )
+header_end = chunk . find ( b'\r\n\r\n' )
+raise AttributeError ( "This method is available only on the view class." )
+def __init__ ( self , cyclevars , variable_name = None , silent = False ) :
+str_number = six . text_type ( number )
+MONTHS_3_REV = {  'jan' : 1 , 'feb' : 2 , 'mar' : 3 , 'apr' : 4 , 'may' : 5 , 'jun' : 6 , 'jul' : 7 , 'aug' : 8 ,  'sep' : 9 , 'oct' : 10 , 'nov' : 11 , 'dec' : 12  }
+if tzinfo [ 0 ] == '-' :
+raise TemplateSyntaxError ( "'firstof' statement requires at least one argument" )
+def __new__ ( cls , * args , ** kwargs ) :
+addr . encode ( 'ascii' )
+self . _done = True
+while len ( digits ) <= abs ( exponent ) :
+raise AttributeError
+return False
+self . stdout . write ( self . style . MIGRATE_LABEL ( "  Branch %s" % migration . name ) )
+cached = _format_cache [ cache_key ]
+else :
+import keyword
+if simple_url_re . match ( middle ) :
+class FixUnicode ( fixer_base . BaseFix ) :
+except KeyError :
+from django . core import validators
+if not self . _is_rendered :
+is_required = False
+import socket
+def fetch_command ( self , subcommand ) :
+warnings = [ e for e in all_issues if checks . WARNING <= e . level < checks . ERROR and not e . is_silenced ( ) ]
+def delete ( self , key , version = None ) :
+self . include_html = include_html
+self . tag ( function_name , compile_func )
+if args [ 1 ] [ 0 ] == '2' :
+ipv4_re = re . compile ( r'^(25[0-5]|2[0-4]\d|[0-1]?\d?\d)(\.(25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}$' )
+if match :
+base , tail_ext = os . path . splitext ( filename . lower ( ) )
+_dec . _decorated_function = getattr ( func , '_decorated_function' , func )
+return func
+for bytes in stream :
+week_number = 52
+if hasattr ( self . file , 'name' ) :
+default_error_messages = {  'required' : _ ( 'This field is required.' ) ,  }
+def new_datetime ( d ) :
+import re
+warnings . warn (  "NoArgsCommand class is deprecated and will be removed in Django 2.0. "  "Use BaseCommand instead, which takes no arguments by default." ,  RemovedInDjango20Warning  )
+FIELD = "field"
+remaining -= len ( emitting )
+super ( WSGIServer , self ) . __init__ ( * args , ** kwargs )
+class ArchiveException ( Exception ) :
+len_item = 1
+else :
+if model in created_models :
+return result
+if self . _varlist :
+import hashlib
+except KeyError :
+raise TypeError ( 'other_dict must be a mapping (dictionary-like) object.' )
+@ staticmethod
+with self . _lock . writer ( ) :
+def get_version ( self ) :
+return default
+retval = self . expression ( )
+from django . utils . functional import lazy
+def lock ( f , flags ) :
+return result [ 0 ] , result [ 1 ]
+func . __doc__ = doc
+if settings . TEMPLATE_DEBUG :
+return 0
+return result
+def strptime ( self , value , format ) :
+from django . core . management . base import AppCommand
+raise TemplateEncodingError ( "Templates can only be constructed "  "from unicode or UTF-8 strings." )
+logging . _handlers . clear ( )
+language_code = get_language ( )
+return avoid_wrapping ( value )
+value = ungettext ( "%(size)d byte" , "%(size)d bytes" , bytes ) % { 'size' : bytes }
+d = ',%s' % datetime_safe . new_datetime ( date ) . strftime ( '%Y-%m-%d' )
+else :
+def update_error_dict ( self , error_dict ) :
+else :
+inner_html = '<li>{choice_value}{sub_widgets}</li>'
+return None
+class Form ( six . with_metaclass ( DeclarativeFieldsMetaclass , BaseForm ) ) :
+try :
+raise TypeError ( "sep must be None or a string" )
+if field . rel . through . _meta . auto_created :
+if not hasattr ( f , 'save_form_data' ) :
+missing_args_message = ( "No database fixture specified. Please provide the "  "path of at least one fixture in the command line." )
+raise NotImplementedError ( 'subclasses of FileUploadHandler must provide a receive_data_chunk() method' )
+import argparse
+instance = super ( SortedDict , cls ) . __new__ ( cls , * args , ** kwargs )
+if use_reloader :
+from django . core . mail . backends . console import EmailBackend as ConsoleEmailBackend
+if settings . TEMPLATE_STRING_IF_INVALID :
+def __init__ ( self ) :
+return '<Page %s of %s>' % ( self . number , self . paginator . num_pages )
+if item_type == FIELD :
+import base64
+import datetime
+return datetime . fromtimestamp ( os . path . getatime ( self . path ( name ) ) )
+_urllib_request_moved_attributes = [  MovedAttribute ( "urlopen" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "install_opener" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "build_opener" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "pathname2url" , "urllib" , "urllib.request" ) ,  MovedAttribute ( "url2pathname" , "urllib" , "urllib.request" ) ,  MovedAttribute ( "getproxies" , "urllib" , "urllib.request" ) ,  MovedAttribute ( "Request" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "OpenerDirector" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "HTTPDefaultErrorHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "HTTPRedirectHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "HTTPCookieProcessor" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "ProxyHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "BaseHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "HTTPPasswordMgr" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "HTTPPasswordMgrWithDefaultRealm" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "AbstractBasicAuthHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "HTTPBasicAuthHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "ProxyBasicAuthHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "AbstractDigestAuthHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "HTTPDigestAuthHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "ProxyDigestAuthHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "HTTPHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "HTTPSHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "FileHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "FTPHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "CacheFTPHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "UnknownHandler" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "HTTPErrorProcessor" , "urllib2" , "urllib.request" ) ,  MovedAttribute ( "urlretrieve" , "urllib" , "urllib.request" ) ,  MovedAttribute ( "urlcleanup" , "urllib" , "urllib.request" ) ,  MovedAttribute ( "URLopener" , "urllib" , "urllib.request" ) ,  MovedAttribute ( "FancyURLopener" , "urllib" , "urllib.request" ) ,  MovedAttribute ( "proxy_bypass" , "urllib" , "urllib.request" ) ,  ]
+try :
+if decimal_pos is not None :
+return setattr ( caches [ DEFAULT_CACHE_ALIAS ] , name , value )
+raise
+if bits [ in_index ] != 'in' :
+for attr in self . rendering_attrs :
+res = to_digits [ digit ] + res
+self . model_name = 'cacheentry'
+for opening , closing in WRAPPING_PUNCTUATION :
+bits = bits [ 2 : ]
+if _globs_ is None :
+if ext :
+super ( HttpResponse , self ) . __init__ ( * args , ** kwargs )
+obj = form . instance
+errors = [ ]
+piece = '' . join ( source [ last : pos ] )
+raise TemplateSyntaxError ( "'%s' takes one argument" % bits [ 0 ] )
+expanded_template = path . normpath ( expanded_template )
+from argparse import ArgumentParser
+class SyndicationFeed ( object ) :
+daemonize = ( wsgi_opts [ 'bindAddress' ] is not None )
+return attachment
+return None
+parser . ExternalEntityRefHandler = self . external_entity_ref_handler
+wsgi_opts = {  'maxSpare' : int ( options [ "maxspare" ] ) ,  'minSpare' : int ( options [ "minspare" ] ) ,  'maxThreads' : int ( options [ "maxchildren" ] ) ,  }
+self . fixture_object_count += objects_in_fixture
+yield self . choice ( obj )
+else :
+elif timeout == 0 :
+class ModelFormMetaclass ( DeclarativeFieldsMetaclass ) :
+kwarg = token_kwargs ( [ bit ] , parser )
+seen_data . add ( row_data )
+import sys
+cls . __str__ = cls . __text_cast
+c = int ( text )
+qs = self . queryset
+else :
+return metaclass ( 'temporary_class' , None , { } )
+if not value or not [ v for v in value if v not in self . empty_values ] :
+return mark_safe ( _urlize ( value , trim_url_limit = int ( limit ) , nofollow = True ,  autoescape = autoescape ) )
+from django . utils . translation import ugettext_lazy as _ , ugettext
+super ( BaseModelForm , self ) . __init__ ( data , files , auto_id , prefix , object_data ,  error_class , label_suffix , empty_permitted )
+for pattern in self . url_patterns :
+current_len += 1
+return EventHandler . modified_code
+return message
+except TypeError :
+self . style_func = style_func
+def __init__ ( self , object_list , number , paginator ) :
+from functools import lru_cache
+@ register . tag ( 'if' )
+replaces . append ( ( migration . app_label , migration . name ) )
+if TYPE == RAW :
+try :
+sublist = '\n%s<ul>\n%s\n%s</ul>\n%s' % ( indent , sublist ,  indent , indent )
+if alter_sql :
+try :
+setattr ( Module_six_moves_urllib_robotparser , attr . name , attr )
+self . _errors [ field ] = self . error_class ( )
+unique_checks , date_checks = form . instance . _get_unique_checks ( exclude = exclude )
+db = router . db_for_write ( self . cache_model_class )
+self . value = value
+if self . m2m_data and save_m2m :
+if data is None :
+length = int ( num )
+self . _delete ( self . _key_to_file ( key , version ) )
+loader = MigrationLoader ( connection )
+try :
+rest = rest [ m . end ( ) : ]
+try :
+import copy
+oldroot [ KEY ] = key
+new_environ = os . environ . copy ( )
+ERRORS = {  errno . EACCES : "You don't have permission to access that port." ,  errno . EADDRINUSE : "That port is already in use." ,  errno . EADDRNOTAVAIL : "That IP address can't be assigned-to." ,  }
+self . html_name = form . add_prefix ( name )
+for key in self . keyOrder :
+def b ( s ) :
+else :
+self . connection . quit ( )
+if m is not None and n is not None :
+to_py = super ( ModelMultipleChoiceField , self ) . to_python
+else :
+if buffer_ is not None :
+super ( HttpResponseNotAllowed , self ) . __init__ ( * args , ** kwargs )
+for key in sorted ( user_settings ) :
+start_ipython ( argv = [ ] )
+if bcc :
+super ( LocaleRegexURLResolver , self ) . __init__ (  None , urlconf_name , default_kwargs , app_name , namespace )
+return OrderedDict ( fields )
+pass
+return default
+if not chunk_size :
+def ugettext ( message ) :
+if self . decimal_places is not None and decimals > self . decimal_places :
+handler . startElement ( "entry" , self . item_attributes ( item ) )
+if self . require_all_fields :
+chunk_size = 1024
+for lineno , line in enumerate ( content . splitlines ( True ) ) :
+class SkipFile ( UploadFileException ) :
+if isinstance ( field , models . TimeField ) and getattr ( obj , field . name ) is not None :
+return type ( self ) . __bool__ ( self )
+_iterkeys = "iterkeys"
+return text
+if incomment :
+else :
+with open ( options [ "pidfile" ] , "w" ) as fp :
+self . exit_command ( )
+if callable ( limit_choices_to ) :
+return self . _truncate_html ( length , truncate , self . _wrapped , length , True )
+return path . split ( '\\' , 1 )
+ch , escaped = next ( pattern_iter )
+template = get_template ( template )
+self . allow_files , self . allow_folders = allow_files , allow_folders
+return
+return value
+if iso_input not in val :
+for match in tag_re . finditer ( self . template_string ) :
+if not old_style_list :
+self . xml . addQuickElement ( "None" )
+except ValueError :
+def byte2int ( bs ) :
+if django . VERSION [ - 2 ] != 'final' :
+pass
+import importlib
+self . handle_fk_field ( obj , field )
+func = getattr ( func , '_decorated_function' , func )
+if name :
+import dummy_threading as threading
+if not self . use_natural_primary_keys or not hasattr ( obj , 'natural_key' ) :
+def resolve_variable ( path , context ) :
+self . write_message ( message )
+try :
+i = 0
+filter_func = parser . find_filter ( filter_name )
+self . default_timeout = timeout
+class warn_about_renamed_method ( object ) :
+split . append ( bit )
+if option in options :
+unencoded_ampersands_re = re . compile ( r'&(?!(\w+|#\d+);)' )
+self . sysid = sysid
+if can_fail :
+except AttributeError :
+self . xml . endElement ( "field" )
+from django . http . cookie import SimpleCookie , parse_cookie
+target_app_labels_only = False
+import os
+elif t . contents == 'comment' :
+level = config . get ( 'level' , None )
+def loads ( self , data ) :
+program = 'msgfmt'
+from django . utils . encoding import force_str , force_text , iri_to_uri
+def time_format ( value , format = None , use_l10n = None ) :
+def close ( self , ** kwargs ) :
+from . import Error , Tags , register
+value = value . astimezone ( timezone )
+for app_config , model_list in app_list :
+return True
+nonlocal_root = [ root ]
+self . _current [ field . name ] = [ m2m_value ( related )  for related in getattr ( obj , field . name ) . iterator ( ) ]
+self . fields = copy . deepcopy ( self . base_fields )
+return name , ser_fmt , cmp_fmt
+value = template_localtime ( value , use_tz = context . use_tz )
+if app_names :
+self . invoked_for_django = True
+try :
+else :
+connection = connections [ options [ 'database' ] ]
+return ( fp . read ( ) . decode ( settings . FILE_CHARSET ) , filepath )
+__getitem__ = new_method_proxy ( operator . getitem )
+return '%s-%s-%s' % ( y , m , d )
+self . stdout . flush ( )
+form . fields [ DELETION_FIELD_NAME ] = BooleanField ( label = _ ( 'Delete' ) , required = False )
+lineno , offset = self . getpos ( )
+try :
+writer = MigrationWriter ( new_migration )
+def to_python ( self , value ) :
+s = s [ 1 : ]
+def smart_split ( text ) :
+parser . delete_first_token ( )
+elif field . rel and isinstance ( field . rel , models . ManyToOneRel ) :
+import io
+def chunks ( self , chunk_size = None ) :
+return
+link_target_attribute_re = re . compile ( r'(<a [^>]*?)target=[^\s>]+' )
+raise
+return _trans . deactivate_all ( )
+attrs [ 'error_messages' ] = error_messages
+lookup_view = get_callable ( lookup_view , True )
+process_all = options . get ( 'all' )
+if version is None :
+errors = [ model . check ( ** kwargs )  for model in apps . get_models ( )  if app_configs is None or model . _meta . app_config in app_configs ]
+kwargs . update ( self . default_args )
+if sub_tried is not None :
+use_reloader = options . get ( 'use_reloader' )
+if start > upto :
+def __init__ ( self , required = True , widget = None , label = None , initial = None ,  help_text = '' , error_messages = None , show_hidden_initial = False ,  validators = [ ] , localize = False , label_suffix = None ) :
+if exclude and f . name in exclude :
+addr = Header ( addr , encoding ) . encode ( )
+return data
+def find_commands ( management_dir ) :
+else :
+attrs_plus [ 'id' ] += '_{0}' . format ( i )
+attrs [ 'fields' ] = fields
+self . old_language = get_language ( )
+super ( TemporaryUploadedFile , self ) . __init__ ( file , name , content_type , size , charset , content_type_extra )
+for basedir in basedirs :
+def get_serializer_formats ( ) :
+return msg_count
+raise ValueError ( "The protocol '%s' is unknown. Supported: %s"  % ( protocol , list ( ip_address_validator_map ) ) )
+can_import_settings = True
+raise TemplateSyntaxError ( "Only 'silent' flag is allowed after cycle's name, not '%s'." % args [ - 1 ] )
+if self . options . get ( "indent" ) :
+if not isinstance ( message , ValidationError ) :
+not_installed_models = set ( pending_references . keys ( ) )
+@ register . filter ( is_safe = True , needs_autoescape = True )
+if not lib :
+self . argv = argv or sys . argv [ : ]
+while new_name . find ( '__' ) >= 0 :
+warn_msg = ( "The translator-targeted comment '%s' "  "(%sline %d) was ignored, because it wasn't the last item "  "on the line." ) % ( c , filemsg , comment_lineno_cache )
+from django . apps import apps
+translation . activate ( 'en-us' )
+signals . request_finished . send ( sender = self . _handler_class )
+def __repr__ ( self ) :
+self . stdout . write ( "    Processing %s.%s model\n" % ( app_name , model . _meta . object_name ) )
+translators_comment_start = None
+_active = local ( )
+parent_pat = pattern . regex . pattern
+class SuspiciousFileOperation ( SuspiciousOperation ) :
+_ , params = cgi . parse_header ( content_disposition )
+def unclosed_block_tag ( self , parse_until ) :
+self . error ( "junk characters in start tag: %r"  % ( rawdata [ k : endpos ] [ : 20 ] , ) )
+validate_ipv4_address ( value )
+self . tokens = tokens
+def __getitem__ ( self , key ) :
+name = content . name
+elif isinstance ( template , six . string_types ) :
+def _split_statements ( content ) :
+if related :
+return created_models
+raise
+self . position = 0
+self . lineno = None
+self . full_clean ( )
+except ValueError :
+return DefusedExpatParser ( )
+def indent ( self , level ) :
+value = unicodedata . normalize ( 'NFKD' , value ) . encode ( 'ascii' , 'ignore' ) . decode ( 'ascii' )
+if not settings . configured :
+random . seed (  hashlib . sha256 (  ( "%s%s%s" % (  random . getstate ( ) ,  time . time ( ) ,  settings . SECRET_KEY ) ) . encode ( 'utf-8' )  ) . digest ( ) )
+from django . template . loader import BaseLoader
+self . nodelist_true , self . nodelist_false = nodelist_true , nodelist_false
+@ register . filter ( is_safe = False )
+def handle ( self , * fixture_labels , ** options ) :
+if settings . STATIC_URL is None :
+dirname = os . path . dirname ( filename )
+self . nodelist_empty = NodeList ( )
+for field in self . fields :
+self . use_ipv6 = True
+value = super ( URLField , self ) . to_python ( value )
+return new_class
+raise NotImplementedError ( 'subclasses of Storage must provide a url() method' )
+space = line [ : max_width + 1 ] . rfind ( ' ' ) + 1
+tempdir = tempfile . mkdtemp ( prefix = prefix , suffix = '_download' )
+for format in settings . SERIALIZATION_MODULES :
+def get_default_prefix ( cls ) :
+stream = StringIO ( stream_or_string )
+self . objects . append ( self . get_dump_object ( obj ) )
+else :
+self . sysid = sysid
+timezone = get_current_timezone ( )
+result = datetime . datetime . combine ( * data_list )
+self . cyclevars = cyclevars
+new = '#: ' + orig_file
+code = 'invalid'
+def __cast ( self ) :
+def enter_command ( self , command , token ) :
+widget_value = None
+mod = import_module ( taglib_module )
+callback = getattr ( urls , 'handler%s' % view_type )
+output . extend ( connection . ops . prepare_sql_script ( fp . read ( ) , _allow_fallback = True ) )
+if logging_config :
+requires_system_checks = False
+out = StringIO ( '' )
+sys . path . insert ( 0 , options . pythonpath )
+return value if six . PY2 else value . encode ( ISO_8859_1 ) . decode ( UTF_8 )
+checkbox_id = self . clear_checkbox_id ( checkbox_name )
+else :
+etags = [ e . encode ( 'ascii' ) . decode ( 'unicode_escape' ) for e in etags ]
+resolved_path = [ ]
+handler = logging . StreamHandler ( )
+if self . verbosity > 0 :
+return s
+filename = os . path . join ( to_path , name )
+if len ( unique_check ) == 1 :
+else :
+@ stringfilter
+def clear_script_prefix ( ) :
+return b'\r\n' . join ( headers )
+if field_type == 'BooleanField(' :
+def add ( self , key , value , timeout = DEFAULT_TIMEOUT , version = None ) :
+@ register . filter ( is_safe = False )
+all_date_checks = all_date_checks . union ( set ( date_checks ) )
+if retval :
+if id_ :
+except UnicodeDecodeError :
+self . __dict__ [ "_wrapped" ] = value
+options . update ( kwargs )
+pass
+raise CommandError ( "%s. Are you sure your INSTALLED_APPS setting is correct?" % e )
+pass
+try :
+self . _delete ( fname )
+else :
+return res
+potfile = os . path . join ( path , '%s.pot' % str ( self . domain ) )
+input_type = 'email'
+if callable ( key_func ) :
+if six . PY2 and isinstance ( rawdata , six . text_type ) :
+Meta = type ( str ( 'Meta' ) , parent , attrs )
+name , val = forbid_multi_line_headers ( name , val , self . encoding )
+year_days = [ None , 0 , 31 , 59 , 90 , 120 , 151 , 181 , 212 , 243 , 273 , 304 , 334 ]
+def __init__ ( self , source ) :
+return force_text ( url )
+def render ( self , name , value , attrs = None , choices = ( ) ) :
+return value
+compare = lambda self , a , b : a > b
+known_models . add ( model )
+if mimetype is None :
+except DecimalException :
+from django . core . management . templates import TemplateCommand
+setattr ( self , attr , value )
+else :
+msg += "System check identified %s (%s silenced)." % (  "no issues" if visible_issue_count == 0 else  "1 issue" if visible_issue_count == 1 else  "%s issues" % visible_issue_count ,  len ( all_issues ) - visible_issue_count ,  )
+if ( self . validate_max and  self . total_form_count ( ) - len ( self . deleted_forms ) > self . max_num ) or self . management_form . cleaned_data [ TOTAL_FORM_COUNT ] > self . absolute_max :
+except InputStreamExhausted :
+return True
+if block_context is None :
+self . writer_leaves ( )
+return NodeList ( )
+return False
+if self . _is_rendered :
+else :
+pass
+defaults [ 'files' ] = self . files
+except ValueError :
+@ register . filter ( is_safe = False )
+def add_truncation_text ( self , text , truncate = None ) :
+try :
+value = None
+def prepare_value ( self , value ) :
+if six . PY2 :
+for model in router . get_migratable_models ( app_config , connection . alias , include_auto_created = True ) :
+if result is not root :
+initial_value = initial if initial is not None else ''
+def open ( self , mode = None ) :
+for d in self . dicts :
+while i < len ( subject ) and subject [ i ] != c :
+with io . open ( potfile , 'r' , encoding = 'utf-8' ) as fp :
+def custom_sql_for_model ( model , style , connection ) :
+for node in self :
+handler . startElement ( 'feed' , self . root_attributes ( ) )
+def cache_info ( ) :
+def save_existing ( self , form , instance , commit = True ) :
+self . changed_objects = [ ]
+filters = config . get ( 'filters' , EMPTY_DICT )
+self . _start_relational_field ( field )
+if not self . keep_pot :
+return obj_pk
+SINGLE_BRACE_START = '{'
+super ( QueryDict , self ) . __delitem__ ( key )
+try :
+data = self . read ( chunk_size )
+date_data = ( getattr ( form . cleaned_data [ unique_for ] , lookup ) , )
+def __setitem__ ( self , header , value ) :
+if hasattr ( self , 'clean_%s' % name ) :
+return super ( BaseModelFormSet , self ) . initial_form_count ( )
+self . code = code
+return self . _headers . get ( header . lower ( ) , ( None , alternate ) ) [ 1 ]
+elif options [ 'method' ] in ( 'thread' , 'threaded' ) :
+if opts . fields == ALL_FIELDS :
+def __bool__ ( self ) :
+input_type = 'hidden'
+elif not isinstance ( file_name , six . string_types ) and is_iterable ( file_name ) :
+return klass
+from django . core . mail . message import (  EmailMessage , EmailMultiAlternatives ,  SafeMIMEText , SafeMIMEMultipart ,  DEFAULT_ATTACHMENT_MIME_TYPE , make_msgid ,  BadHeaderError , forbid_multi_line_headers )
+self . xml . endElement ( "field" )
+date_value = datetime_safe . new_date ( date_value )
+return self . get_fqdn ( )
+value = formats . sanitize_separators ( value )
+from django . template . base import TemplateDoesNotExist
+isatty = property ( lambda self : self . file . isatty )
+except ( IndexError ,  ValueError ,  KeyError ,  TypeError ) :
+i += 1
+warnings . warn ( 'Cache key contains characters that will cause '  'errors if used with memcached: %r' % key ,  CacheKeyWarning )
+self . deleted_objects = [ ]
+def sanitize_address ( addr , encoding ) :
+value = dict . pop ( self , key , default )
+serializers = { }
+def __call__ ( self , value ) :
+if t . token_type == TOKEN_BLOCK :
+old_path = path . join ( root , filename )
+for ext in extensions :
+return self . forms [ 0 ] . is_multipart ( )
+request_started = Signal ( )
+sys . exit ( 0 )
+def extra_forms ( self ) :
+value = '-' + value
+return force_str ( '<%s\npath:%s,\nGET:%s,\nPOST:%s,\nCOOKIES:%s,\nMETA:%s>' %  ( request . __class__ . __name__ ,  path ,  six . text_type ( get ) ,  six . text_type ( post ) ,  six . text_type ( cookies ) ,  six . text_type ( meta ) ) )
+raise KeyError (  "Key %r not found in '%s'" % ( name , self . __class__ . __name__ ) )
+MIMEText . __init__ ( self , text , subtype , None )
+node . source = token . source
+return timedelta ( 0 )
+def __init__ ( self , * args , ** kwargs ) :
+view_name = callback . __name__
+for basedir in basedirs :
+def dst ( self , dt ) :
+self . connection . login ( self . username , self . password )
+migrations_directory = os . path . dirname ( writer . path )
+import sys
+return smart_text ( self . name or '' )
+return force_text ( value )
+ch , escaped = next ( pattern_iter )
+except AttributeError :
+new_matches = normalize ( parent_pat + pat )
+return t
+with io . open ( work_file , "w" , encoding = 'utf-8' ) as fp :
+self . can_write . acquire ( )
+namemap = options . get ( 'with' , { } )
+raise ValidationError ( self . error_messages [ 'invalid_choice' ] , code = 'invalid_choice' )
+table_names = [ ]
+self . stdout . write ( "Cache table '%s' created." % tablename )
+domain_part = domain_part . encode ( 'idna' ) . decode ( 'ascii' )
+handler . endElement ( "rss" )
+if not hasattr ( self , '_deleted_form_indexes' ) :
+while RUN_RELOADER :
+def widget_attrs ( self , widget ) :
+filename . encode ( 'ascii' )
+def __prepare_class__ ( cls ) :
+post_sql_fields = [ f for f in opts . local_fields if hasattr ( f , 'post_create_sql' ) ]
+if isinstance ( value , six . string_types ) and value != ALL_FIELDS :
+raise ValueError ( 'Unknown level: %r' % level )
+if value :
+compare = lambda self , a , b : a > b
+except ValidationError :
+MONTHS_3 = {  1 : _ ( 'jan' ) , 2 : _ ( 'feb' ) , 3 : _ ( 'mar' ) , 4 : _ ( 'apr' ) , 5 : _ ( 'may' ) , 6 : _ ( 'jun' ) ,  7 : _ ( 'jul' ) , 8 : _ ( 'aug' ) , 9 : _ ( 'sep' ) , 10 : _ ( 'oct' ) , 11 : _ ( 'nov' ) , 12 : _ ( 'dec' )  }
+return self
+del self . tokens [ 0 ]
+usage = '%%prog %s [options] %s' % ( subcommand , self . args )
+if bits [ 4 ] != 'as' :
+for middleware_method in self . _exception_middleware :
+if fd . isatty ( ) :
+if text [ 0 ] == '#' :
+if token . contents == 'else' :
+def chars ( self , num , truncate = None , html = False ) :
+assert content is None
+write ( sep )
+return map ( self . make_bytes , self . _iterator )
+chunks = [ ]
+def run_shell ( self , shell = None ) :
+else :
+if ch not in ( '<' , '=' ) :
+def to_locale ( language ) :
+def add ( value , arg ) :
+obj_dict = self . __dict__ . copy ( )
+self . token = token
+except ( TypeError , VariableDoesNotExist ) :
+from django . db import connection
+if config [ 'version' ] != 1 :
+response = self . handle_uncaught_exception ( request , resolver , sys . exc_info ( ) )
+help = ( "Runs over the entire source tree of the current directory and "  "pulls out all strings marked for translation. It creates (or updates) a message "  "file in the conf/locale (in the django tree) or locale (for projects and "  "applications) directory.\n\nYou must run this command with one of either the "  "--locale, --exclude or --all options." )
+try :
+replacement = _BROWSERS_DEPRECATED_LOCALES . get ( lang_code )
+transfer_encoding = meta_data . get ( 'content-transfer-encoding' )
+from __future__ import unicode_literals
+try :
+for path in data :
+option = '--testrunner='
+value = getattr ( _module , attr )
+if language_code not in self . _regex_dict :
+return self . value == self . choice_value
+def _iterlists ( self ) :
+parser . print_help ( )
+def get_current_timezone ( ) :
+invalid_apps = [ ]
+cc = { }
+for i , v in enumerate ( value ) :
+if 'max-age' in cc :
+try :
+if not hasattr ( e , 'django_template_source' ) :
+if errors :
+try :
+from django . core import signals
+if widgets is not None :
+stat = os . stat ( filename )
+prefixed = name + "."
+if termios :
+def to_locale ( language ) :
+matches = filter_re . finditer ( token )
+return None
+self . stream = open ( self . _get_filename ( ) , 'ab' )
+return iter ( getattr ( d , _iteritems ) ( ** kw ) )
+return bool ( initial ) != bool ( data )
+s = s1
+def __init__ ( self , name , old_mod , new_mod , old_attr = None , new_attr = None ) :
+raise TemplateSyntaxError ( "'autoescape' argument should be 'on' or 'off'" )
+def __repr__ ( self ) :
+def get_valid_name ( self , name ) :
+kwargs [ 'number' ] = number_value
+@ python_2_unicode_compatible
+content = message_from_string ( content )
+except KeyError :
+tok = tok . replace ( "\\" , "U" )
+trans_bit . append ( bit )
+def add_arguments ( self , parser ) :
+def _get_model ( model_identifier ) :
+setattr ( filter_func , attr , value )
+return obj_pk
+super ( IPAddressField , self ) . __init__ ( * args , ** kwargs )
+chunk += over_chunk
+else :
+else :
+def pluralize ( value , arg = 's' ) :
+if not bytes :
+_templatetags_modules . append ( templatetag_module )
+f = super ( ImageField , self ) . to_python ( data )
+result = new_result
+template_source_loaders = None
+start = non_capturing_groups . pop ( )
+return value
+finally :
+return obj_dict
+if has_bz2 :
+return format_html ( '<input{0} />' , flatatt ( final_attrs ) )
+TOKEN_COMMENT = 3
+output . extend ( custom_sql_for_model ( model , style , connection ) )
+dir_suffix = '%s*' % os . sep
+def get_language_info ( lang_code ) :
+template = get_template_from_string ( source , origin , template_name )
+def end_object ( self , obj ) :
+if auto_id and 'id' not in attrs and 'id' not in widget . attrs :
+if not self :
+else :
+def striptags ( value ) :
+try :
+if not new_method and old_method :
+from django . conf import settings
+TestRunner = get_runner ( settings , options . get ( 'testrunner' ) )
+key = self . make_key ( key , version = version )
+rendering_attrs = SimpleTemplateResponse . rendering_attrs + [ '_request' , '_current_app' ]
+expiry = self . get_backend_timeout ( timeout )
+return [ to_py ( val ) for val in value ]
+args = [ ]
+value = p [ i + 1 : ] . strip ( )
+urlresolvers . set_urlconf ( urlconf )
+if self . verbosity >= 2 :
+self [ 'Location' ] = iri_to_uri ( redirect_to )
+parser . add_argument ( '--liveserver' ,  action = 'store' , dest = 'liveserver' , default = None ,  help = 'Overrides the default address where the live server (used '  'with LiveServerTestCase) is expected to run from. The '  'default value is localhost:8081.' ) ,
+form = self . forms [ i ]
+elif isinstance ( message , list ) :
+fp = six . BytesIO ( )
+raise parser . error_class (  "Not expecting '%s' as infix operator in if tag." % self . id  )
+for location in format_locations :
+self . validators . append ( validators . MaxValueValidator ( max_value ) )
+pass
+else :
+parser . add_argument ( 'args' , nargs = '*' )
+commands_dict = collections . defaultdict ( lambda : [ ] )
+return encoding
+f . required = False
+break
+return Field . validate ( self , value )
+return django . get_version ( )
+continue
+else :
+try :
+raise InvalidTemplateLibrary ( "Unsupported arguments to "  "Library.filter: (%r, %r)" , ( name , filter_func ) )
+try :
+raise ValidationError ( errors )
+return self . data . isocalendar ( ) [ 0 ]
+if i >= self . initial_form_count ( ) and not form . has_changed ( ) :
+handler . startElement ( 'item' , self . item_attributes ( item ) )
+with open ( writer . path , "wb" ) as fh :
+filter_expression = self . compile_filter ( token . contents )
+return parser . parse ( )
+bf_errors = self . error_class ( [ conditional_escape ( error ) for error in bf . errors ] )
+self . stdout . write ( "%s\n" % writer . as_string ( ) )
+def make_key ( self , key , version = None ) :
+from django . apps import apps
+value = formats . sanitize_separators ( value )
+try :
+def __init__ ( self , iterable = None ) :
+replaces . extend ( migration . replaces )
+sql_list = sql_flush ( self . style , connection , only_django = True ,  reset_sequences = reset_sequences ,  allow_cascade = allow_cascade )
+normalize_newlines = allow_lazy ( normalize_newlines , six . text_type )
+return self
+continue
+f . required = False
+return self . name
+fh . write ( migration_string )
+return True
+def ugettext ( message ) :
+options = FASTCGI_OPTIONS . copy ( )
+f = s [ : end ]
+attachment = self . _create_mime_attachment ( content , mimetype )
+raise TypeError ( "Lazy object returned unexpected type." )
+def create_token ( self , token_string , source , in_tag ) :
+return dec
+if ( ( ip_str . startswith ( ':' ) and not ip_str . startswith ( '::' ) ) or  ( ip_str . endswith ( ':' ) and not ip_str . endswith ( '::' ) ) ) :
+try :
+parser . _namedCycleNodes = { }
+try :
+if not self . _is_expired ( f ) :
+if ch in "iLmsu#" :
+@ property
+lang_code = get_language_from_path ( request . path_info )
+if force_text ( value ) != force_text ( orig ) :
+self . full_clean ( )
+parser . delete_first_token ( )
+if file_obj :
+self . stdout . write ( "Creating %s\n" % new_path )
+if not getattr ( self , 'nodelist' , False ) :
+valid = False
+if subcommand in no_settings_commands :
+self . stdout . write ( "Installed %d object(s) (of %d) from %d fixture(s)" %  ( self . loaded_object_count , self . fixture_object_count , self . fixture_count ) )
+try :
+weekday = self . data . weekday ( ) + 1
+known_models . append ( table2model ( table_name ) )
+kwargs [ key ] = parser . compile_filter ( value )
+raise TemplateDoesNotExist ( name )
+raise CommandError ( "you must provide %s %s name" % (  "an" if app_or_project == "app" else "a" , app_or_project ) )
+else :
+if record . exc_info :
+def c ( self ) :
+from django . core . exceptions import ImproperlyConfigured
+return lookup_view
+if value :
+self . COOKIES = { }
+return kwargs
+return mark_safe ( '\n' . join ( chain ( * [ getattr ( self , 'render_' + name ) ( ) for name in MEDIA_TYPES ] ) ) )
+compile_func . __doc__ = func . __doc__
+from django . utils . encoding import force_text , DEFAULT_LOCALE_ENCODING
+raise ValueError ( "Key '%s' not found" % key )
+for field in self . fields . values ( ) :
+tell = property ( lambda self : self . file . tell )
+return errors
+def sql_destroy_indexes ( app_config , style , connection ) :
+return self . tokens . pop ( 0 )
+d = d [ idx ]
+return self . data . hour
+attrs = attrs or { }
+def render ( self , context ) :
+nodelist_loop = parser . parse ( ( 'else' , end_tag ) )
+if six . PY3 :
+elif name in lib . filters :
+if any ( e . is_serious ( ) and not e . is_silenced ( ) for e in all_issues ) :
+raise AttributeError ( "You cannot set content to a 304 (Not Modified) response" )
+from django . utils . deprecation import RemovedInDjango19Warning
+decode = curry ( _proxy_method , method = bytes . decode )
+assert match , 'unexpected call to parse_starttag()'
+if not self . is_valid ( ) :
+database = options . get ( 'database' )
+del X
+for k in doomed :
+__delslice__ = complain
+@ property
+logger = logging . getLogger ( 'django.request' )
+i = next_space_index ( subject , i )
+return type ( self ) . __bool__ ( self )
+context [ self . target_var ] = func ( * resolved_args , ** resolved_kwargs )
+from django . core . cache . backends . base import BaseCache , DEFAULT_TIMEOUT
+for w in self . widgets :
+def close ( self ) :
+help = "Creates new migration(s) for apps."
+return wrapper
+if alias not in settings . CACHES :
+super ( SortedDict , self ) . __init__ ( data )
+attrs [ 'help_texts' ] = help_texts
+except Exception :
+defaults [ 'initial' ] = self . initial [ i ]
+callback = pattern . _callback
+def start_serialization ( self ) :
+return self . data . hour
+try :
+RAISE_ERROR = object ( )
+self . empty_block_tag ( token )
+POST = property ( _get_post , _set_post )
+from email import ( charset as Charset , encoders as Encoders ,  message_from_string , generator )
+capfirst = lambda x : x and force_text ( x ) [ 0 ] . upper ( ) + force_text ( x ) [ 1 : ]
+self . close_called = False
+def clean ( self , value ) :
+pass
+executor = MigrationExecutor ( connections [ DEFAULT_DB_ALIAS ] )
+self . writer_enters ( )
+extensions = options . get ( 'extensions' )
+sublist_item = None
+def __init__ ( self , META , input_data , upload_handlers , encoding = None ) :
+from django . utils . translation import ugettext_lazy , pgettext_lazy
+return list ( self ) != other
+exhaust ( stream )
+result = self . find_template_cache [ key ]
+logger = logging . getLogger ( 'py.warnings' )
+self . reset ( )
+if ( ( ( self . allow_files and os . path . isfile ( full_file ) ) or  ( self . allow_folders and os . path . isdir ( full_file ) ) ) and  ( self . match is None or self . match_re . search ( f ) ) ) :
+options += [ ( k , 1 ) for k in FASTCGI_OPTIONS ]
+def activate ( language ) :
+super ( DictWrapper , self ) . __init__ ( data )
+self . attrs = attrs
+self . template_name = template
+return self . nodelist_true . render ( context )
+self . _producer = producer
+LOCK_NB = fcntl . LOCK_NB
+callback = getattr ( self . urlconf_module , 'handler%s' % view_type , None )
+def subwidgets ( self , name , value , attrs = None , choices = ( ) ) :
+return self . __offset
+class JsonResponse ( HttpResponse ) :
+def parse_header ( line ) :
+handler . setLevel ( _checkLevel ( level ) )
+def as_bytes ( self , unixfrom = False ) :
+def value ( self ) :
+except KeyboardInterrupt :
+if keys :
+pieces . append ( force_text ( getattr ( self , piece ) ( ) ) )
+def __getattr__ ( self , real_name ) :
+return [  Warning (  "BooleanField does not have a default value." ,  hint = ( "Django 1.6 changed the default value of BooleanField from False to None. "  "See https://docs.djangoproject.com/en/1.6/ref/models/fields/#booleanfield "  "for more information." ) ,  obj = field ,  id = '1_6.W002' ,  )  for field in problem_fields  ]
+return chunk [ : end ]
+_func_defaults = "func_defaults"
+nodelist . append ( node . render ( context ) )
+return
+elif total_forms > self . max_num >= 0 :
+self . app_label = options . get ( 'app_label' )
+else :
+TOKEN_TEXT = 0
+if len ( args ) < 2 :
+time_re = re . compile (  r'(?P<hour>\d{1,2}):(?P<minute>\d{1,2})'  r'(?::(?P<second>\d{1,2})(?:\.(?P<microsecond>\d{1,6})\d{0,6})?)?'  )
+if errors :
+results [ predicate ( item ) ] . append ( item )
+if settings . is_overridden ( 'TEMPLATE_LOADERS' ) :
+self . stdout . write ( 'ignoring directory %s\n' % dirname )
+if plan :
+import logging
+remove_tags = allow_lazy ( remove_tags , six . text_type )
+def prefix ( bp , func ) :
+def parse_boundary_stream ( stream , max_header_size ) :
+try :
+out . write ( blankout ( part , 'S' ) )
+setattr ( obj , self . name , result )
+return obj
+from django . apps import apps
+prefix = d [ 'prefix' ]
+def _construct_form ( self , i , ** kwargs ) :
+import re
+compare = lambda self , a , b : a < b
+class JsLexer ( Lexer ) :
+if not widget :
+for site in sites :
+try :
+opts = self . _meta
+pass
+except ValidationError :
+if os . path . isabs ( fixture_name ) :
+from django . core . management . color import no_style
+retval = newretval
+try :
+self . _out . write ( force_str ( style_func ( msg ) ) )
+if "\n" in self . __starttag_text :
+for char in self . add_truncation_text ( '' , truncate ) :
+def __ne__ ( self , other ) :
+if connection . ops . start_transaction_sql ( ) :
+return all ( w . is_hidden for w in self . widgets )
+return errors
+_load_serializers ( )
+self . attrs = attrs . copy ( )
+self . setlistdefault ( key ) . append ( value )
+class Serializer ( base . Serializer ) :
+if router . allow_migrate ( self . using , obj . object . __class__ ) :
+colors . reverse ( )
+_iteritems = "items"
+return False
+if not _serializers :
+from django . db . migrations . autodetector import MigrationAutodetector
+year = dt . year
+self . connection . sendmail ( from_email , recipients , message . as_bytes ( ) )
+def to_python ( self , data ) :
+for item in self . items :
+name = config . get ( 'name' , '' )
+for app_config in apps . get_app_configs ( ) :
+self . limit_value = limit_value
+logger = root . manager . loggerDict [ log ]
+def save_m2m ( ) :
+if six . PY3 :
+if strings_only and is_protected_type ( s ) :
+def __str__ ( self ) :
+self . template_parser = parser
+fn = inotify_code_changed
+return re . sub ( "\d([A-Z])" , lambda m : m . group ( 0 ) . lower ( ) , t )
+_format_modules_cache = { }
+if template_dirs :
+if ipv4_unpacked :
+except KeyError as key :
+import types
+return False
+c = cookie
+self . msgmerge_options = self . msgmerge_options [ : ] + [ '--no-wrap' ]
+raise
+if objects_in_fixture == 0 :
+if app_label not in executor . loader . migrated_apps :
+p = i
+def templatize ( src , origin = None ) :
+self . context = context
+setattr ( style , role , termcolors . make_style ( ** format ) )
+for p in parts [ 1 : ] :
+utility . execute ( )
+output = [ ]
+from django . template . base import TemplateSyntaxError , Library , Node , TextNode , token_kwargs , Variable
+content = content . decode ( 'utf-8' )
+self . _regex_validator = validators . RegexValidator ( regex = regex )
+from django . utils . encoding import force_text , python_2_unicode_compatible
+parser . add_library ( lib )
+def __dir__ ( self ) :
+for h in handlers :
+return base_lang in settings . LANGUAGES_BIDI
+if hasattr ( e , 'code' ) and e . code in self . error_messages :
+if isinstance ( s , six . memoryview ) :
+field_type = 'ForeignKey(%s' % rel_to
+__all__ = ( 'BaseForm' , 'Form' )
+return False
+app_path = getattr ( settings , 'WSGI_APPLICATION' )
+def add_filters ( self , filterer , filters ) :
+new_ip = ip_str . split ( ':' )
+if six . PY2 :
+self . load_label ( fixture_label )
+for model in app_models :
+model_fields = Model . _meta . get_all_field_names ( )
+if app_config . models_module is None :
+_func_code = "__code__"
+class Textarea ( Widget ) :
+def regex ( self ) :
+data [ Model . _meta . pk . attname ] = Model . _meta . pk . to_python ( d . get ( "pk" , None ) )
+if self . use_natural_foreign_keys and hasattr ( field . rel . to , 'natural_key' ) :
+return False
+from ctypes . wintypes import BOOL , DWORD , HANDLE
+six . reraise ( CommandError , CommandError ( new_msg ) , sys . exc_info ( ) [ 2 ] )
+finally :
+apps . setdefault ( pattern . app_name , [ ] ) . append ( pattern . namespace )
+last_row = output [ - 1 ]
+self . xml . endElement ( "natural" )
+class ManagementForm ( Form ) :
+class Serializer ( object ) :
+super ( SplitHiddenDateTimeWidget , self ) . __init__ ( attrs , date_format , time_format )
+def get_meta ( self , table_name ) :
+else :
+ALL_FIELDS = '__all__'
+def close ( self ) :
+else :
+try :
+view_func = getattr ( mod , func_name )
+d = d [ m . groups ( ) [ 0 ] ]
+if ( middle . endswith ( closing )  and middle . count ( closing ) == middle . count ( opening ) + 1 ) :
+parser . add_argument ( '--testrunner' ,  action = 'store' , dest = 'testrunner' ,  help = 'Tells Django to use specified test runner class instead of '  'the one specified by the TEST_RUNNER setting.' ) ,
+bits = iter ( smart_split ( self . contents ) )
+from email . header import Header
+if func is None :
+else :
+location = urljoin ( current_uri , location )
+bits = host . rsplit ( ':' , 1 )
+templatetags_modules = _templatetags_modules
+@ receiver ( setting_changed )
+try :
+exhaust ( field_stream )
+second_item = new_second_item
+from django . db import ( connections , router , transaction , DEFAULT_DB_ALIAS ,  IntegrityError , DatabaseError )
+for model in model_list :
+current_uri = '{scheme}://{host}{path}' . format ( scheme = self . scheme ,  host = self . get_host ( ) ,  path = self . path )
+media = sorted ( self . _css . keys ( ) )
+else :
+def add_fields ( self , form , index ) :
+if type ( field_type ) is tuple :
+m = m + base [ medium ]
+count = property ( _get_count )
+def filter ( self , record ) :
+if s == '"' :
+if props :
+from __future__ import absolute_import
+try :
+else :
+response = func ( request , response )
+out . write ( ' _(%s) ' % cmatch . group ( 1 ) )
+year = int ( m . group ( 'year' ) )
+def clean ( self ) :
+def validate ( self , value ) :
+raise ValueError ( 'Unable to configure handler '  '%r: %s' % ( name , e ) )
+return ( ( evens + odds ) % 10 == 0 )
+f . process ( self , self . domain )
+raise ValueError ( 'Unable to configure '  'filter %r: %s' % ( name , e ) )
+if node . getElementsByTagName ( 'None' ) :
+klass . __new__ = staticmethod ( __new__ )
+self . empty_label = empty_label
+return datetime . datetime . strptime ( force_str ( value ) , format ) . date ( )
+return
+from django . conf import settings
+if os . path . exists ( pofile ) :
+self . filepath = filepath
+slugify = allow_lazy ( slugify , six . text_type )
+return bool ( self . dict )
+import os
+def handle ( self , ** options ) :
+self . _errors = None
+def escape ( text ) :
+self . blocks = defaultdict ( list )
+base64d = b'.' + base64d
+self . _encoding = val
+middle = middle [ : - len ( punctuation ) ]
+break
+class HttpResponseGone ( HttpResponse ) :
+else :
+return str ( major + sub )
+if t is not None :
+root = nonlocal_root [ 0 ] = oldroot [ NEXT ]
+return ZERO
+def __init__ ( self ) :
+self . __args = args
+def _iteritems ( self ) :
+class ErrorList ( UserList , list ) :
+quant . append ( ch )
+def render ( self , context ) :
+except AmbiguityError :
+final_attrs [ 'value' ] = force_text ( value )
+for app_dir in app_dirs :
+EndToken = EndToken ( )
+t = get_template ( file_name )
+except KeyError :
+answer = answer [ 0 ] . lower ( )
+def module_has_submodule ( package , module_name ) :
+substitutions [ 'clear' ] = CheckboxInput ( ) . render ( checkbox_name , False , attrs = { 'id' : checkbox_id } )
+input_val = force_text ( text )
+return lazy ( func , * resultclasses ) ( * args , ** kwargs )
+if len ( language [ p + 1 : ] ) > 2 :
+if count2 != 0 :
+continue
+from django . db import connections , DEFAULT_DB_ALIAS
+key = make_key ( args , kwds , typed ) if kwds or typed else args
+return self . __offset
+src = force_text ( src , settings . FILE_CHARSET )
+if self . pos >= len ( self . tokens ) :
+consume_next = True
+def pgettext ( context , message ) :
+return '\n' . join ( statements )
+if not args :
+if fk_name :
+settings . _setup ( )
+self . validate_key ( key )
+global template_source_loaders
+def __init__ ( self , queryset , empty_label = "---------" , cache_choices = None ,  required = True , widget = None , label = None , initial = None ,  help_text = '' , to_field_name = None , limit_choices_to = None ,  * args , ** kwargs ) :
+raise NotImplementedError ( 'subclasses of Storage must provide a delete() method' )
+self . message = message
+return tpl . format ( self . sysid , self . pubid )
+__import__ ( name )
+self . importer ( used )
+return nodelist . render ( context )
+parser . add_argument ( '--database' , action = 'store' , dest = 'database' ,  default = DEFAULT_DB_ALIAS , help = 'Nominates a database to synchronize. '  'Defaults to the "default" database.' )
+from django . core . cache . backends . base import BaseCache , DEFAULT_TIMEOUT
+else :
+if ( isinstance ( args [ 0 ] , SafeData ) and  getattr ( _dec . _decorated_function , 'is_safe' , False ) ) :
+return super ( BooleanField , self ) . to_python ( value )
+return callback , ''
+def save_new_objects ( self , commit = True ) :
+if line :
+self . cookies [ key ] [ 'max-age' ] = max_age
+attrs = super ( DecimalField , self ) . widget_attrs ( widget )
+if getattr ( func , 'expects_localtime' , False ) :
+@ stringfilter
+return { 'STATIC_URL' : settings . STATIC_URL }
+self . content_length = content_length
+def render ( self , context ) :
+if html_message :
+self . attachments = attachments or [ ]
+def __init__ ( self , redirect_to , * args , ** kwargs ) :
+out . write ( ' ngettext(%r, %r, count) ' % (  join_tokens ( singular , trimmed ) ,  join_tokens ( plural , trimmed ) ) )
+elif not base_url . endswith ( '/' ) :
+def __init__ ( self , args , kw ) :
+raise CommandError ( "Cannot find a migration matching '%s' from app '%s'." % ( migration_name , app_label ) )
+try :
+for i in range ( len ( result ) ) :
+@ register . filter ( is_safe = False )
+super ( Command , self ) . handle ( 'app' , app_name , target , ** options )
+if opts . fields is None and opts . exclude is None :
+return _ ( 'p.m.' )
+raise MultiPartParserError ( 'Invalid Content-Type: %s' % content_type )
+except UnicodeError as e :
+out = text [ : end_text_pos ]
+raise base . DeserializationError (  "<%s> node is missing the required '%s' attribute"  % ( node . nodeName , attr ) )
+if cls . _delegate_text :
+encode = lambda k , v : urlencode ( { k : v } )
+self . nodelist_loop = nodelist_loop
+self . write_items ( handler )
+super ( SimpleCookie , self ) . load ( rawdata )
+for loader in template_source_loaders :
+self . stdout . write ( "No changes detected in apps '%s'" % ( "', '" . join ( app_labels ) ) )
+if isinstance ( message , SafeData ) :
+signals . request_finished . connect ( close_caches )
+if o in opt_dict :
+html [ 'month' ] = self . create_select ( name , self . month_field , value , month_val , choices , self . month_none_value )
+else :
+elif _locs_ is None :
+outer . update ( password . translate ( hmac . trans_5C ) )
+op = OPERATORS [ token ]
+from django . utils . deprecation import RemovedInDjango19Warning
+return False
+field_params = { }
+handler . startElement ( "rss" , self . rss_attributes ( ) )
+def as_hidden ( self , attrs = None , ** kwargs ) :
+for bit in self . lookups :
+fixture_name = os . path . basename ( fixture_name )
+args . append ( self . choices )
+return result
+over_bytes = len ( chunk ) % 4
+from django . utils . encoding import force_text
+try :
+return False
+def extract ( self , to_path ) :
+self . interesting = _html_parser . interesting_normal
+continue
+self . choices = [ ]
+if six . PY2 :
+def get_nodes_by_type ( self , nodetype ) :
+if not templatetags_modules :
+escape = allow_lazy ( escape , six . text_type )
+return SafeText ( s )
+from django . core . management . base import BaseCommand , CommandError
+palette [ role ] = definition
+def _get_foreign_key ( parent_model , model , fk_name = None , can_fail = False ) :
+return model_list
+parser . add_argument ( 'args' , metavar = 'app_label' , nargs = '*' ,  help = 'Specify the app label(s) to create migrations for.' )
+bits = token . split_contents ( )
+return wrapped
+if ( getattr ( Meta , 'fields' , None ) is None and  getattr ( Meta , 'exclude' , None ) is None ) :
+return "'%s'" % dirname if dirname else 'absolute path'
+except Exception as e :
+continue
+if contains ( result [ - 1 ] , Group ) :
+def exhaust ( stream_or_iterable ) :
+self . setup_environ ( )
+warnings . warn ( "Custom SQL location '<app_label>/models/sql' is "  "deprecated, use '<app_label>/sql' instead." ,  RemovedInDjango19Warning )
+from django . views . debug import ExceptionReporter , get_exception_reporter_filter
+final_attrs = self . build_attrs ( attrs , name = name )
+return bool ( ret )
+try :
+from django . utils import six
+from django . utils import six
+start = match . start ( )
+return self . __cast ( ) != other
+l = - ( - dklen // hlen )
+objects = serializers . deserialize ( ser_fmt , fixture ,  using = self . using , ignorenonexistent = self . ignore )
+if sys . platform == "win32" :
+def __exit__ ( self , exc_type , exc_value , tb ) :
+def __init__ ( self , name , content , content_type = 'text/plain' ) :
+return datetime . now ( )
+if os . path . isdir ( os . path . join ( path , entry ) ) :
+def _text_words ( self , length , truncate ) :
+def render ( self , context ) :
+sublist_item = title
+self . _unget_history = [ ]
+def build_request_repr ( request , path_override = None , GET_override = None ,  POST_override = None , COOKIES_override = None ,  META_override = None ) :
+if isinstance ( s , ( six . text_type , Promise ) ) :
+out += truncate_text
+if self . setting :
+for statement in index_output :
+def reverse_dict ( self ) :
+return self . path == other . path
+values = { 'true' : True , 'false' : False }
+fn ( * args , ** kwargs )
+from __future__ import unicode_literals
+return mark_safe ( contents )
+proxy = lazy ( func , resultclass ) ( ** kwargs )
+self . _separator = b'--' + boundary
+if self not in state_frame :
+class NowNode ( Node ) :
+else :
+def start_object ( self , obj ) :
+if value is not result :
+try :
+if block_content [ : 9 ] in ( 'verbatim' , 'verbatim ' ) :
+return value
+else :
+help = 'Prints the SQL statements for resetting sequences for the given app name(s).'
+def supports_color ( ) :
+signals . got_request_exception . send ( sender = self . __class__ , request = request )
+text = force_text ( text )
+widget . input_type = 'hidden'
+def split_leading_dir ( self , path ) :
+super ( ChoiceField , self ) . validate ( value )
+now = datetime . datetime ( now . year , now . month , now . day )
+count2 = ( since - ( seconds * count ) ) // seconds2
+def handle_app_config ( self , app_config , ** options ) :
+def content ( self , value ) :
+import sys
+def parse_file_upload ( self , META , post_data ) :
+from django . utils . deprecation import RemovedInDjango19Warning
+raise CommandError ( "Unknown command: %r" % name )
+from django . apps import apps
+return 'ValidationError(%s)' % self
+try :
+if self . max_value is not None :
+node = CycleNode ( values )
+return loader . select_template ( template )
+return True
+return True
+loop_dict [ 'first' ] = ( i == 0 )
+self . callback = None
+if self . args :
+while start < end :
+for name , field in self . fields . items ( ) :
+trimmed = 'trimmed' in t . split_contents ( )
+if six . PY2 and not isinstance ( path , six . text_type ) :
+def __deepcopy__ ( self , memo ) :
+self . bad_cookies = set ( )
+def get_declared_fields ( bases , attrs , with_base_fields = True ) :
+if isinstance ( server , six . string_types ) :
+else :
+for key in self :
+kw = dict ( ( k , int ( v ) ) for k , v in six . iteritems ( match . groupdict ( ) ) )
+if filename . endswith ( ( '/' , '\\' ) ) :
+if ( 3 , 2 ) < sys . version_info < ( 3 , 3 , 4 ) :
+existing . sort ( )
+table_output = [ ]
+yield obj
+nodes = [ ]
+ret_ip . append ( ( '0' * ( 4 - len ( hextet ) ) + hextet ) . lower ( ) )
+try :
+import unicodedata
+return attrs
+Module_six_moves_urllib_response . _moved_attributes = _urllib_response_moved_attributes
+else :
+inplural = False
+if self . feed [ 'feed_url' ] is not None :
+for event , node in self . event_stream :
+self . stdout . write ( "  Installing custom SQL...\n" )
+values = _itervalues
+result . setlist ( copy . deepcopy ( key , memo ) , copy . deepcopy ( value , memo ) )
+elif action == "unapply_success" :
+return s
+if not value or isinstance ( value , ( list , tuple ) ) :
+return node . render ( context )
+found = self . importer ( used )
+except Exception :
+def handle_raw_input ( self , input_data , META , content_length , boundary , encoding = None ) :
+name = self . path ( name )
+return
+except LookupError :
+msg_count = 0
+from django . utils . html import conditional_escape , format_html
+repr_attr = self . _wrapped
+from __future__ import unicode_literals
+elif not isinstance ( content , Message ) :
+from django . core . mail . backends . base import BaseEmailBackend
+if k == 'fg' :
+return self . nodelist . render ( context )
+def __deepcopy__ ( self , memo ) :
+return context_extras
+def scheme ( self ) :
+def close ( self , ** kwargs ) :
+except ( AttributeError , UnsupportedOperation ) :
+cookies = ( pformat ( COOKIES_override )  if COOKIES_override is not None  else pformat ( request . COOKIES ) )
+else :
+content = '' . join ( comment )
+self . environ = environ
+self . add_item_elements ( handler , item )
+if self . check_test ( value ) :
+return obj
+try :
+f = os . path . join ( root , f )
+def save_new ( self , form , commit = True ) :
+return __wrapper__
+dirs . extend ( list ( settings . FIXTURE_DIRS ) )
+def __init__ ( self , attrs = None , years = None , months = None , empty_label = None ) :
+status = '%s %s' % ( response . status_code , response . reason_phrase )
+def configure_custom ( self , config ) :
+offset = self . __offset . seconds // 60
+changeset = timestamp . strftime ( '%Y%m%d%H%M%S' )
+@ deconstructible
+self . _caches . caches [ alias ] = cache
+return ( self . data . weekday ( ) + 1 ) % 7
+if self . required and not value :
+from django . forms . fields import *
+bits = token . split_contents ( )
+else :
+pass
+tt = time . localtime ( stamp )
+for item in six . iteritems ( dict_ ) :
+sys . stderr . write ( "fork #2 failed: (%d) %s\n" % ( e . errno , e . strerror ) )
+def endChannelElement ( self , handler ) :
+self . stderr = OutputWrapper ( options . get ( 'stderr' , sys . stderr ) )
+if template_tuple is TemplateDoesNotExist :
+else :
+return path . encode ( fs_encoding )
+state_frame = self . _get_context_stack_frame ( context )
+def get_complete_version ( version = None ) :
+class Command ( BaseCommand ) :
+if self . domain == 'djangojs' :
+result . setLevel ( _checkLevel ( level ) )
+self . FILES = MultiValueDict ( )
+def I ( self ) :
+return endpos
+self . stream = None
+alen = len ( args )
+__iter__ = xreadlines
+self . _changed_data . append ( name )
+from django . core . management . utils import handle_extensions
+class BaseInlineFormSet ( BaseModelFormSet ) :
+self . _assert_mutable ( )
+return value
+memoryview = buffer
+return self . clear ( )
+utf8_charset . body_encoding = None
+def new_file ( self , field_name , file_name , content_type , content_length , charset = None , content_type_extra = None ) :
+items = _iteritems
+i = 365
+self . deprecation_warning = deprecation_warning
+return self . filters [ filter_name ]
+self . xml . addQuickElement ( "object" , attrs = {  'pk' : smart_text ( value . _get_pk_val ( ) )  } )
+def getInnerText ( node ) :
+ch , escaped = next ( pattern_iter )
+ugettext_noop = gettext_noop
+else :
+if isinstance ( item . get ( 'unique_id_is_permalink' ) , bool ) :
+ns = "http://www.w3.org/2005/Atom"
+current = settings . TEMPLATE_STRING_IF_INVALID
+_ExpatParser . __init__ ( self , * args , ** kwargs )
+for attr in _urllib_robotparser_moved_attributes :
+file_ . close ( )
+return 'NOTPROVIDED'
+try :
+pass
+return self
+result . validators = self . validators [ : ]
+self . stdout . write ( "UnicodeDecodeError: skipped file %s in %s" % ( f . file , f . dirpath ) )
+if nodelist :
+self . name = name
+def symlinks_supported ( ) :
+msg_count = 0
+try :
+@ python_2_unicode_compatible
+LockFileEx . restype = BOOL
+from django . utils import six
+else :
+len_values = len ( values )
+return force_text ( quote_plus ( force_str ( url ) , force_str ( safe ) ) )
+value = int ( value )
+def capfirst ( value ) :
+if number > self . num_pages :
+if changes :
+return save_instance ( self , self . instance , self . _meta . fields ,  fail_message , commit , self . _meta . exclude ,  construct = False )
+context_extras [ 'LANGUAGE_CODE' ] = translation . get_language ( )
+d = d [ n ]
+pass
+try :
+class Module_six_moves_urllib_robotparser ( _LazyModule ) :
+return
+return __wrapper__
+self . prefix = prefix
+return Truncator ( value ) . words ( length , truncate = ' ...' )
+try :
+self . error_dict [ field ] = messages . error_list
+while 1 :
+self . interactive = options . get ( 'interactive' )
+self . file_path = getattr ( settings , 'EMAIL_FILE_PATH' , None )
+raise NotImplementedError ( 'subclasses of Serializer must provide an handle_m2m_field() method' )
+self . file_path = os . path . abspath ( self . file_path )
+if key in d :
+for fixture_label in fixture_labels :
+return settings . DEBUG
+value = localize ( value , use_l10n = context . use_l10n )
+result = self . _resolve ( )
+return _trans . gettext_noop ( message )
+import os
+except ( TypeError , ValueError , UnicodeDecodeError ) :
+return self . as_widget ( ) + self . as_hidden ( only_initial = True )
+finally :
+encoded = encoded . replace ( ";" , "\\073" ) . replace ( "," , "\\054" )
+self . _assert_mutable ( )
+available_shells = [ shell ] if shell else self . shells
+else :
+else :
+import warnings
+if module_has_submodule ( app_config . module , module_to_search ) :
+raise MultiPartParserError ( "Invalid content length: %r" % content_length )
+content_subtype = 'plain'
+help = ( 'Removes ALL DATA from the database, including data added during '  'migrations. Unmigrated apps will also have their initial_data '  'fixture reloaded. Does not achieve a "fresh install" state.' )
+cache = BaseDatabaseCache ( tablename , { } )
+style . ERROR_OUTPUT = style . ERROR
+for level in zip ( * [ m . ancestry for m in merge_migrations ] ) :
+return RelatedObject ( cls . fk . rel . to , cls . model , cls . fk ) . get_accessor_name ( ) . replace ( '+' , '' )
+except TypeError :
+import django
+class EmailMessage ( object ) :
+return not self . file or self . file . closed
+streaming = True
+return "" . join ( inner_text )
+if response . has_header ( 'Vary' ) :
+curr = ''
+self . _current = None
+if token . contents == 'else' :
+_add_doc ( u , """Text literal""" )
+return smart_text ( auto_id ) % self . html_name
+from django . core . management . sql import sql_create
+state = tok . next
+return
+raise TemplateSyntaxError ( "widthratio final argument must be a number" )
+child_loggers . append ( existing [ i ] )
+if pks :
+self . keep_pot = options . get ( 'keep_pot' )
+except ( LookupError , ImportError ) as e :
+options = params . get ( 'OPTIONS' , { } )
+if cache_choices is not None :
+if '()' in config :
+import sys
+super ( QueryDict , self ) . appendlist ( key , value )
+file_field_list = [ ]
+return response
+plist = [ ]
+while True :
+if self . verbosity >= 2 :
+self . default_kwargs = default_kwargs or { }
+def main_help_text ( self , commands_only = False ) :
+if code in _supported and check_for_language ( code ) :
+kwargs [ 'widget' ] = widgets [ f . name ]
+try :
+yield import_module ( '%s.formats' % ( location % loc ) )
+return reversed ( self . keyOrder )
+except ImportError as e :
+if p == 0 :
+return base64 . urlsafe_b64decode ( s . ljust ( len ( s ) + len ( s ) % 4 , b'=' ) )
+@ staticmethod
+class MiddlewareNotUsed ( Exception ) :
+self . _cull ( )
+if last_bit :
+else :
+def getlist ( self , key , default = None ) :
+if constant :
+self . connection . ehlo ( )
+else :
+content_type , content_type_extra = meta_data . get ( 'content-type' , ( '' , { } ) )
+plural = [ ]
+return [ etag_str ]
+return render_value_in_context ( value , context )
+try :
+def root_attributes ( self ) :
+buffer_ = line
+args . append ( work_file )
+from collections import OrderedDict
+for node_app , node_name in migration . branch :
+return value
+import sys
+self . token_type , self . contents = token_type , contents
+class BaseTemporalField ( Field ) :
+if self . field . localize :
+seen_data . add ( data )
+def listdir ( self , path ) :
+response . _closable_objects . append ( request )
+if isinstance ( number , int ) and not use_grouping and not decimal_pos :
+list_ = [ bytes_to_text ( elt , self . encoding ) for elt in list_ ]
+@ register . filter ( is_safe = True , needs_autoescape = True )
+sys . modules [ __name__ + ".moves.urllib_parse" ] = sys . modules [ __name__ + ".moves.urllib.parse" ] = Module_six_moves_urllib_parse ( __name__ + ".moves.urllib_parse" )
+def get ( self , key , default = None , version = None ) :
+else :
+label_for = format_html ( ' for="{0}"' , self . id_for_label )
+else :
+try :
+def absolute_path ( self , path , prefix = None ) :
+for i , ext in enumerate ( ext_list ) :
+if data :
+self . field = field
+current = settings . TEMPLATE_STRING_IF_INVALID
+is_a_tty = hasattr ( sys . stdout , 'isatty' ) and sys . stdout . isatty ( )
+if key not in self :
+pass
+else :
+def super ( self ) :
+import django
+else :
+return _trans . npgettext ( context , singular , plural , number )
+with context . push ( ** values ) :
+requires_system_checks = False
+class ContentNotRenderedError ( Exception ) :
+return force_text ( gettext ( message ) )
+def reload ( self ) :
+parent = ( form . Meta , object )
+val = None
+if num_repl > 0 :
+else :
+name = p [ : i ] . strip ( ) . lower ( ) . decode ( 'ascii' )
+from importlib import import_module
+format_type = force_str ( format_type )
+plural_forms_re = re . compile ( r'^(?P<value>"Plural-Forms.+?\\n")\s*$' , re . MULTILINE | re . DOTALL )
+def __enter__ ( self ) :
+attrs = { }
+except VariableDoesNotExist :
+def render ( self , context ) :
+for fname in self . _list_cache_files ( ) :
+class BaseConverter ( object ) :
+class CommandError ( Exception ) :
+class TimeField ( BaseTemporalField ) :
+return output
+option_value = force_text ( option_value )
+return True
+top = self . count
+return six . unichr ( c )
+class FilePathField ( ChoiceField ) :
+chunk = self . _read_limited ( )
+import re
+@ lru_cache . lru_cache ( maxsize = None )
+return False
+slots = [ slots ]
+except ( OSError , TypeError ) :
+form . _errors [ NON_FIELD_ERRORS ] = self . error_class ( [ self . get_form_error ( ) ] )
+self . stdout . write ( self . style . MIGRATE_LABEL ( "  Synchronize unmigrated apps: " ) + ( ", " . join ( executor . loader . unmigrated_apps ) ) )
+self . _count = len ( self . object_list )
+return endpos
+content_length = int ( environ . get ( 'CONTENT_LENGTH' ) )
+return ''
+unifunc . replace ( strfunc )
+setattr ( _MovedItems , attr . name , attr )
+app . start ( )
+try :
+if not hasattr ( translation , '_catalog' ) :
+while model_dependencies :
+class Options ( object ) :
+with self . _lock . writer ( ) :
+return I18N_MODIFIED if filename . endswith ( '.mo' ) else FILE_MODIFIED
+sub_ul_renderer = ChoiceFieldRenderer ( name = self . name ,  value = self . value ,  attrs = attrs_plus ,  choices = choice_label )
+while 1 :
+import datetime
+initial = [ ]
+pass
+args . append ( work_file )
+from django . conf import settings
+except TemplateDoesNotExist as e :
+else :
+f . close ( )
+except KeyError :
+self . event_stream . expandNode ( node )
+_builtin_context_processors = ( 'django.core.context_processors.csrf' , )
+if name == "_wrapped" :
+exp = Decimal ( 1 )
+fp . write ( msgs )
+excluded_models = set ( )
+self . add_fallback ( default_translation )
+except ( ValueError , TypeError ) :
+frame = sys . _getframe ( 1 )
+def __init__ ( self , max_length = None , min_length = None , * args , ** kwargs ) :
+self . first = False
+return False
+def __bool__ ( self ) :
+return func ( context , self . first )
+urlconf = request . urlconf
+exp = datetime . max
+else :
+return force_text ( name . replace ( '\\' , '/' ) )
+raise TemplateSyntaxError ( "Second (optional) argument to %s tag"  " must be 'parsed'" % bits [ 0 ] )
+return (  path or '%s.%s' % ( obj . __class__ . __module__ , obj . __class__ . __name__ ) ,  obj . _constructor_args [ 0 ] ,  obj . _constructor_args [ 1 ] ,  )
+fk = fks_to_parent [ 0 ]
+return self . field . prepare_value ( data )
+i = 0
+return value
+is_usable = True
+return True
+class PermissionDenied ( Exception ) :
+self . waiting_writers = 0
+new_class = ( super ( DeclarativeFieldsMetaclass , mcs )  . __new__ ( mcs , name , bases , attrs ) )
+self . is_reversed = is_reversed
+def handle ( self , * app_labels , ** options ) :
+locks . lock ( fd , locks . LOCK_EX )
+FormSet . fk = fk
+app_name = commands [ subcommand ]
+def write_message ( self , message ) :
+raise parser . error_class (  "Not expecting '%s' in this position in if tag." % self . id  )
+if self . field . show_hidden_initial :
+def read ( self ) :
+def dst ( self , dt ) :
+attrs [ 'exclude' ] = exclude
+return os . path . getsize ( self . file . name )
+else :
+from django . template . base import ( ALLOWED_VARIABLE_CHARS , BLOCK_TAG_END ,  BLOCK_TAG_START , COMMENT_TAG_END , COMMENT_TAG_START ,  FILTER_ARGUMENT_SEPARATOR , FILTER_SEPARATOR , SINGLE_BRACE_END ,  SINGLE_BRACE_START , TOKEN_BLOCK , TOKEN_COMMENT , TOKEN_TEXT , TOKEN_VAR ,  TRANSLATOR_COMMENT_MARK , UNKNOWN_SOURCE , VARIABLE_ATTRIBUTE_SEPARATOR ,  VARIABLE_TAG_END , VARIABLE_TAG_START , filter_re , tag_re )
+current = context
+contains_nontext = False
+if extend is True :
+context = Context ( dict ( options , ** {  base_name : name ,  base_directory : top_dir ,  'docs_version' : docs_version ,  } ) , autoescape = False )
+pk_field = self . model . _meta . pk
+else :
+except TypeError :
+lookup_view_s = "%s.%s" % ( m , n )
+for option_value , option_label in chain ( self . choices , choices ) :
+if issubclass ( klass , logging . handlers . MemoryHandler ) and 'target' in config :
+else :
+if not cleaned_line :
+def sign ( self , value ) :
+def is_hidden ( self ) :
+else :
+def led ( self , left , parser ) :
+else :
+def __init__ ( self , schemes = None , ** kwargs ) :
+raise ValueError ( "%r is not in a valid HTTP date format" % date )
+strfunc = Name ( "__str__" , prefix = unifunc . prefix )
+token = super ( DebugLexer , self ) . create_token ( token_string , in_tag )
+return self . _stream . readline ( * args , ** kwargs )
+from django . utils import translation
+return url
+self . _cache . set_multi ( safe_data , self . get_backend_timeout ( timeout ) )
+connection = connections [ options [ 'database' ] ]
+else :
+from django . utils import six
+from django . db . models . fields . related import ManyToManyField
+return "|" . join ( prefix + re . escape ( c ) + suffix for c in choices . split ( ) )
+self . __kw = kw
+from django . utils . jslex import prepare_js_for_gettext
+targets = [ key for key in executor . loader . graph . leaf_nodes ( ) if key [ 0 ] == app_label ]
+if hasattr ( value , 'close' ) :
+if isinstance ( stream_or_string , six . string_types ) :
+for widget in self . widgets :
+return klass
+elif options [ 'app_label' ] :
+elif callable ( func ) :
+yield obj
+mail . attach_alternative ( html_message , 'text/html' )
+return msg
+self . cookies = SimpleCookie ( )
+return plural_suffix
+from django . utils . functional import allow_lazy , SimpleLazyObject
+with io . open ( potfile , 'a' , encoding = 'utf-8' ) as fp :
+for site in sites1 :
+path = os . environ . get ( 'PATH' , '' ) . split ( os . pathsep )
+return parser . _namedCycleNodes [ name ]
+def pop ( self ) :
+if name :
+from django . conf import settings
+attrs = { 'model' : model }
+default_error_messages = {  'invalid_date' : _ ( 'Enter a valid date.' ) ,  'invalid_time' : _ ( 'Enter a valid time.' ) ,  }
+self . stdout . write ( "Rendering %s template files with "  "extensions: %s\n" %  ( app_or_project , ', ' . join ( extensions ) ) )
+parser . add_argument ( '--all' , action = 'store_true' , dest = 'all' , default = False ,  help = 'Display all settings, regardless of their value. '  'Default values are prefixed by "###".' )
+msg = "Could not decode base64 data: %r" % e
+for char in fmt :
+with self . _lock . writer ( ) :
+except IndexError :
+root = logging . getLogger ( )
+MAX_NUM_FORM_COUNT = 'MAX_NUM_FORMS'
+exp = exp . replace ( microsecond = 0 )
+if csrf_token is not None :
+root = config . get ( 'root' , None )
+else :
+url = urlunsplit ( ( scheme , netloc , path , query , fragment ) )
+gettext_noop = gettext_lazy = _ = gettext
+dklen = None
+from django . utils import six
+if kwargs [ 'setting' ] in ( 'LANGUAGES' , 'LANGUAGE_CODE' ) :
+return len ( self . children )
+return self . _cache . decr ( key , - delta )
+return default
+_locks = { }
+name = os . path . join ( dir_name , "%s_%s%s" % ( file_root , next ( count ) , file_ext ) )
+return list ( zip ( * flatten_result ( result ) ) )
+node . replace ( decorated )
+try :
+if self . show_traceback :
+else :
+def render ( self , context ) :
+if hasattr ( middleware , 'process_template_response' ) :
+except ImportError :
+return get_callable ( callback ) , { }
+message = error . message
+if self . parsed :
+return lib
+if e . args [ 0 ] not in not_found :
+self . cookies [ key ] [ 'httponly' ] = True
+else :
+template_dir = os . path . join ( app_config . path , 'templates' )
+return out
+duplicate . dicts = self . dicts [ : ]
+import zlib
+if error_messages is not None :
+help = "Prints the SQL statements for the named migration."
+self . cleaned_data = { }
+if var . find ( VARIABLE_ATTRIBUTE_SEPARATOR + '_' ) > - 1 or var [ 0 ] == '_' :
+match = kwarg_re . match ( bits [ 0 ] )
+for key , value in parse_qsl ( query_string or '' ,  keep_blank_values = True ) :
+return format_html ( "" )
+self . attr = new_attr
+class DictConfigurator ( BaseConfigurator ) :
+resolver = urlresolvers . RegexURLResolver ( r'^/' , urlconf )
+self . add_fields ( form , i )
+ESCAPE_MAPPINGS = {  "A" : None ,  "b" : None ,  "B" : None ,  "d" : "0" ,  "D" : "x" ,  "s" : " " ,  "S" : "x" ,  "w" : "x" ,  "W" : "!" ,  "Z" : None ,  }
+else :
+else :
+try :
+def __repr__ ( self ) :
+self . file . seek ( 0 , os . SEEK_END )
+max_num = DEFAULT_MAX_NUM
+def add_root_elements ( self , handler ) :
+def get_objects ( ) :
+except AttributeError :
+return id_
+return self . render ( )
+return datetime . fromtimestamp ( os . path . getmtime ( self . path ( name ) ) )
+def is_aware ( value ) :
+if self . data . hour == 0 :
+yield item
+return self
+t = getattr ( _active , "value" , None )
+def add ( self , key , value , timeout = DEFAULT_TIMEOUT , version = None ) :
+import hashlib
+raise TemplateSyntaxError (  "'%s' is decorated with takes_context=True so it must "  "have a first argument of 'context'" % name )
+if isinstance ( value , six . string_types ) :
+if initial is not None :
+import sys
+if len ( list_ ) == 1 :
+add_to_builtins ( 'django.template.loader_tags' )
+import tempfile
+return output
+else :
+parser = CommandParser ( self , prog = "%s %s" % ( os . path . basename ( prog_name ) , subcommand ) ,  description = self . help or None )
+error = self . data [ i ]
+if css_classes :
+if isinstance ( s , bytes ) or ( isinstance ( s , Promise ) and s . _delegate_bytes ) :
+for middleware_method in self . _view_middleware :
+answer = six . moves . input ( "Do you wish to proceed? [yN] " )
+_active . value = pytz . timezone ( timezone )
+if self . verbosity >= 3 :
+def _resolve ( self ) :
+def unparsed_entity_decl ( self , name , base , sysid , pubid , notation_name ) :
+domain = domain . encode ( 'idna' ) . decode ( 'ascii' )
+return six . unichr ( html_entities . name2codepoint [ text ] )
+pofile = os . path . join ( basedir , '%s.po' % str ( self . domain ) )
+data = base64 . b64decode ( raw_data )
+for k , v in defaults . items ( ) :
+upto = start
+raise self . error ( None , "Unclosed tags: %s " % ', ' . join ( parse_until ) )
+def handle ( self , ** options ) :
+def configure_filter ( self , config ) :
+raise CommandError ( "Conflicting migrations detected (%s).\nTo fix them run 'python manage.py makemigrations --merge'" % name_str )
+runfastcgi ( sys . argv [ 1 : ] )
+field_notes . append ( "Field renamed because it ended with '_'." )
+self . _app_dict = { }
+self . pointer = self . backout . pop ( )
+return
+def attach_alternative ( self , content , mimetype ) :
+if value != self . empty_value :
+if not file_name :
+if self . match is None or self . match_re . search ( f ) :
+row = cursor . fetchone ( )
+def check_for_migrations ( app_config , connection ) :
+for sql_file in sql_files :
+from django . utils . deprecation import RemovedInNextVersionWarning
+if self . feed [ 'author_name' ] is not None :
+import time
+except OSError :
+if six . PY3 :
+if data is None :
+from django . core . management . base import AppCommand
+if self . _delegate_bytes :
+if field . rel . to . _meta . pk . rel :
+except OSError as e :
+self . key_prefix = params . get ( 'KEY_PREFIX' , '' )
+pass
+raise SerializerDoesNotExist ( format )
+urlunquote_plus = allow_lazy ( urlunquote_plus , six . text_type )
+value = ugettext ( "%s MB" ) % filesize_number_format ( bytes / MB )
+if level not in logging . _levelNames :
+def handle ( self , ** options ) :
+sublist = _helper ( sublist_item , tabs + 1 )
+model_dependencies = [ ]
+from functools import partial
+def fixture_dirs ( self ) :
+elif self . META . get ( 'CONTENT_TYPE' , '' ) . startswith ( 'application/x-www-form-urlencoded' ) :
+try :
+nodelist_true_output = None
+setattr ( self . object , accessor_name , object_list )
+from django . core . exceptions import (  ImproperlyConfigured , ValidationError , NON_FIELD_ERRORS , FieldError )
+return "<TranslatableFile: %s>" % os . sep . join ( [ self . dirpath , self . file ] )
+def python_reloader ( main_func , args , kwargs ) :
+raise InvalidTemplateLibrary ( "Unsupported arguments to "  "Library.tag: (%r, %r)" , ( name , compile_function ) )
+return ValidationError ( self . data ) . error_list
+else :
+from django . db import connections , router , transaction , models , DEFAULT_DB_ALIAS
+rel_model = field . rel . to
+"""     Adds (or updates) the "Vary" header in the given HttpResponse object.     newheaders is a list of header names that should be in "Vary". Existing     headers in "Vary" aren't removed.     """
+memo [ id ( self ) ] = result
+def validate_integer ( value ) :
+raise NotImplementedError ( 'subclasses of BaseCache must provide a delete() method' )
+return
+_super ( SimpleLazyObject , self ) . __init__ ( )
+return ustring_re . sub ( fix , s )
+if options . get ( 'load_initial_data' ) :
+data = raw_data
+from decimal import Decimal , DecimalException
+raise CommandError ( "currently makemessages only supports domains "  "'django' and 'djangojs'" )
+widget = TimeInput
+def reader_enters ( self ) :
+class Command ( TemplateCommand ) :
+if self . __language == settings . LANGUAGE_CODE or self . __language == "en-us" :
+@ register . filter ( is_safe = True )
+setattr ( self . _wrapped , name , value )
+def __init__ ( self , tokens ) :
+from django . core import mail
+qs = pk . rel . to . _default_manager . get_queryset ( )
+return b' ' . join ( [ force_bytes ( arg , encoding , strings_only ,  errors ) for arg in s ] )
+text = '%s\x1b[%sm' % ( text or '' , RESET )
+else :
+continue
+self . connection . starttls ( )
+if isinstance ( timezone , tzinfo ) :
+return new_name , field_params , field_notes
+else :
+def update_watch ( sender = None , ** kwargs ) :
+other = other . __cast ( )
+return self . _post
+if self . verbosity > 0 or self . interactive :
+if name . startswith ( '.' ) :
+return json . dumps ( self . get_json_data ( escape_html ) )
+def _coerce ( self , value ) :
+def __str__ ( self ) :
+raise RawPostDataException ( "You cannot access body after reading from request's data stream" )
+self . _called_from_command_line = True
+server_address = ( addr , port )
+os . close ( fd )
+class ChoiceInput ( SubWidget ) :
+if message :
+else :
+result . widget = copy . deepcopy ( self . widget , memo )
+def non_field_errors ( self ) :
+return data . getlist ( name )
+is_dst = False if dt is None else self . _isdst ( dt )
+def normalize_col_name ( self , col_name , used_column_names , is_relation ) :
+from django . forms . fields import IntegerField , BooleanField
+if size :
+try :
+self . extra_context [ name ] = var
+output . append ( '\n\n' )
+if hasattr ( file_or_path , 'read' ) :
+if not getattr ( f , 'editable' , False ) :
+def add_library ( self , lib ) :
+import os
+exclude . append ( f . name )
+pk_value = form . instance . pk
+default_error_messages = {  'invalid' : _ ( 'Enter a valid time.' )  }
+def simple_tag ( self , func = None , takes_context = None , name = None ) :
+class ExtendsError ( Exception ) :
+with open ( filepath , 'r' ) as fp :
+if slots is not None :
+val = self . _cache . decr ( key , delta )
+return nodelist
+try :
+self . stdout . write ( "Installed %d object(s) from %d fixture(s)" %  ( self . loaded_object_count , self . fixture_count ) )
+cmd_options = vars ( options )
+def __bool__ ( self ) :
+import re
+data = [ ]
+pass
+def __init__ ( self , dir , params ) :
+mail . outbox . extend ( messages )
+import sys
+if isinstance ( context , Context ) :
+p = locale . find ( '_' )
+result = [ '' ]
+return media
+def add_arguments ( self , parser ) :
+qs = self . queryset . filter ( ** { '%s__in' % key : value } )
+if type ( result ) in ( ConvertingDict , ConvertingList ,  ConvertingTuple ) :
+if self . localize :
+from django . template . base import TemplateDoesNotExist
+raise CommandError (  "Multiple fixtures named '%s' in %s. Aborting." %  ( fixture_name , humanize ( fixture_dir ) ) )
+from django . db . models import ForeignKey
+self . connection . ehlo ( )
+super ( DebugParser , self ) . __init__ ( lexer )
+def wrapper ( * args , ** kwds ) :
+pass
+try :
+if hasattr ( get_git_changeset , 'cache' ) :
+except AttributeError :
+new_errors = check ( app_configs = app_configs )
+if self . active_writers == 0 and self . waiting_writers == 0 :
+return { '2' : True ,  True : True ,  'True' : True ,  '3' : False ,  'False' : False ,  False : False } . get ( value , None )
+def close ( self ) :
+min_num = DEFAULT_MIN_NUM
+import_module ( project_name )
+return [ m2m_convert ( c ) for c in node . getElementsByTagName ( "object" ) ]
+return parser . parse ( )
+db = options . get ( 'database' )
+token . lineno = self . lineno
+orig_file = os . path . join ( self . dirpath , self . file )
+return "(%s %r)" % ( self . id , self . value )
+return self . _coerce ( value )
+return format_html ( '<textarea{0}>\r\n{1}</textarea>' ,  flatatt ( final_attrs ) ,  force_text ( value ) )
+self . validate_key ( key )
+except AttributeError :
+status_code = 404
+if exit_code < 0 :
+return numberformat . format (  value ,  get_format ( 'DECIMAL_SEPARATOR' , lang , use_l10n = use_l10n ) ,  decimal_pos ,  get_format ( 'NUMBER_GROUPING' , lang , use_l10n = use_l10n ) ,  get_format ( 'THOUSAND_SEPARATOR' , lang , use_l10n = use_l10n ) ,  force_grouping = force_grouping  )
+from django . utils . deprecation import RemovedInDjango20Warning
+context [ self . asvar ] = url
+def get_available_name ( self , name ) :
+from __future__ import unicode_literals
+_super = super
+if not os . path . isdir ( directory ) :
+def as_ul ( self ) :
+for dirpath , dirnames , locale_filenames in os . walk ( basedir ) :
+else :
+new_obj = func ( obj , autoescape = context . autoescape , * arg_vals )
+def setlist ( self , key , list_ ) :
+try :
+while 1 :
+raise v
+caches = CacheHandler ( )
+if hasattr ( middleware , 'process_view' ) :
+try :
+parser . add_argument ( '--database' , default = DEFAULT_DB_ALIAS ,  help = 'Nominates a database to synchronize. Defaults to the "default" database.' )
+for app_label in app_labels :
+self . pos = 0
+if namespaces :
+self . add_filters ( logger , filters )
+if 'django.middleware.clickjacking.XFrameOptionsMiddleware' not in set ( settings . MIDDLEWARE_CLASSES ) :
+check_for_migrations ( app_config , connection )
+if threading :
+mail = EmailMultiAlternatives ( subject , message , from_email , recipient_list ,  connection = connection )
+if ( hasattr ( self . cmd , 'missing_args_message' ) and  not ( args or any ( [ not arg . startswith ( '-' ) for arg in args ] ) ) ) :
+parser . add_argument ( '--noinput' , action = 'store_false' , dest = 'interactive' , default = True ,  help = 'Tells Django to NOT prompt the user for input of any kind.' )
+return compiled_parent . _render ( context )
+try :
+TRAILING_PUNCTUATION = [ '.' , ',' , ':' , ';' , '.)' , '"' , '\'' ]
+import hashlib
+def filter ( self , record ) :
+filelist = self . _list_cache_files ( )
+self . allow_empty_file = kwargs . pop ( 'allow_empty_file' , False )
+if isinstance ( title , ( list , tuple ) ) :
+return mark_for_escaping ( value )
+from django . utils import six
+for t in Lexer ( src , origin ) . tokenize ( ) :
+return output
+else :
+objects = model . _default_manager
+if cword == 1 :
+return ''
+return '\n' . join ( statements )
+class SafeMIMEText ( MIMEMixin , MIMEText ) :
+if ',' in args [ 1 ] :
+fname = self . _key_to_file ( key , version )
+key = self . make_key ( key , version = version )
+if hasattr ( self , 'error_dict' ) :
+get_ns_resolver . cache_clear ( )
+assert not ( cls . _delegate_bytes and cls . _delegate_text ) , "Cannot call lazy() with both bytes and text return types."
+result = ungettext ( * msgs_with_ctxt )
+self . _leftover = b''
+from django . utils . safestring import mark_safe
+new_attr = old_attr
+ip_address = literal_match . group ( 1 )
+self . addr = self . addr [ 1 : - 1 ]
+words [ i ] = escape ( word )
+options = self . render_options ( choices , value )
+def tell ( self ) :
+else :
+del attr
+get_supported_language_variant . cache_clear ( )
+return obj
+parser . add_argument ( '--noinput' , action = 'store_false' , dest = 'interactive' , default = True ,  help = 'Tells Django to NOT prompt the user for input of any kind.' )
+non_capturing_groups = [ ]
+def model_to_dict ( instance , fields = None , exclude = None ) :
+def full_clean ( self ) :
+return force_text ( error )
+handler . addQuickElement ( "ttl" , item [ 'ttl' ] )
+class Command ( AppCommand ) :
+yield ''
+def patch_cache_control ( response , ** kwargs ) :
+return form
+except NoReverseMatch :
+super ( PyLibMCCache , self ) . __init__ ( server , params ,  library = pylibmc ,  value_not_found_exception = pylibmc . NotFound )
+parser . add_argument ( 'migration_name' ,  help = 'Migrations will be squashed until and including this migration.' )
+if inverse_match is not None :
+response = wrapped_callback ( request , * callback_args , ** callback_kwargs )
+except IndexError :
+from __future__ import unicode_literals
+_assertRegex = "assertRegex"
+__all__ = [ "runfastcgi" ]
+cursor . execute ( "SELECT cache_key, value, expires FROM %s "  "WHERE cache_key = %%s" % table , [ key ] )
+locales = set ( locales ) - set ( exclude )
+raise
+sql . extend ( connection . creation . sql_for_pending_references ( model , no_style ( ) , pending_references ) )
+from django . core . management . templates import TemplateCommand
+if remaining_bits :
+Image . open ( file ) . verify ( )
+objects = json . loads ( stream_or_string )
+class DefusedExpatParser ( _ExpatParser ) :
+if not nesting :
+return super ( Info , self ) . __init__ ( INFO , * args , ** kwargs )
+if isinstance ( value , Field ) :
+model = None
+except Exception :
+_format_cache [ cache_key ] = None
+both_before = [  Tok ( "comment" , r"/\*(.|\n)*?\*/" ) ,  Tok ( "linecomment" , r"//.*?$" ) ,  Tok ( "ws" , r"\s+" ) ,  Tok ( "keyword" , literals ( """                            break case catch class const continue debugger                            default delete do else enum export extends                            finally for function if import in instanceof                            new return super switch this throw try typeof                            var void while with                            """ , suffix = r"\b" ) , next = 'reg' ) ,  Tok ( "reserved" , literals ( "null true false" , suffix = r"\b" ) , next = 'div' ) ,  Tok ( "id" , r"""                   ([a-zA-Z_$   ]|\\u[0-9a-fA-Z]{4})   # first char                   ([a-zA-Z_$0-9]|\\u[0-9a-fA-F]{4})*  # rest chars                   """ , next = 'div' ) ,  Tok ( "hnum" , r"0[xX][0-9a-fA-F]+" , next = 'div' ) ,  Tok ( "onum" , r"0[0-7]+" ) ,  Tok ( "dnum" , r"""                     (   (0|[1-9][0-9]*)     # DecimalIntegerLiteral                         \.                  # dot                         [0-9]*              # DecimalDigits-opt                         ([eE][-+]?[0-9]+)?  # ExponentPart-opt                     |                         \.                  # dot                         [0-9]+              # DecimalDigits                         ([eE][-+]?[0-9]+)?  # ExponentPart-opt                     |                         (0|[1-9][0-9]*)     # DecimalIntegerLiteral                         ([eE][-+]?[0-9]+)?  # ExponentPart-opt                     )                     """ , next = 'div' ) ,  Tok ( "punct" , literals ( """                          >>>= === !== >>> <<= >>= <= >= == != << >> &&                          || += -= *= %= &= |= ^=                          """ ) , next = "reg" ) ,  Tok ( "punct" , literals ( "++ -- ) ]" ) , next = 'div' ) ,  Tok ( "punct" , literals ( "{ } ( [ . ; , < > + - * % & | ^ ! ~ ? : =" ) , next = 'reg' ) ,  Tok ( "string" , r'"([^"\\]|(\\(.|\n)))*?"' , next = 'div' ) ,  Tok ( "string" , r"'([^'\\]|(\\(.|\n)))*?'" , next = 'div' ) ,  ]
+self . file = BytesIO ( )
+comment . append ( t . contents )
+use_workaround = (  ( current_version < ( 2 , 7 , 3 ) ) or  ( current_version >= ( 3 , 0 ) and current_version < ( 3 , 2 , 3 ) )  )
+class TimeInput ( DateTimeBaseInput ) :
+return True
+else :
+import os
+if field_type == 'CharField' and row [ 3 ] :
+re_tag = re . compile ( r'<(/)?([^ ]+?)(?:(\s*/)| .*?)?>' , re . S )
+raise ValueError ( "dictionary doesn't specify a version" )
+def value_from_datadict ( self , data , files , name ) :
+self . timezone = obj . tzinfo
+if isinstance ( s , bytes ) :
+for field , error_list in self . error_dict . items ( ) :
+literal_match = self . literal_regex . match ( domain_part )
+return MONTHS_AP [ self . data . month ]
+_url_drive_re = re . compile ( '^([a-z])[:|]' , re . I )
+if i >= len ( subject ) :
+try :
+def load_template_source ( self , template_name , template_dirs = None ) :
+app_models = router . get_migratable_models ( app_config , connection . alias )
+value = getattr ( self , 'clean_%s' % name ) ( )
+self . _archive = self . _archive_cls ( file ) ( file )
+for k2 , v2 in v :
+unique_id = item [ 'unique_id' ]
+if isinstance ( value , datetime . date ) :
+try :
+return '' . join ( random . choice ( allowed_chars ) for i in range ( length ) )
+filename = os . path . join ( to_path , name )
+self . keyOrder . remove ( key )
+os . rename ( old_file_name , new_file_name )
+handler . addQuickElement ( "category" , cat )
+if sep is None :
+admin = 'admin'
+def prepare_js_for_gettext ( js ) :
+if isinstance ( app_name , BaseCommand ) :
+if lookup == 'date' :
+return self . g ( )
+import sys
+return self . keyOrder [ : ]
+return filter_func
+hextets [ index ] = hextets [ index ] . lstrip ( '0' )
+for reference , receivers in obj . unresolved_references . items ( ) :
+exc_type = type ( exc )
+self . activated = True
+finally :
+output = options . get ( 'output' )
+with open ( filepath , 'rb' ) as fp :
+if self . method != 'POST' :
+for lib in builtins :
+if version [ 3 ] == 'alpha' and version [ 4 ] == 0 :
+if not os . path . exists ( self . _dir ) :
+except InvalidOperation :
+def __next__ ( self ) :
+else :
+return super ( DjangoJSONEncoder , self ) . default ( o )
+def __contains__ ( self , key ) :
+return f ( * args , ** kwargs )
+attrs . setdefault ( 'step' , 'any' )
+self . format_string = format_string
+from __future__ import absolute_import
+if len ( app_labels ) == 1 :
+if item [ 'unique_id' ] is not None :
+try :
+logger . warning ( 'Bad Request (UnicodeDecodeError)' ,  exc_info = sys . exc_info ( ) ,  extra = {  'status_code' : 400 ,  }  )
+def is_library_missing ( name ) :
+class SplitDateTimeWidget ( MultiWidget ) :
+self . POST = QueryDict ( mutable = True )
+def infix ( bp , func ) :
+from django . utils import translation
+os . makedirs ( directory )
+parser . add_argument ( '--database' , default = DEFAULT_DB_ALIAS ,  help = 'Nominates a database to print the SQL for. Defaults to the '  '"default" database.' )
+opts = tuple ( s for s in styles if s in opt_dict . keys ( ) )
+plan = executor . migration_plan ( executor . loader . graph . leaf_nodes ( ) )
+handle_m2m ( relobj )
+raise ValidationError ( self . error_messages [ 'required' ] , code = 'required' )
+root [ : ] = [ root , root , None , None ]
+is_reversed = bits [ - 1 ] == 'reversed'
+class MultipleHiddenInput ( HiddenInput ) :
+is_usable = True
+_load_serializers ( )
+def check_for_language ( lang_code ) :
+def phone2numeric ( phone ) :
+match = _html_parser . endtagfind . match ( rawdata , i )
+else :
+def size ( self , name ) :
+for header in headerlist :
+except ValidationError as e :
+year_val , month_val , day_val = value . year , value . month , value . day
+if len ( bits ) == 3 :
+basedirs = [ os . path . join ( os . path . dirname ( os . path . dirname ( __file__ ) ) ,  'conf' , 'locale' ) ,  'locale' ]
+self . stream . close ( )
+def _handle_fk_field_node ( self , node , field ) :
+def jython_reloader ( main_func , args , kwargs ) :
+from django . core . servers . fastcgi import FASTCGI_HELP
+for dirname in dirs [ : ] :
+self . base = base
+if getattr ( e , 'silent_variable_failure' , False ) :
+choice = self . choices [ idx ]
+self . add_root_elements ( handler )
+def render ( self , context ) :
+self . set ( key , value , timeout , version )
+return parse_http_date ( date )
+self . is_bound = data is not None or files is not None
+self . _post_parse_error = False
+full_file = os . path . join ( self . path , f )
+def empty_variable ( self , token ) :
+m2m_convert = lambda n : field . rel . to . _meta . pk . to_python ( n . getAttribute ( 'pk' ) )
+if fdel is not None :
+return compile_function
+new_value = value + delta
+app_configs = [ apps . get_app_config ( app_label ) for app_label in app_labels ]
+self . _callback_strs . add ( pattern . _callback_str )
+def __init__ ( self , params ) :
+self . choices = list ( choices )
+def execute ( self , * args , ** options ) :
+shell . mainloop ( )
+class BoundField ( object ) :
+setattr ( Module_six_moves_urllib_error , attr . name , attr )
+return self . data . tzinfo . tzname ( self . data ) or ""
+else :
+return self . _name
+return int ( value )
+from threading import local
+if primary_keys :
+lib = import_library ( taglib_module )
+__contains__ = new_method_proxy ( operator . contains )
+final_output . append ( '-- The following references should be added but depend on non-existent tables:' )
+elif '\\' in path :
+pass
+try :
+def handle ( self , * tablenames , ** options ) :
+if m :
+def do_include ( parser , token ) :
+try :
+for app_name , model_list in manifest . items ( ) :
+parser . add_argument ( '--ipv6' , '-6' , action = 'store_true' , dest = 'use_ipv6' , default = False ,  help = 'Tells Django to use an IPv6 address.' )
+key = self . to_field_name or 'pk'
+raise ValidationError (  _ ( 'ManagementForm data is missing or has been tampered with' ) ,  code = 'missing_management_form' ,  )
+if len ( new_operations ) == len ( operations ) :
+if app_label not in executor . loader . migrated_apps :
+return True
+for migration_name in migration_names :
+if isinstance ( s , Promise ) :
+response_headers . append ( ( str ( 'Set-Cookie' ) , str ( c . output ( header = '' ) ) ) )
+six . reraise ( ImproperlyConfigured , ImproperlyConfigured ( msg ) ,  sys . exc_info ( ) [ 2 ] )
+if index is not None and index < self . initial_form_count ( ) :
+if value is not result :
+save . alters_data = True
+from importlib import import_module
+def __repr__ ( self ) :
+s = get_serializer ( format ) ( )
+if escaped :
+from django . utils . crypto import get_random_string
+raise ValueError ( "Non-reversible reg-exp portion: '(?%s'" % ch )
+return False
+write = property ( lambda self : self . file . write )
+def sort_dependencies ( app_list ) :
+_drive_re = re . compile ( '^([a-z]):' , re . I )
+def __getstate__ ( self ) :
+return ''
+if not found and ( not line or plural_forms_re . search ( line ) ) :
+if six . PY2 :
+cleaned_data = form . cleaned_data
+return self
+from io import BytesIO
+return base64 . urlsafe_b64encode ( s ) . strip ( b'=' )
+if self . fail_silently :
+self . _add_local_translations ( )
+if name is not None :
+return language [ : p ] . lower ( ) + '_' + language [ p + 1 : ] . upper ( )
+class Node ( object ) :
+def linebreaks_filter ( value , autoescape = None ) :
+return self . DSTOFFSET
+def serialize ( format , queryset , ** options ) :
+def __init__ ( self , format_string ) :
+os . umask ( umask )
+from django . utils . encoding import force_text
+continue
+for pattern in allowed_hosts :
+try :
+if i >= 0 :
+if location is None :
+def __init__ ( self , urlconf_name , default_kwargs = None , app_name = None , namespace = None ) :
+return list ( self . itervalues ( ) )
+import traceback
+return 1 << 31
+try :
+header = self . _convert_to_charset ( header , 'ascii' )
+def lex ( self , text ) :
+pass
+six . reraise ( os_err_exc_type , os_err_exc_type ( 'Error executing %s: %s' %  ( args [ 0 ] , strerror ) ) , sys . exc_info ( ) [ 2 ] )
+while rbp < self . current_token . lbp :
+if not response . has_header ( 'Vary' ) :
+if value is None :
+def _clean_form ( self ) :
+return split
+form . fields [ name ] = InlineForeignKeyField ( self . instance , ** kwargs )
+def __init__ ( self , data = None , files = None , instance = None ,  save_as_new = False , prefix = None , queryset = None , ** kwargs ) :
+if show_traceback :
+def _create_cache ( backend , ** kwargs ) :
+return json . dumps ( obj , separators = ( ',' , ':' ) ) . encode ( 'latin-1' )
+yield "from __future__ import unicode_literals"
+urlconf = settings . ROOT_URLCONF
+parser = self . create_parser ( argv [ 0 ] , argv [ 1 ] )
+TOTAL_FORM_COUNT = 'TOTAL_FORMS'
+raise
+def clear ( self ) :
+class CheckboxFieldRenderer ( ChoiceFieldRenderer ) :
+return pformat ( value )
+work_file = os . path . join ( self . dirpath , thefile )
+arg_vals . append ( mark_safe ( arg ) )
+import datetime
+if value in self . empty_values :
+raise NotImplementedError ( 'subclasses of BaseArchive must provide an extract() method' )
+notifier . read_events ( )
+trans_real . _active = threading . local ( )
+sys . exit ( 2 )
+else :
+raise TemplateSyntaxError ( "Malformed arguments to url tag" )
+else :
+import sys
+self . deleted_objects . append ( obj )
+def _get_validation_exclusions ( self ) :
+def _prepare_data ( self , data ) :
+executor . migrate ( targets , plan , fake = options . get ( "fake" , False ) )
+return '\n' . join ( '* %s' % e for e in self )
+self . merge ( translation )
+from __future__ import unicode_literals
+self . pointer = i
+check_for_migrations ( app_config , connection )
+self . loaddata ( fixture_labels )
+def reverse ( viewname , urlconf = None , args = None , kwargs = None , prefix = None , current_app = None ) :
+return self . path < other . path
+error_text = ERRORS [ e . errno ]
+from __future__ import unicode_literals
+super ( Command , self ) . handle ( ** options )
+if item [ 'author_link' ] is not None :
+locale = options . get ( 'locale' )
+def _update_errors ( self , errors ) :
+error_msg = "Tried %s" % tried
+output . append ( self . render_option ( selected_choices , * option ) )
+else :
+except IndexError :
+try :
+os . unlink ( work_file )
+if html_message :
+if value == self . empty_value or value in self . empty_values :
+self . stdout . write ( "%s\n" % line )
+pass
+for message in email_messages :
+result . key = key
+from django . utils . datastructures import MultiValueDict , ImmutableList
+return self . _non_form_errors
+except ( ImportError , AttributeError ) :
+if not directory_created . get ( app_label , False ) :
+attrs [ 'pk' ] = smart_text ( obj_pk )
+break
+backend = params . pop ( 'BACKEND' )
+if exclude is not None :
+return 'st'
+return r
+end = rawdata [ k : endpos ] . strip ( )
+except ( IOError , OSError ) :
+return CommentNode ( )
+self . directory_permissions_mode = (  directory_permissions_mode if directory_permissions_mode is not None  else settings . FILE_UPLOAD_DIRECTORY_PERMISSIONS  )
+for i , field in enumerate ( self . fields ) :
+return context . render_context
+return "<%s: %s>" % ( self . __class__ . __name__ ,  super ( MultiValueDict , self ) . __repr__ ( ) )
+pass
+else :
+from django . forms . widgets import Widget , Select
+raise TemplateSyntaxError ( "No named cycles in template. '%s' is not defined" % name )
+if isinstance ( stream_or_string , bytes ) :
+if ch == '(' :
+return True
+from django . core . exceptions import AppRegistryNotReady
+self . stdout . write ( "processing locale %s\n" % locale )
+self . verbosity = options . get ( 'verbosity' )
+converter = getattr ( self , converter )
+match = True
+sub = ''
+import os
+related = getattr ( obj , field . name )
+if confirm == 'yes' :
+from __future__ import unicode_literals
+else :
+if isinstance ( option_label , ( list , tuple ) ) :
+raise Exception ( "This %s instance cannot tell its position" % self . __class__ . __name__ )
+def __init__ ( self , attrs = None ) :
+tag = match . group ( 1 ) . strip ( )
+raw_data = field_stream . read ( )
+else :
+return getattr ( t , translation_function ) ( singular , plural , number )
+def delete ( self , name ) :
+if self . max_length is not None and len ( file_name ) > self . max_length :
+CRITICAL = 50
+s = Select ( choices = choices )
+return timeuntil ( value , arg )
+class RenameMethodsBase ( type ) :
+return force_text ( list_ [ 0 ] )
+self . choices = choices
+else :
+def parse_time ( value ) :
+self . xml . ignorableWhitespace ( '\n' + ' ' * self . options . get ( 'indent' , None ) * level )
+import hmac
+from django . core . urlresolvers import reverse , NoReverseMatch
+raise Resolver404 ( { 'tried' : tried , 'path' : new_path } )
+def __init__ ( self ) :
+try :
+args = args [ : - 1 ]
+if isinstance ( self . _regex , six . string_types ) :
+return self
+warnings . warn ( "``--natural`` is deprecated; use ``--natural-foreign`` instead." ,  RemovedInDjango19Warning )
+import re
+def pbkdf2 ( password , salt , iterations , dklen = 0 , digest = None ) :
+self . stdout . write ( 'processing file %s in %s\n' % ( f , dirpath ) )
+elif not hasattr ( message , 'message' if six . PY3 else 'code' ) :
+for name in dir ( models . signals ) :
+return '\n' . join ( statements )
+exp = connections [ db ] . ops . value_to_db_datetime ( exp )
+if isinstance ( self . data , datetime . datetime ) and is_aware ( self . data ) :
+else :
+if best_doublecolon_start == 0 :
+self . _size = size
+__all__ = [  'utc' , 'get_fixed_timezone' ,  'get_default_timezone' , 'get_default_timezone_name' ,  'get_current_timezone' , 'get_current_timezone_name' ,  'activate' , 'deactivate' , 'override' ,  'localtime' , 'now' ,  'is_aware' , 'is_naive' , 'make_aware' , 'make_naive' ,  ]
+for h in logger . handlers [ : ] :
+if six . PY2 :
+if self . count == 0 and not self . allow_empty_first_page :
+def get_queryset ( self ) :
+if upto != start :
+pass
+self . code = code
+def urlencode ( query , doseq = 0 ) :
+def add_arguments ( self , parser ) :
+def start_serialization ( self ) :
+if not hasattr ( template , 'render' ) :
+else :
+else :
+if self . _cull_frequency == 0 :
+self . _clean_form ( )
+return result
+from __future__ import unicode_literals
+def last ( value ) :
+found = False
+pass
+if old_handler is not None :
+if ( self . negate and val1 != val2 ) or ( not self . negate and val1 == val2 ) :
+continue
+parser . EntityDeclHandler = self . entity_decl
+from django . db import connections , router , transaction , DEFAULT_DB_ALIAS
+index_output . append ( "CREATE %sINDEX %s ON %s (%s);" %  ( unique , qn ( '%s_%s' % ( tablename , f . name ) ) , qn ( tablename ) ,  qn ( f . name ) ) )
+localedir = os . path . join ( app_config . path , 'locale' )
+self . _cull ( )
+self . _count = self . object_list . count ( )
+try :
+super ( ComboField , self ) . clean ( value )
+tried_modules = [ ]
+return self . nodelist . render ( context )
+self . to_field_name = to_field_name
+if not self . _cached_loaders :
+sep = space
+self . json_kwargs . pop ( 'stream' , None )
+errors . extend ( _check_middleware_classes ( ** kwargs ) )
+import sys
+from django . utils . deprecation import RemovedInDjango19Warning
+yield ( "" , self . field . empty_label )
+local_attrs = self . build_attrs ( id = field % id_ )
+save_m2m ( )
+from django . db import models
+row_data = ( form . cleaned_data [ field ]  for field in unique_check if field in form . cleaned_data )
+self . set ( key , value , version = version + delta )
+if leading :
+for possibility , pattern , defaults in possibilities :
+form = self . forms [ i ]
+value = self . _convert_to_charset ( value , 'latin-1' , mime_encode = True )
+if connection . settings_dict [ 'ENGINE' ] == 'django.db.backends.dummy' :
+status_code = 200
+if filename . endswith ( ( '.pyo' , '.pyc' , '.py.class' ) ) :
+locale_dir = self . default_locale_path
+def build_absolute_uri ( self , location = None ) :
+kwargs [ 'help_text' ] = help_texts [ f . name ]
+if '.' in word or '@' in word or ':' in word :
+if timeout is None :
+hidden_widget = SplitHiddenDateTimeWidget
+@ register . tag
+class TarArchive ( BaseArchive ) :
+import copy
+return True
+raise ValueError ( 'Unable to configure root '  'logger: %s' % e )
+raise AttributeError ( "no such move, %r" % ( name , ) )
+self . stdout . write ( "\nCreated new merge migration %s" % writer . path )
+else :
+return False
+from django . core . servers . basehttp import get_internal_wsgi_application
+msg = self . style . HTTP_NOT_FOUND ( msg )
+self . template_cache [ key ] = ( template , None )
+else :
+def _iterkeys ( self ) :
+return value and value [ 0 ] . upper ( ) + value [ 1 : ]
+except Exception as e :
+def copy ( self ) :
+field_type = 'NullBooleanField('
+import warnings
+if callable ( name ) :
+if nodelist . contains_nontext :
+if boundary :
+except ImportError as e :
+try :
+patch_cache_control ( response , max_age = cache_timeout )
+except OSError as e :
+return path , ''
+if options . get ( 'use_default_ignore_patterns' ) :
+super ( MemoryFileUploadHandler , self ) . new_file ( * args , ** kwargs )
+return result
+else :
+self . _urlconf_module = import_module ( self . urlconf_name )
+self . validate_key ( key )
+if not isinstance ( value , list ) :
+tried = [ ]
+key = self . make_key ( key , version = version )
+if endpos < 0 :
+cc = dict ( dictitem ( el ) for el in cc )
+from django . test . utils import get_runner
+key += tuple ( type ( v ) for k , v in sorted_items )
+absolute_path = self . download ( template )
+ret = fcntl . flock ( _fd ( f ) , fcntl . LOCK_UN )
+obj_list = self . target . resolve ( context , True )
+self . stdout . write ( shutdown_message )
+handler . endElement ( "author" )
+host = host . lower ( )
+if self . _wrapped is empty :
+def tz ( request ) :
+from django . utils import six
+return self . to + self . cc + self . bcc
+else :
+return self . has_previous ( ) or self . has_next ( )
+_dec . __name__ = 'method_decorator(%s)' % decorator . __class__ . __name__
+self . _archive . close ( )
+lang = get_language ( )
+warnings . warn ( "``use_natural_keys`` is deprecated; use ``use_natural_foreign_keys`` instead." ,  RemovedInDjango19Warning )
+dklen = hlen
+def file_complete ( self , file_size ) :
+value = super ( TypedMultipleChoiceField , self ) . clean ( value )
+from django . utils . encoding import force_bytes
+return { f : e . as_data ( ) for f , e in self . items ( ) }
+while escaped or ch != ']' :
+from django . utils . encoding import force_text
+output . append ( "%s = %s  ###" % ( key , user_settings [ key ] ) )
+dot = len ( package )
+def __init__ ( self , func , args , kwargs , url_name = None , app_name = None , namespaces = None ) :
+date_re = re . compile (  r'(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})$'  )
+return ''
+return
+def add_arguments ( self , parser ) :
+min = int ( m . group ( 'min' ) )
+formatters = config . get ( 'formatters' , EMPTY_DICT )
+return translated
+def save_existing_objects ( self , commit = True ) :
+logger = logging . getLogger ( 'django.request' )
+fields = fields_for_model ( opts . model , opts . fields , opts . exclude ,  opts . widgets , formfield_callback ,  opts . localized_fields , opts . labels ,  opts . help_texts , opts . error_messages )
+elif hasattr ( s , '__unicode__' ) :
+break
+errors . update ( kwargs [ 'error_messages' ] )
+def close ( self ) :
+elif field . rel and isinstance ( field . rel , models . ManyToOneRel ) :
+must_be_first = False
+overlapped = OVERLAPPED ( )
+if hasattr ( filter_func , "_decorated_function" ) :
+self . stdout . write ( "Downloading %s\n" % display_url )
+super ( SplitDateTimeField , self ) . __init__ ( fields , * args , ** kwargs )
+template = get_template_from_string ( template , origin , template_name )
+DEFAULT_CHUNK_SIZE = 64 * 2 ** 10
+self . url = iri_to_uri ( url )
+paths = [ force_text ( p ) for p in paths ]
+bits = bits [ : - 2 ]
+@ register . filter ( is_safe = True , needs_autoescape = True )
+self . __starttag_text = None
+return '%s:%s:%s' % ( key_prefix , version , key )
+for char in key :
+call_command (  'flush' ,  verbosity = max ( self . verbosity - 1 , 0 ) ,  interactive = False ,  database = db ,  reset_sequences = False ,  inhibit_post_migrate = True ,  )
+not_found = [ ]
+if daemonize :
+parser . _namedCycleNodes [ name ] = node
+def __exit__ ( self , exc_type , exc_value , traceback ) :
+return handle_app ( app_config . models_module , ** options )
+def lazy_number ( func , resultclass , number = None , ** kwargs ) :
+def start_doctype_decl ( self , name , sysid , pubid , has_internal_subset ) :
+else :
+def __init__ ( self , lexer ) :
+raise ValueError (  "'%s' has no field named '%s'." % ( self . __class__ . __name__ , field ) )
+error_messages = self . fields [ field ] . error_messages
+if max_age is not None :
+try :
+path = safe_join ( self . location , name )
+verbosity = options . get ( 'verbosity' )
+from __future__ import unicode_literals
+elif token . token_type == 1 :
+self . children = children [ : ] if children else [ ]
+pass
+def __init__ ( self , input_formats = None , * args , ** kwargs ) :
+warnings . warn (  "`%s.%s` is deprecated, use `%s` instead." %  ( self . class_name , self . old_method_name , self . new_method_name ) ,  self . deprecation_warning , 2 )
+yield
+def unsign ( self , value , max_age = None ) :
+raise
+value = ugettext ( "%s KB" ) % filesize_number_format ( bytes / KB )
+value = ConvertingDict ( value )
+if value is None :
+self . stream . write ( b'\n' )
+def __init__ ( self , file , field_name , name , content_type , size , charset , content_type_extra = None ) :
+try :
+def hidden_fields ( self ) :
+raise ValidationError ( self . error_messages [ 'invalid_date' ] , code = 'invalid_date' )
+HTMLParser = _html_parser . HTMLParser
+for line in chunk_buffer :
+def content ( self ) :
+url = unquote ( force_str ( url ) )
+message = email_message . message ( )
+pass
+self . _cache . delete ( key )
+raise e
+if hasattr ( field . rel , 'to' ) :
+return self . data . day
+try :
+raise ValueError (  "make_aware expects a naive datetime, got %s" % value )
+targets = [ ( app_label , None ) ]
+len ( X ( ) )
+raise TypeError (  "The argument `field` must be `None` when the `error` "  "argument contains errors for multiple fields."  )
+else :
+return self . as_widget ( TextInput ( ) , attrs , ** kwargs )
+if value is None :
+return ( '<%s token: "%s...">' %  ( token_name , self . contents [ : 20 ] . replace ( '\n' , '' ) ) )
+def upper ( value ) :
+return date ( self . year , self . month , self . day )
+self . backout = [ ]
+def _cull ( self ) :
+keys = n . getElementsByTagName ( 'natural' )
+def __init__ ( self , loopvars , sequence , is_reversed , nodelist_loop , nodelist_empty = None ) :
+if consume_next :
+_default = None
+if endblock . contents not in acceptable_endblocks :
+widget = SplitDateTimeWidget
+return SafeBytes ( s )
+return ''
+return self . filter_function ( func , ** flags )
+add_move ( MovedModule ( "_thread" , "thread" ) )
+def _format_value ( self , value ) :
+if queryset is None :
+for name in pattern . reverse_dict :
+code = 'min_value'
+if "'stream'" not in str ( te ) :
+self . xml . characters ( smart_text ( key_value ) )
+def filter_function ( self , func , ** flags ) :
+try :
+from django . utils import six
+response = response . render ( )
+unifunc = results [ "unifunc" ]
+for item_type , meta_data , field_stream in Parser ( stream , self . _boundary ) :
+while self . tokens :
+def __setitem__ ( self , key , value ) :
+from importlib import import_module
+def _get_post ( self ) :
+return supported_code
+callback ( self )
+output = [ ]
+if ( self . max_digits is not None and self . decimal_places is not None  and whole_digits > ( self . max_digits - self . decimal_places ) ) :
+custom_sql = custom_sql_for_model ( model , no_style ( ) , connection )
+return language [ : p ] . lower ( ) + '_' + language [ p + 1 ] . upper ( ) + language [ p + 2 : ] . lower ( )
+url = property ( lambda self : self [ 'Location' ] )
+is_usable = True
+return name + '-clear'
+return { 'TIME_ZONE' : timezone . get_current_timezone_name ( ) }
+while token . contents . startswith ( 'elif' ) :
+for closable in self . _closable_objects :
+return mail . send ( )
+from django . utils . safestring import mark_safe
+if self . file_permissions_mode is not None :
+outfile . write ( data )
+import os
+from django . template . base import Origin , Template , Context , TemplateDoesNotExist
+if data is False :
+match = condition . eval ( context )
+else :
+token = tokens [ i ]
+return self . _encoding
+parser . add_argument ( '--natural-primary' , action = 'store_true' , dest = 'use_natural_primary_keys' , default = False ,  help = 'Use natural primary keys if they are available.' )
+guessed_path = path . join ( tempdir , guessed_filename )
+from django . utils . six . moves import zip
+import zipfile
+return { 'request' : request }
+name = self . fk . name
+from django . core . signals import request_finished
+response = middleware_method ( request , callback , callback_args , callback_kwargs )
+def start_object ( self , obj ) :
+form = ManagementForm ( auto_id = self . auto_id , prefix = self . prefix , initial = {  TOTAL_FORM_COUNT : self . total_form_count ( ) ,  INITIAL_FORM_COUNT : self . initial_form_count ( ) ,  MIN_NUM_FORM_COUNT : self . min_num ,  MAX_NUM_FORM_COUNT : self . max_num  } )
+output . insert ( 0 , error_row % force_text ( top_errors ) )
+rawdata = self . rawdata
+class RssUserland091Feed ( RssFeed ) :
+parser . add_library ( temp_lib )
+for relobj in getattr ( obj , field . name ) . iterator ( ) :
+elif token_string . startswith ( BLOCK_TAG_START ) :
+result = 0
+basedirs = set ( map ( os . path . abspath , filter ( os . path . isdir , basedirs ) ) )
+data = serializer ( ) . dumps ( obj )
+def __init__ ( self , setting , nodelist ) :
+url = smart_urlquote ( middle )
+from django . utils . six . moves import input
+nodelist = parser . parse ( )
+file_list = self . find_files ( "." )
+parser . add_argument ( '--empty' , action = 'store_true' , dest = 'empty' , default = False ,  help = "Create an empty migration." )
+return ( self . paginator . per_page * ( self . number - 1 ) ) + 1
+except HTMLParseError :
+if re . search ( '^%s%s' % ( prefix_norm , pattern ) , candidate_pat % candidate_subs , re . UNICODE ) :
+format = options . get ( 'format' )
+self . stream = kwargs . pop ( 'stream' , sys . stdout )
+from django . utils . text import get_valid_filename
+choices = [ ( i , i ) for i in self . years ]
+pass
+else :
+id_for_label = widget . id_for_label ( id_ )
+return re . sub ( r'(?u)[^-\w.]' , '' , s )
+class _LazyDescr ( object ) :
+response = self . handle_uncaught_exception ( request , resolver , sys . exc_info ( ) )
+def __init__ ( self , stream , boundary ) :
+indexbytes = operator . getitem
+from __future__ import unicode_literals
+call_command ( 'loaddata' , * fixture_labels , ** { 'verbosity' : verbosity } )
+raise ValueError ( 'empty_label list/tuple must have 3 elements.' )
+time_str = date . strftime ( '%s, %%d %s %%Y %%H:%%M:%%S ' % ( dow , month ) )
+if CONTEXT_SEPARATOR in result :
+def s ( self ) :
+with transaction . atomic ( using = database ,  savepoint = connection . features . can_rollback_ddl ) :
+if extracted :
+if not isinstance ( cookie , http_cookies . BaseCookie ) :
+if commands_only :
+regex_compiled = re . compile ( '^%s/' % language_code , re . UNICODE )
+db = router . db_for_read ( self . cache_model_class )
+def __nonzero__ ( self ) :
+conditions_nodelists . append ( ( None , nodelist ) )
+if hasattr ( formfield , 'queryset' ) :
+self . ignore = options . pop ( 'ignorenonexistent' , False )
+try :
+seen . add ( k )
+for formset in formsets :
+subcommand = 'help'
+except TemplateSyntaxError as e :
+return s
+elif bmatch :
+smart_split_re = re . compile ( r"""     ((?:         [^\s'"]*         (?:             (?:"(?:[^"\\]|\\.)*" | '(?:[^'\\]|\\.)*')             [^\s'"]*         )+     ) | \S+) """ , re . VERBOSE )
+return self . _handle_object ( node )
+state_frame [ self ] = None
+usage . append ( "" )
+from django . db . migrations . autodetector import MigrationAutodetector
+tpl = "ExternalReferenceForbidden(system_id='{}', public_id={})"
+def get_language_from_request ( request , check_path = False ) :
+def close ( self ) :
+code_list = [ ]
+def get_connection ( backend = None , fail_silently = False , ** kwds ) :
+return language [ : p ] . lower ( ) + '_' + language [ p + 1 : ] . upper ( )
+for condition , nodelist in self . conditions_nodelists :
+if self . _should_delete_form ( form ) :
+from django . utils import timezone
+else :
+ALLOWED_VARIABLE_CHARS = ( 'abcdefghijklmnopqrstuvwxyz'  'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.' )
+else :
+return name . replace ( '_' , ' ' ) . capitalize ( )
+def __init__ ( self , nodelist_true , nodelist_false , * varlist ) :
+outdict [ name ] = value , params
+if not self . is_required and CheckboxInput ( ) . value_from_datadict (  data , files , self . clear_checkbox_name ( name ) ) :
+url_fields = split_url ( value )
+def _decorator ( view_func ) :
+else :
+if conflicts and not self . merge :
+def P ( self ) :
+except IOError as e :
+else :
+return sample [ : 3 ] == b'\xef\xbb\xbf' or sample . startswith ( codecs . BOM_UTF16_LE ) or sample . startswith ( codecs . BOM_UTF16_BE )
+i = 0
+pass
+import warnings
+del attr
+nodelist = [ ]
+from django . utils . html import conditional_escape , format_html
+from django . utils . module_loading import import_string
+text_type = str
+else :
+from django . utils . encoding import force_text
+setattr ( cls , k , meth )
+from django . utils . translation import ugettext as _
+def handle_uncaught_exception ( self , request , resolver , exc_info ) :
+parser . add_argument ( '--ignore' , '-i' , action = 'append' , dest = 'ignore_patterns' ,  default = [ ] , metavar = 'PATTERN' ,  help = 'Ignore files or directories matching this glob-style pattern. '  'Use multiple times to ignore more.' )
+if f is None :
+return WidthRatioNode ( parser . compile_filter ( this_value_expr ) ,  parser . compile_filter ( max_value_expr ) ,  parser . compile_filter ( max_width ) ,  asvar = asvar )
+@ wraps ( func )
+from django . apps import apps
+self . labels = getattr ( options , 'labels' , None )
+return result
+class_name = base . __name__
+return time_str + 'Z'
+bits . append ( force_text ( bit ) )
+self . sign = sign
+is_relation = i in relations
+continue
+raise NotImplementedError ( 'subclasses of Serializer must provide a start_serialization() method' )
+if self . use_ipv6 and not socket . has_ipv6 :
+self . negated = negated
+declared_fields . update ( base . declared_fields )
+with context . push ( ) :
+if options . settings :
+data = self . field . bound_data (  self . data , self . form . initial . get ( self . name , self . field . initial )  )
+p . feed ( data )
+fh . write ( writer . as_string ( ) )
+if message_context [ 0 ] == '"' :
+MIMEMultipart . __setitem__ ( self , name , val )
+else :
+else :
+result . append ( self . create_token ( bit , in_tag ) )
+result . append ( self . create_token ( self . template_string [ start : end ] , ( start , end ) , True ) )
+return len ( self . content )
+if six . PY2 :
+self . set ( key , new_value , version = version )
+return ( self . field . prepare_value ( obj ) , self . field . label_from_instance ( obj ) )
+super ( SimpleUploadedFile , self ) . __init__ ( BytesIO ( content ) , None , name ,  content_type , len ( content ) , None , None )
+self . write ( s , encoding )
+def is_valid_path ( path , urlconf = None ) :
+if ( BLOCK_CONTEXT_KEY in render_context and  render_context [ BLOCK_CONTEXT_KEY ] . get_block ( self . name ) is not None ) :
+import errno
+return b'' . join ( T ) + F ( l ) [ : r ]
+self . _mark_post_parse_error ( )
+help = "Checks the entire Django project for potential problems."
+if '\n' in val or '\r' in val :
+return value
+value = None
+backend_name = connection . settings_dict [ 'ENGINE' ] . split ( '.' ) [ - 1 ]
+for db in connections . all ( ) :
+token = self . next_token ( )
+message_context = message_context . strip ( "'" )
+six . reraise ( ImproperlyConfigured , ImproperlyConfigured ( msg ) ,  sys . exc_info ( ) [ 2 ] )
+def get_host ( self ) :
+from django . core . management . base import BaseCommand , CommandError
+from django . utils . deprecation import RenameMethodsBase , RemovedInDjango19Warning
+return [ field for field in self if not field . is_hidden ]
+@ python_2_unicode_compatible
+return wrap ( value , int ( arg ) )
+return default
+comment_lineno_cache = None
+cmd_options = vars ( options )
+initial = self . initial . get ( name , field . initial )
+if bits [ 2 ] != 'by' :
+@ property
+sign = '-'
+v . __cause__ , v . __traceback__ = e , tb
+if key not in self :
+if self . locale_paths :
+elif field . required :
+package_path = package . __path__
+if isinstance ( sep , unicode ) :
+if getattr ( self , '_client' , None ) is None :
+self . label = self . field . label
+import os
+HTMLParser . __init__ ( self , strict = False )
+def __init__ ( self , data = None , files = None , auto_id = 'id_%s' , prefix = None ,  queryset = None , ** kwargs ) :
+from django . utils . encoding import force_text , force_str
+common_ancestor = None
+def date_format ( value , format = None , use_l10n = None ) :
+def is_multipart ( self ) :
+return SsiNode ( filepath , parsed )
+from django . apps import apps
+if errors :
+nodelist_false = NodeList ( )
+except IndexError :
+def __getattr__ ( self , attr ) :
+if not value :
+for operation in migration . operations :
+pass
+asvar = bits [ - 1 ]
+data = data . replace ( microsecond = 0 )
+if value and not self . valid_value ( value ) :
+return six . text_type ( self ) % rhs
+if key not in self :
+if item [ 'description' ] is not None :
+unescape_entities = allow_lazy ( unescape_entities , six . text_type )
+self . queryset = queryset
+class StreamingBuffer ( object ) :
+attrs . update ( extra_attrs )
+def handle ( self , * labels , ** options ) :
+return bits [ 0 ] , ''
+def add_arguments ( self , parser ) :
+if callable ( initial_value ) :
+__all__ = ( 'NamedTemporaryFile' , 'gettempdir' , )
+message , code , params = message . message , message . code , message . params
+else :
+def usage ( self , subcommand ) :
+return 'initial-%s' % self . add_prefix ( field_name )
+if dec_part :
+if s [ 0 ] not in "\"'" or s [ - 1 ] != s [ 0 ] :
+from __future__ import unicode_literals
+if isinstance ( callback , functools . partial ) :
+yield d
+def get_mod_func ( callback ) :
+@ lru_cache . lru_cache ( maxsize = None )
+index_output = [ ]
+try :
+def send_mail ( subject , message , from_email , recipient_list ,  fail_silently = False , auth_user = None , auth_password = None ,  connection = None , html_message = None ) :
+with self . _lock . reader ( ) :
+return
+import pickle
+inner_result . extend ( res )
+return header . lower ( ) in self . _headers
+self . pointer = 0
+else :
+class EmailBackend ( ConsoleEmailBackend ) :
+key = ':' . join ( urlquote ( var ) for var in vary_on )
+decompress = True
+content_type = info . get ( 'content-type' )
+date = datetime_safe . new_datetime ( date )
+plural_re = re . compile ( r"""^\s*plural$""" )
+def __init__ ( self , parser , * args , ** kwargs ) :
+key = self . make_key ( key , version = version )
+cursor . execute ( sql )
+if not encoding :
+cc [ k . replace ( '_' , '-' ) ] = v
+os . write ( fd , current_chunk )
+def _initialize_handlers ( self ) :
+self . max_length = kwargs . pop ( 'max_length' , None )
+args [ 0 ] = force_text ( args [ 0 ] )
+prefix = self . add_prefix ( fieldname )
+self . active_readers += t
+return initial
+return int ( calendar . timegm ( self . data . utctimetuple ( ) ) )
+result = self . configurator . convert ( value )
+for middleware_path in settings . MIDDLEWARE_CLASSES :
+return fk
+outer_html = '<ul{id_attr}>{content}</ul>'
+else :
+i = self . pointer
+raise ValueError ( 'Unable to add filter %r: %s' % ( f , e ) )
+return False
+def _delete ( self , fname ) :
+@ contextlib . contextmanager
+if errors :
+self . content_length = None
+os . makedirs ( directory , self . directory_permissions_mode )
+except Exception :
+def dictsortreversed ( value , arg ) :
+builtins = { 'True' : True , 'False' : False , 'None' : None }
+return self . filter_function ( name , ** flags )
+def multiple_chunks ( self , chunk_size = None ) :
+def _unpack_ipv4 ( ip_str ) :
+def external_entity_ref_handler ( self , context , base , sysid , pubid ) :
+key = plist . pop ( 0 ) . lower ( ) . decode ( 'ascii' )
+return client
+return self [ key ]
+from django . db . migrations . executor import MigrationExecutor
+for part in singular :
+locales . append ( locale . split ( '_' ) [ 0 ] )
+from django . utils . module_loading import import_string
+def cookie_date ( epoch_seconds = None ) :
+if field_value is not None :
+return iter ( getattr ( d , _iterlists ) ( ** kw ) )
+value = '.' . join ( reversed ( parts ) )
+def __init__ ( self , attrs = None ) :
+if isinstance ( file , six . string_types ) :
+if len ( bits ) != 2 :
+def do_block ( parser , token ) :
+for i , piece in enumerate ( re_formatchars . split ( force_text ( formatstr ) ) ) :
+raise ImportError ( "No IPython" )
+self . _callback_strs . update ( pattern . _callback_strs )
+def has_key ( self , key ) :
