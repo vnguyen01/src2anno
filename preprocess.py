@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import sys
 import h5py
 import os
