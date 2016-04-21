@@ -10,11 +10,12 @@ FILE_PATHS = {"train" : "data/en-django/django-train.hdf5",
 
 def run_seq2seq_attn(ftrain, fvalid, fmodel, ftest, fpredict, dsrc, dtar):
 	os.chdir('seq2seq-attn')
-	os.system('source ~/.bashrc')
 	#train
 	os.system('th train.lua -data_file ' +\
 	 "../" + ftrain + ' -val_data_file ' + \
-	 "../" + fvalid + ' -savefile ' + fmodel + " -epochs 1 " + " -num_layers 1 " + " -rnn_size 1")
+	 "../" + fvalid + ' -savefile ' + fmodel +\
+	  " -epochs 15 -num_layers 1 -rnn_size 50 -gpuid -1 \
+	  -word_vec_size 50")
 	
 	#os.system('th beam.lua -model ' + fmodel +\
 	# ' -src_file ' + ftest + ' -output_file' + fpredict +\
