@@ -14,8 +14,8 @@ def run_seq2seq_attn(ftrain, fvalid, fmodel, ftest, fpredict, dsrc, dtar):
 	os.system('th train.lua -data_file ' +\
 	 "../" + ftrain + ' -val_data_file ' + \
 	 "../" + fvalid + ' -savefile ' + fmodel +\
-	  " -epochs 15 -num_layers 3 -rnn_size 100 -gpuid -1 \
-	  -word_vec_size 50")
+	  " -epochs 25 -num_layers 2 -rnn_size 50 -gpuid -1 \
+	  -word_vec_size 50 -learning_rate=0.9")
 	
 	#os.system('th beam.lua -model ' + fmodel +\
 	# ' -src_file ' + ftest + ' -output_file' + fpredict +\
