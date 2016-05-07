@@ -4,7 +4,7 @@ import os
 import numpy as np
 from sklearn.cross_validation import train_test_split
 
-FILE_PATHS = {"code" : "data/en-django/all.code",
+FILE_PATHS = {"code" : "data/en-django/all3.code",
 			  "anno" : "data/en-django/all3.anno"
 			 }
 
@@ -34,15 +34,15 @@ def main():
 
 	X_train, X_test, Y_train, Y_test = split(data, target, 42, 0.2)
 
-	write2file(X_train, "data/en-django/src-train.txt")
-	write2file(X_test, "data/en-django/src-val.txt")
-	write2file(Y_train, "data/en-django/targ-train.txt")
-	write2file(Y_test, "data/en-django/targ-val.txt")
+	write2file(X_train, "data/en-django/src-train2.txt")
+	write2file(X_test, "data/en-django/src-val2.txt")
+	write2file(Y_train, "data/en-django/targ-train2.txt")
+	write2file(Y_test, "data/en-django/targ-val2.txt")
 
 	os.chdir('seq2seq-attn')
 	os.system('python preprocess.py --srcfile ../data/en-django/src-train.txt\
-		--targetfile ../data/en-django/targ-train.txt --srcvalfile ../data/en-django/src-val.txt\
-		--targetvalfile ../data/en-django/targ-val.txt --outputfile ../data/en-django/django')
+		--targetfile ../data/en-django/targ-train2.txt --srcvalfile ../data/en-django/src-val2.txt\
+		--targetvalfile ../data/en-django/targ-val2.txt --outputfile ../data/en-django/django2')
 
 if __name__ == "__main__":
 	sys.exit(main())
