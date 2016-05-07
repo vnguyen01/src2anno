@@ -5,7 +5,7 @@ import numpy as np
 from sklearn.cross_validation import train_test_split
 
 FILE_PATHS = {"code" : "data/en-django/all.code",
-			  "anno" : "data/en-django/all.anno"
+			  "anno" : "data/en-django/all3.anno"
 			 }
 
 def split(data, target, seed, size):
