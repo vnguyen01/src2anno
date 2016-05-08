@@ -1,12 +1,12 @@
 import sys
 import os
 
-FILE_PATHS = {"train" : "data/en-django/django-train.hdf5",
-			  "valid" : "data/en-django/django-val.hdf5",
-			  "test" : "data/en-django/src-val.txt",
+FILE_PATHS = {"train" : "data/en-django/django3-train.hdf5",
+			  "valid" : "data/en-django/django3-val.hdf5",
+			  "test" : "data/en-django/src-val3.txt",
 			  "model" : "django-model3",
-			  "dic_src" : "data/en-django/django.src.dict",
-			  "dic_tar" : "data/en-django/django.tar.dict"}
+			  "dic_src" : "data/en-django/django3.src.dict",
+			  "dic_tar" : "data/en-django/django3.tar.dict"}
 
 def run_seq2seq_attn(ftrain, fvalid, fmodel, ftest, fpredict, dsrc, dtar):
 	os.chdir('seq2seq-attn')
