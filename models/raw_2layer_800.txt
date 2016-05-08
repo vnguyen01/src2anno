@@ -1,0 +1,1780 @@
+[?1034husing CUDA on GPU 2...	
+loading data...	
+done!	
+Source vocab size: 8770, Target vocab size: 11092	
+Source max sent len: 50, Target max sent len: 52	
+Number of parameters: 49747092	
+Epoch: 1, Batch: 50/268, Batch size: 64, LR: 1.0000, PPL: 108020.48, |Param|: 408.15, |GParam|: 40.83, Training: 4208/799/3409 total/source/target tokens/sec	
+Epoch: 1, Batch: 100/268, Batch size: 15, LR: 1.0000, PPL: 28405.55, |Param|: 409.08, |GParam|: 289.29, Training: 4271/861/3410 total/source/target tokens/sec	
+Epoch: 1, Batch: 150/268, Batch size: 64, LR: 1.0000, PPL: 10745.01, |Param|: 409.78, |GParam|: 9.75, Training: 4386/864/3521 total/source/target tokens/sec	
+Epoch: 1, Batch: 200/268, Batch size: 64, LR: 1.0000, PPL: 4526.98, |Param|: 410.62, |GParam|: 6.87, Training: 4444/869/3574 total/source/target tokens/sec	
+Epoch: 1, Batch: 250/268, Batch size: 64, LR: 1.0000, PPL: 2418.02, |Param|: 411.51, |GParam|: 11.66, Training: 4451/858/3593 total/source/target tokens/sec	
+Train	2072.0857861745	
+Valid	101.29699930727	
+{
+  1 : 101.29699930727
+}
+saving checkpoint to django-model_epoch1.00_101.30.t7	
+Epoch: 2, Batch: 50/268, Batch size: 64, LR: 1.0000, PPL: 110.71, |Param|: 412.89, |GParam|: 11.62, Training: 4688/917/3771 total/source/target tokens/sec	
+Epoch: 2, Batch: 100/268, Batch size: 64, LR: 1.0000, PPL: 86.60, |Param|: 413.94, |GParam|: 14.21, Training: 4595/876/3718 total/source/target tokens/sec	
+Epoch: 2, Batch: 150/268, Batch size: 64, LR: 1.0000, PPL: 69.90, |Param|: 415.08, |GParam|: 3.40, Training: 4633/874/3759 total/source/target tokens/sec	
+Epoch: 2, Batch: 200/268, Batch size: 32, LR: 1.0000, PPL: 61.48, |Param|: 416.19, |GParam|: 12.40, Training: 4558/843/3715 total/source/target tokens/sec	
+Epoch: 2, Batch: 250/268, Batch size: 64, LR: 1.0000, PPL: 56.79, |Param|: 417.30, |GParam|: 8.25, Training: 4460/854/3606 total/source/target tokens/sec	
+Train	55.126358213113	
+Valid	25.533780378179	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+}
+saving checkpoint to django-model_epoch2.00_25.53.t7	
+Epoch: 3, Batch: 50/268, Batch size: 64, LR: 1.0000, PPL: 26.09, |Param|: 418.93, |GParam|: 7.49, Training: 4655/871/3783 total/source/target tokens/sec	
+Epoch: 3, Batch: 100/268, Batch size: 1, LR: 1.0000, PPL: 28.23, |Param|: 420.14, |GParam|: 42.39, Training: 4598/889/3709 total/source/target tokens/sec	
+Epoch: 3, Batch: 150/268, Batch size: 52, LR: 1.0000, PPL: 25.68, |Param|: 421.18, |GParam|: 3.24, Training: 4615/873/3742 total/source/target tokens/sec	
+Epoch: 3, Batch: 200/268, Batch size: 34, LR: 1.0000, PPL: 24.35, |Param|: 422.44, |GParam|: 4.25, Training: 4593/888/3705 total/source/target tokens/sec	
+Epoch: 3, Batch: 250/268, Batch size: 4, LR: 1.0000, PPL: 23.33, |Param|: 423.52, |GParam|: 23.41, Training: 4554/878/3675 total/source/target tokens/sec	
+Train	23.008625503647	
+Valid	17.476125462336	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+}
+saving checkpoint to django-model_epoch3.00_17.48.t7	
+Epoch: 4, Batch: 50/268, Batch size: 64, LR: 1.0000, PPL: 15.93, |Param|: 425.19, |GParam|: 4.57, Training: 4537/848/3689 total/source/target tokens/sec	
+Epoch: 4, Batch: 100/268, Batch size: 64, LR: 1.0000, PPL: 16.72, |Param|: 426.39, |GParam|: 6.98, Training: 4557/894/3663 total/source/target tokens/sec	
+Epoch: 4, Batch: 150/268, Batch size: 64, LR: 1.0000, PPL: 15.35, |Param|: 427.45, |GParam|: 7.48, Training: 4562/859/3703 total/source/target tokens/sec	
+Epoch: 4, Batch: 200/268, Batch size: 1, LR: 1.0000, PPL: 15.09, |Param|: 428.52, |GParam|: 50.04, Training: 4600/870/3729 total/source/target tokens/sec	
+Epoch: 4, Batch: 250/268, Batch size: 4, LR: 1.0000, PPL: 15.26, |Param|: 429.74, |GParam|: 28.27, Training: 4549/879/3669 total/source/target tokens/sec	
+Train	14.991211630757	
+Valid	12.531617849854	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+}
+saving checkpoint to django-model_epoch4.00_12.53.t7	
+Epoch: 5, Batch: 50/268, Batch size: 64, LR: 1.0000, PPL: 13.00, |Param|: 431.42, |GParam|: 2.70, Training: 4374/935/3438 total/source/target tokens/sec	
+Epoch: 5, Batch: 100/268, Batch size: 64, LR: 1.0000, PPL: 12.13, |Param|: 432.62, |GParam|: 5.85, Training: 4498/916/3581 total/source/target tokens/sec	
+Epoch: 5, Batch: 150/268, Batch size: 64, LR: 1.0000, PPL: 11.41, |Param|: 433.80, |GParam|: 5.05, Training: 4540/903/3637 total/source/target tokens/sec	
+Epoch: 5, Batch: 200/268, Batch size: 21, LR: 1.0000, PPL: 11.46, |Param|: 435.01, |GParam|: 11.80, Training: 4546/907/3638 total/source/target tokens/sec	
+Epoch: 5, Batch: 250/268, Batch size: 64, LR: 1.0000, PPL: 11.16, |Param|: 436.18, |GParam|: 5.03, Training: 4520/885/3634 total/source/target tokens/sec	
+Train	10.820721680859	
+Valid	9.9562305512033	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+}
+saving checkpoint to django-model_epoch5.00_9.96.t7	
+Epoch: 6, Batch: 50/268, Batch size: 64, LR: 1.0000, PPL: 8.89, |Param|: 437.93, |GParam|: 4.43, Training: 4909/973/3935 total/source/target tokens/sec	
+Epoch: 6, Batch: 100/268, Batch size: 64, LR: 1.0000, PPL: 8.64, |Param|: 439.21, |GParam|: 4.21, Training: 4728/915/3812 total/source/target tokens/sec	
+Epoch: 6, Batch: 150/268, Batch size: 63, LR: 1.0000, PPL: 8.65, |Param|: 440.46, |GParam|: 11.26, Training: 4593/906/3686 total/source/target tokens/sec	
+Epoch: 6, Batch: 200/268, Batch size: 64, LR: 1.0000, PPL: 8.06, |Param|: 441.72, |GParam|: 4.26, Training: 4518/863/3654 total/source/target tokens/sec	
+Epoch: 6, Batch: 250/268, Batch size: 64, LR: 1.0000, PPL: 8.10, |Param|: 442.88, |GParam|: 10.46, Training: 4517/864/3652 total/source/target tokens/sec	
+Train	7.9939752794307	
+Valid	7.7876216840945	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+}
+saving checkpoint to django-model_epoch6.00_7.79.t7	
+Epoch: 7, Batch: 50/268, Batch size: 64, LR: 1.0000, PPL: 5.29, |Param|: 444.78, |GParam|: 5.72, Training: 4391/845/3545 total/source/target tokens/sec	
+Epoch: 7, Batch: 100/268, Batch size: 64, LR: 1.0000, PPL: 5.60, |Param|: 446.07, |GParam|: 6.19, Training: 4385/833/3551 total/source/target tokens/sec	
+Epoch: 7, Batch: 150/268, Batch size: 64, LR: 1.0000, PPL: 6.07, |Param|: 447.30, |GParam|: 5.81, Training: 4419/855/3563 total/source/target tokens/sec	
+Epoch: 7, Batch: 200/268, Batch size: 8, LR: 1.0000, PPL: 5.98, |Param|: 448.45, |GParam|: 31.25, Training: 4422/825/3596 total/source/target tokens/sec	
+Epoch: 7, Batch: 250/268, Batch size: 64, LR: 1.0000, PPL: 6.01, |Param|: 449.71, |GParam|: 6.66, Training: 4427/841/3585 total/source/target tokens/sec	
+Train	6.0798565004838	
+Valid	6.4357218095858	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+}
+saving checkpoint to django-model_epoch7.00_6.44.t7	
+Epoch: 8, Batch: 50/268, Batch size: 64, LR: 1.0000, PPL: 5.48, |Param|: 451.55, |GParam|: 5.14, Training: 4662/944/3718 total/source/target tokens/sec	
+Epoch: 8, Batch: 100/268, Batch size: 64, LR: 1.0000, PPL: 5.16, |Param|: 452.86, |GParam|: 8.42, Training: 4593/907/3686 total/source/target tokens/sec	
+Epoch: 8, Batch: 150/268, Batch size: 64, LR: 1.0000, PPL: 5.10, |Param|: 454.15, |GParam|: 6.56, Training: 4601/902/3699 total/source/target tokens/sec	
+Epoch: 8, Batch: 200/268, Batch size: 4, LR: 1.0000, PPL: 4.88, |Param|: 455.38, |GParam|: 31.67, Training: 4554/865/3688 total/source/target tokens/sec	
+Epoch: 8, Batch: 250/268, Batch size: 3, LR: 1.0000, PPL: 4.76, |Param|: 456.64, |GParam|: 32.59, Training: 4477/852/3625 total/source/target tokens/sec	
+Train	4.8396092018936	
+Valid	5.7359894125869	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+}
+saving checkpoint to django-model_epoch8.00_5.74.t7	
+Epoch: 9, Batch: 50/268, Batch size: 64, LR: 1.0000, PPL: 3.76, |Param|: 458.45, |GParam|: 5.83, Training: 4414/861/3553 total/source/target tokens/sec	
+Epoch: 9, Batch: 100/268, Batch size: 64, LR: 1.0000, PPL: 4.07, |Param|: 459.74, |GParam|: 2.36, Training: 4522/840/3682 total/source/target tokens/sec	
+Epoch: 9, Batch: 150/268, Batch size: 64, LR: 1.0000, PPL: 4.08, |Param|: 461.02, |GParam|: 9.27, Training: 4578/868/3709 total/source/target tokens/sec	
+Epoch: 9, Batch: 200/268, Batch size: 64, LR: 1.0000, PPL: 4.07, |Param|: 462.25, |GParam|: 6.02, Training: 4583/878/3705 total/source/target tokens/sec	
+Epoch: 9, Batch: 250/268, Batch size: 64, LR: 1.0000, PPL: 3.99, |Param|: 463.44, |GParam|: 5.58, Training: 4514/864/3649 total/source/target tokens/sec	
+Train	4.0759331861307	
+Valid	5.1313659396623	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+}
+saving checkpoint to django-model_epoch9.00_5.13.t7	
+Epoch: 10, Batch: 50/268, Batch size: 4, LR: 0.5000, PPL: 3.49, |Param|: 464.26, |GParam|: 33.27, Training: 4443/946/3497 total/source/target tokens/sec	
+Epoch: 10, Batch: 100/268, Batch size: 64, LR: 0.5000, PPL: 3.37, |Param|: 464.63, |GParam|: 9.14, Training: 4515/910/3604 total/source/target tokens/sec	
+Epoch: 10, Batch: 150/268, Batch size: 64, LR: 0.5000, PPL: 3.30, |Param|: 465.01, |GParam|: 4.80, Training: 4603/917/3686 total/source/target tokens/sec	
+Epoch: 10, Batch: 200/268, Batch size: 64, LR: 0.5000, PPL: 3.18, |Param|: 465.38, |GParam|: 4.83, Training: 4586/896/3689 total/source/target tokens/sec	
+Epoch: 10, Batch: 250/268, Batch size: 64, LR: 0.5000, PPL: 3.16, |Param|: 465.75, |GParam|: 4.00, Training: 4547/881/3665 total/source/target tokens/sec	
+Train	3.1224099497446	
+Valid	4.655496754039	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+}
+saving checkpoint to django-model_epoch10.00_4.66.t7	
+Epoch: 11, Batch: 50/268, Batch size: 64, LR: 0.2500, PPL: 2.15, |Param|: 466.01, |GParam|: 7.56, Training: 4846/863/3982 total/source/target tokens/sec	
+Epoch: 11, Batch: 100/268, Batch size: 64, LR: 0.2500, PPL: 2.31, |Param|: 466.14, |GParam|: 5.84, Training: 4689/829/3859 total/source/target tokens/sec	
+Epoch: 11, Batch: 150/268, Batch size: 64, LR: 0.2500, PPL: 2.45, |Param|: 466.26, |GParam|: 5.76, Training: 4685/858/3827 total/source/target tokens/sec	
+Epoch: 11, Batch: 200/268, Batch size: 64, LR: 0.2500, PPL: 2.53, |Param|: 466.38, |GParam|: 2.14, Training: 4574/846/3728 total/source/target tokens/sec	
+Epoch: 11, Batch: 250/268, Batch size: 64, LR: 0.2500, PPL: 2.69, |Param|: 466.50, |GParam|: 11.85, Training: 4535/872/3663 total/source/target tokens/sec	
+Train	2.6786873134346	
+Valid	4.3918434968236	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+}
+saving checkpoint to django-model_epoch11.00_4.39.t7	
+Epoch: 12, Batch: 50/268, Batch size: 64, LR: 0.1250, PPL: 2.44, |Param|: 466.60, |GParam|: 3.74, Training: 4965/945/4019 total/source/target tokens/sec	
+Epoch: 12, Batch: 100/268, Batch size: 4, LR: 0.1250, PPL: 2.59, |Param|: 466.64, |GParam|: 32.41, Training: 4787/939/3848 total/source/target tokens/sec	
+Epoch: 12, Batch: 150/268, Batch size: 64, LR: 0.1250, PPL: 2.51, |Param|: 466.70, |GParam|: 4.24, Training: 4591/893/3698 total/source/target tokens/sec	
+Epoch: 12, Batch: 200/268, Batch size: 64, LR: 0.1250, PPL: 2.49, |Param|: 466.75, |GParam|: 2.18, Training: 4521/885/3635 total/source/target tokens/sec	
+Epoch: 12, Batch: 250/268, Batch size: 64, LR: 0.1250, PPL: 2.46, |Param|: 466.80, |GParam|: 3.87, Training: 4442/866/3575 total/source/target tokens/sec	
+Train	2.460840574497	
+Valid	4.3447656809408	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+}
+saving checkpoint to django-model_epoch12.00_4.34.t7	
+Epoch: 13, Batch: 50/268, Batch size: 64, LR: 0.0625, PPL: 2.22, |Param|: 466.84, |GParam|: 3.67, Training: 4800/834/3966 total/source/target tokens/sec	
+Epoch: 13, Batch: 100/268, Batch size: 64, LR: 0.0625, PPL: 2.21, |Param|: 466.86, |GParam|: 7.48, Training: 4548/849/3699 total/source/target tokens/sec	
+Epoch: 13, Batch: 150/268, Batch size: 64, LR: 0.0625, PPL: 2.31, |Param|: 466.88, |GParam|: 4.60, Training: 4608/876/3732 total/source/target tokens/sec	
+Epoch: 13, Batch: 200/268, Batch size: 64, LR: 0.0625, PPL: 2.36, |Param|: 466.91, |GParam|: 5.39, Training: 4619/888/3730 total/source/target tokens/sec	
+Epoch: 13, Batch: 250/268, Batch size: 64, LR: 0.0625, PPL: 2.38, |Param|: 466.93, |GParam|: 5.43, Training: 4542/882/3659 total/source/target tokens/sec	
+Train	2.3638791099083	
+Valid	4.3326656199056	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+}
+saving checkpoint to django-model_epoch13.00_4.33.t7	
+Epoch: 14, Batch: 50/268, Batch size: 64, LR: 0.0312, PPL: 2.03, |Param|: 466.94, |GParam|: 2.98, Training: 4289/827/3461 total/source/target tokens/sec	
+Epoch: 14, Batch: 100/268, Batch size: 64, LR: 0.0312, PPL: 2.27, |Param|: 466.95, |GParam|: 2.99, Training: 4441/879/3562 total/source/target tokens/sec	
+Epoch: 14, Batch: 150/268, Batch size: 63, LR: 0.0312, PPL: 2.31, |Param|: 466.96, |GParam|: 11.74, Training: 4608/888/3719 total/source/target tokens/sec	
+Epoch: 14, Batch: 200/268, Batch size: 64, LR: 0.0312, PPL: 2.30, |Param|: 466.97, |GParam|: 4.20, Training: 4558/880/3678 total/source/target tokens/sec	
+Epoch: 14, Batch: 250/268, Batch size: 64, LR: 0.0312, PPL: 2.27, |Param|: 466.98, |GParam|: 3.88, Training: 4594/876/3718 total/source/target tokens/sec	
+Train	2.3163346856834	
+Valid	4.3147939214123	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+}
+saving checkpoint to django-model_epoch14.00_4.31.t7	
+Epoch: 15, Batch: 50/268, Batch size: 64, LR: 0.0156, PPL: 2.34, |Param|: 466.99, |GParam|: 6.06, Training: 4181/913/3268 total/source/target tokens/sec	
+Epoch: 15, Batch: 100/268, Batch size: 64, LR: 0.0156, PPL: 2.37, |Param|: 467.00, |GParam|: 5.87, Training: 4413/884/3529 total/source/target tokens/sec	
+Epoch: 15, Batch: 150/268, Batch size: 64, LR: 0.0156, PPL: 2.23, |Param|: 467.00, |GParam|: 4.61, Training: 4569/862/3706 total/source/target tokens/sec	
+Epoch: 15, Batch: 200/268, Batch size: 64, LR: 0.0156, PPL: 2.22, |Param|: 467.01, |GParam|: 6.40, Training: 4566/859/3707 total/source/target tokens/sec	
+Epoch: 15, Batch: 250/268, Batch size: 64, LR: 0.0156, PPL: 2.27, |Param|: 467.01, |GParam|: 11.38, Training: 4552/874/3678 total/source/target tokens/sec	
+Train	2.2904562628473	
+Valid	4.3117150839793	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+}
+saving checkpoint to django-model_epoch15.00_4.31.t7	
+Epoch: 16, Batch: 50/268, Batch size: 64, LR: 0.0078, PPL: 2.09, |Param|: 467.01, |GParam|: 3.25, Training: 4631/859/3772 total/source/target tokens/sec	
+Epoch: 16, Batch: 100/268, Batch size: 2, LR: 0.0078, PPL: 2.25, |Param|: 467.02, |GParam|: 36.45, Training: 4541/878/3663 total/source/target tokens/sec	
+Epoch: 16, Batch: 150/268, Batch size: 8, LR: 0.0078, PPL: 2.29, |Param|: 467.02, |GParam|: 31.41, Training: 4556/884/3672 total/source/target tokens/sec	
+Epoch: 16, Batch: 200/268, Batch size: 64, LR: 0.0078, PPL: 2.30, |Param|: 467.02, |GParam|: 3.10, Training: 4578/892/3686 total/source/target tokens/sec	
+Epoch: 16, Batch: 250/268, Batch size: 64, LR: 0.0078, PPL: 2.27, |Param|: 467.02, |GParam|: 6.75, Training: 4585/885/3699 total/source/target tokens/sec	
+Train	2.28249966902	
+Valid	4.3119532829435	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+}
+saving checkpoint to django-model_epoch16.00_4.31.t7	
+Epoch: 17, Batch: 50/268, Batch size: 64, LR: 0.0039, PPL: 1.95, |Param|: 467.03, |GParam|: 6.41, Training: 4874/823/4051 total/source/target tokens/sec	
+Epoch: 17, Batch: 100/268, Batch size: 64, LR: 0.0039, PPL: 2.01, |Param|: 467.03, |GParam|: 6.17, Training: 4700/841/3859 total/source/target tokens/sec	
+Epoch: 17, Batch: 150/268, Batch size: 64, LR: 0.0039, PPL: 2.09, |Param|: 467.03, |GParam|: 4.61, Training: 4555/843/3711 total/source/target tokens/sec	
+Epoch: 17, Batch: 200/268, Batch size: 64, LR: 0.0039, PPL: 2.19, |Param|: 467.03, |GParam|: 3.04, Training: 4459/846/3613 total/source/target tokens/sec	
+Epoch: 17, Batch: 250/268, Batch size: 64, LR: 0.0039, PPL: 2.25, |Param|: 467.03, |GParam|: 4.34, Training: 4516/863/3652 total/source/target tokens/sec	
+Train	2.2777814352428	
+Valid	4.3112766338544	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+}
+saving checkpoint to django-model_epoch17.00_4.31.t7	
+Epoch: 18, Batch: 50/268, Batch size: 64, LR: 0.0020, PPL: 2.27, |Param|: 467.03, |GParam|: 3.51, Training: 4478/854/3623 total/source/target tokens/sec	
+Epoch: 18, Batch: 100/268, Batch size: 64, LR: 0.0020, PPL: 2.26, |Param|: 467.03, |GParam|: 1.94, Training: 4466/863/3602 total/source/target tokens/sec	
+Epoch: 18, Batch: 150/268, Batch size: 64, LR: 0.0020, PPL: 2.20, |Param|: 467.03, |GParam|: 7.34, Training: 4533/877/3655 total/source/target tokens/sec	
+Epoch: 18, Batch: 200/268, Batch size: 64, LR: 0.0020, PPL: 2.29, |Param|: 467.03, |GParam|: 3.39, Training: 4552/905/3646 total/source/target tokens/sec	
+Epoch: 18, Batch: 250/268, Batch size: 64, LR: 0.0020, PPL: 2.28, |Param|: 467.03, |GParam|: 7.53, Training: 4452/874/3577 total/source/target tokens/sec	
+Train	2.2756246451803	
+Valid	4.312201432373	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+}
+saving checkpoint to django-model_epoch18.00_4.31.t7	
+Epoch: 19, Batch: 50/268, Batch size: 64, LR: 0.0010, PPL: 2.47, |Param|: 467.03, |GParam|: 10.35, Training: 4561/882/3678 total/source/target tokens/sec	
+Epoch: 19, Batch: 100/268, Batch size: 64, LR: 0.0010, PPL: 2.41, |Param|: 467.03, |GParam|: 12.70, Training: 4651/899/3751 total/source/target tokens/sec	
+Epoch: 19, Batch: 150/268, Batch size: 64, LR: 0.0010, PPL: 2.32, |Param|: 467.03, |GParam|: 3.96, Training: 4667/901/3765 total/source/target tokens/sec	
+Epoch: 19, Batch: 200/268, Batch size: 64, LR: 0.0010, PPL: 2.32, |Param|: 467.03, |GParam|: 2.66, Training: 4612/885/3727 total/source/target tokens/sec	
+Epoch: 19, Batch: 250/268, Batch size: 64, LR: 0.0010, PPL: 2.29, |Param|: 467.03, |GParam|: 4.34, Training: 4538/868/3670 total/source/target tokens/sec	
+Train	2.2738005463606	
+Valid	4.3119932715535	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+}
+saving checkpoint to django-model_epoch19.00_4.31.t7	
+Epoch: 20, Batch: 50/268, Batch size: 64, LR: 0.0005, PPL: 2.04, |Param|: 467.03, |GParam|: 1.77, Training: 4739/881/3858 total/source/target tokens/sec	
+Epoch: 20, Batch: 100/268, Batch size: 23, LR: 0.0005, PPL: 2.12, |Param|: 467.03, |GParam|: 18.81, Training: 4612/841/3770 total/source/target tokens/sec	
+Epoch: 20, Batch: 150/268, Batch size: 63, LR: 0.0005, PPL: 2.25, |Param|: 467.03, |GParam|: 12.03, Training: 4535/878/3656 total/source/target tokens/sec	
+Epoch: 20, Batch: 200/268, Batch size: 64, LR: 0.0005, PPL: 2.31, |Param|: 467.04, |GParam|: 2.11, Training: 4509/870/3639 total/source/target tokens/sec	
+Epoch: 20, Batch: 250/268, Batch size: 64, LR: 0.0005, PPL: 2.29, |Param|: 467.04, |GParam|: 2.81, Training: 4519/879/3639 total/source/target tokens/sec	
+Train	2.2709432945509	
+Valid	4.3116308639504	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+}
+saving checkpoint to django-model_epoch20.00_4.31.t7	
+Epoch: 21, Batch: 50/268, Batch size: 64, LR: 0.0002, PPL: 2.05, |Param|: 467.04, |GParam|: 3.07, Training: 4588/862/3726 total/source/target tokens/sec	
+Epoch: 21, Batch: 100/268, Batch size: 64, LR: 0.0002, PPL: 2.11, |Param|: 467.04, |GParam|: 3.41, Training: 4516/855/3661 total/source/target tokens/sec	
+Epoch: 21, Batch: 150/268, Batch size: 37, LR: 0.0002, PPL: 2.20, |Param|: 467.04, |GParam|: 15.59, Training: 4532/870/3662 total/source/target tokens/sec	
+Epoch: 21, Batch: 200/268, Batch size: 23, LR: 0.0002, PPL: 2.29, |Param|: 467.04, |GParam|: 19.41, Training: 4474/876/3597 total/source/target tokens/sec	
+Epoch: 21, Batch: 250/268, Batch size: 28, LR: 0.0002, PPL: 2.24, |Param|: 467.04, |GParam|: 8.55, Training: 4550/871/3678 total/source/target tokens/sec	
+Train	2.268227813344	
+Valid	4.311487970844	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+}
+saving checkpoint to django-model_epoch21.00_4.31.t7	
+Epoch: 22, Batch: 50/268, Batch size: 64, LR: 0.0001, PPL: 2.23, |Param|: 467.04, |GParam|: 4.43, Training: 4600/862/3738 total/source/target tokens/sec	
+Epoch: 22, Batch: 100/268, Batch size: 21, LR: 0.0001, PPL: 2.35, |Param|: 467.04, |GParam|: 16.77, Training: 4504/846/3658 total/source/target tokens/sec	
+Epoch: 22, Batch: 150/268, Batch size: 64, LR: 0.0001, PPL: 2.30, |Param|: 467.04, |GParam|: 5.09, Training: 4572/879/3693 total/source/target tokens/sec	
+Epoch: 22, Batch: 200/268, Batch size: 64, LR: 0.0001, PPL: 2.24, |Param|: 467.04, |GParam|: 2.60, Training: 4525/861/3664 total/source/target tokens/sec	
+Epoch: 22, Batch: 250/268, Batch size: 64, LR: 0.0001, PPL: 2.25, |Param|: 467.04, |GParam|: 3.70, Training: 4508/867/3640 total/source/target tokens/sec	
+Train	2.2741972427349	
+Valid	4.3114295186289	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+}
+saving checkpoint to django-model_epoch22.00_4.31.t7	
+Epoch: 23, Batch: 50/268, Batch size: 64, LR: 0.0001, PPL: 2.25, |Param|: 467.04, |GParam|: 4.03, Training: 4646/890/3756 total/source/target tokens/sec	
+Epoch: 23, Batch: 100/268, Batch size: 64, LR: 0.0001, PPL: 2.15, |Param|: 467.04, |GParam|: 5.36, Training: 4535/827/3707 total/source/target tokens/sec	
+Epoch: 23, Batch: 150/268, Batch size: 64, LR: 0.0001, PPL: 2.25, |Param|: 467.04, |GParam|: 3.77, Training: 4553/872/3680 total/source/target tokens/sec	
+Epoch: 23, Batch: 200/268, Batch size: 64, LR: 0.0001, PPL: 2.24, |Param|: 467.04, |GParam|: 4.28, Training: 4573/884/3689 total/source/target tokens/sec	
+Epoch: 23, Batch: 250/268, Batch size: 64, LR: 0.0001, PPL: 2.25, |Param|: 467.04, |GParam|: 5.23, Training: 4534/868/3665 total/source/target tokens/sec	
+Train	2.2712129421555	
+Valid	4.3114043824106	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+}
+saving checkpoint to django-model_epoch23.00_4.31.t7	
+Epoch: 24, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.32, |Param|: 467.04, |GParam|: 4.06, Training: 4564/936/3627 total/source/target tokens/sec	
+Epoch: 24, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.24, |Param|: 467.04, |GParam|: 3.99, Training: 4623/926/3696 total/source/target tokens/sec	
+Epoch: 24, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.31, |Param|: 467.04, |GParam|: 4.29, Training: 4638/941/3697 total/source/target tokens/sec	
+Epoch: 24, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.33, |Param|: 467.04, |GParam|: 4.61, Training: 4592/920/3672 total/source/target tokens/sec	
+Epoch: 24, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.29, |Param|: 467.04, |GParam|: 4.31, Training: 4518/883/3635 total/source/target tokens/sec	
+Train	2.2751008547652	
+Valid	4.3114027321098	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+}
+saving checkpoint to django-model_epoch24.00_4.31.t7	
+Epoch: 25, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.64, |Param|: 467.04, |GParam|: 10.72, Training: 4304/940/3363 total/source/target tokens/sec	
+Epoch: 25, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.34, |Param|: 467.04, |GParam|: 5.10, Training: 4472/900/3571 total/source/target tokens/sec	
+Epoch: 25, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.30, |Param|: 467.04, |GParam|: 3.63, Training: 4607/920/3686 total/source/target tokens/sec	
+Epoch: 25, Batch: 200/268, Batch size: 4, LR: 0.0000, PPL: 2.28, |Param|: 467.04, |GParam|: 22.88, Training: 4575/886/3689 total/source/target tokens/sec	
+Epoch: 25, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.27, |Param|: 467.04, |GParam|: 6.42, Training: 4536/880/3656 total/source/target tokens/sec	
+Train	2.2696962154807	
+Valid	4.311398626765	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+}
+saving checkpoint to django-model_epoch25.00_4.31.t7	
+Epoch: 26, Batch: 50/268, Batch size: 4, LR: 0.0000, PPL: 2.12, |Param|: 467.04, |GParam|: 25.95, Training: 4704/850/3854 total/source/target tokens/sec	
+Epoch: 26, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.26, |Param|: 467.04, |GParam|: 3.33, Training: 4628/867/3761 total/source/target tokens/sec	
+Epoch: 26, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.30, |Param|: 467.04, |GParam|: 8.51, Training: 4576/886/3689 total/source/target tokens/sec	
+Epoch: 26, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.33, |Param|: 467.04, |GParam|: 11.37, Training: 4578/891/3687 total/source/target tokens/sec	
+Epoch: 26, Batch: 250/268, Batch size: 13, LR: 0.0000, PPL: 2.28, |Param|: 467.04, |GParam|: 30.53, Training: 4562/874/3688 total/source/target tokens/sec	
+Train	2.2731111745344	
+Valid	4.3113925964244	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+}
+saving checkpoint to django-model_epoch26.00_4.31.t7	
+Epoch: 27, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.35, |Param|: 467.04, |GParam|: 3.14, Training: 4515/896/3618 total/source/target tokens/sec	
+Epoch: 27, Batch: 100/268, Batch size: 23, LR: 0.0000, PPL: 2.28, |Param|: 467.04, |GParam|: 18.84, Training: 4623/890/3733 total/source/target tokens/sec	
+Epoch: 27, Batch: 150/268, Batch size: 63, LR: 0.0000, PPL: 2.24, |Param|: 467.04, |GParam|: 12.24, Training: 4602/902/3700 total/source/target tokens/sec	
+Epoch: 27, Batch: 200/268, Batch size: 8, LR: 0.0000, PPL: 2.23, |Param|: 467.04, |GParam|: 3.65, Training: 4614/890/3724 total/source/target tokens/sec	
+Epoch: 27, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.27, |Param|: 467.04, |GParam|: 5.36, Training: 4523/875/3648 total/source/target tokens/sec	
+Train	2.2735778529659	
+Valid	4.3113910468114	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+}
+saving checkpoint to django-model_epoch27.00_4.31.t7	
+Epoch: 28, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.24, |Param|: 467.04, |GParam|: 1.51, Training: 4542/925/3617 total/source/target tokens/sec	
+Epoch: 28, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.41, |Param|: 467.04, |GParam|: 8.89, Training: 4460/911/3548 total/source/target tokens/sec	
+Epoch: 28, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.36, |Param|: 467.04, |GParam|: 3.90, Training: 4605/919/3686 total/source/target tokens/sec	
+Epoch: 28, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.33, |Param|: 467.04, |GParam|: 4.54, Training: 4592/895/3696 total/source/target tokens/sec	
+Epoch: 28, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.27, |Param|: 467.04, |GParam|: 6.99, Training: 4533/878/3654 total/source/target tokens/sec	
+Train	2.270512108175	
+Valid	4.3113895160107	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+}
+saving checkpoint to django-model_epoch28.00_4.31.t7	
+Epoch: 29, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.22, |Param|: 467.04, |GParam|: 6.17, Training: 4845/887/3957 total/source/target tokens/sec	
+Epoch: 29, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.27, |Param|: 467.04, |GParam|: 8.65, Training: 4593/879/3713 total/source/target tokens/sec	
+Epoch: 29, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.26, |Param|: 467.04, |GParam|: 2.08, Training: 4638/885/3753 total/source/target tokens/sec	
+Epoch: 29, Batch: 200/268, Batch size: 21, LR: 0.0000, PPL: 2.20, |Param|: 467.04, |GParam|: 15.10, Training: 4617/880/3737 total/source/target tokens/sec	
+Epoch: 29, Batch: 250/268, Batch size: 14, LR: 0.0000, PPL: 2.27, |Param|: 467.04, |GParam|: 24.75, Training: 4538/874/3663 total/source/target tokens/sec	
+Train	2.2707955918233	
+Valid	4.3113889561596	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+}
+saving checkpoint to django-model_epoch29.00_4.31.t7	
+Epoch: 30, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.11, |Param|: 467.04, |GParam|: 6.61, Training: 4474/889/3584 total/source/target tokens/sec	
+Epoch: 30, Batch: 100/268, Batch size: 17, LR: 0.0000, PPL: 2.22, |Param|: 467.04, |GParam|: 19.28, Training: 4550/885/3665 total/source/target tokens/sec	
+Epoch: 30, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.23, |Param|: 467.04, |GParam|: 4.00, Training: 4549/873/3675 total/source/target tokens/sec	
+Epoch: 30, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.24, |Param|: 467.04, |GParam|: 3.40, Training: 4519/854/3664 total/source/target tokens/sec	
+Epoch: 30, Batch: 250/268, Batch size: 13, LR: 0.0000, PPL: 2.26, |Param|: 467.04, |GParam|: 13.50, Training: 4516/862/3653 total/source/target tokens/sec	
+Train	2.2735482688948	
+Valid	4.3113886237905	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+}
+saving checkpoint to django-model_epoch30.00_4.31.t7	
+Epoch: 31, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.35, |Param|: 467.04, |GParam|: 4.73, Training: 4639/887/3751 total/source/target tokens/sec	
+Epoch: 31, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.41, |Param|: 467.04, |GParam|: 2.81, Training: 4374/871/3503 total/source/target tokens/sec	
+Epoch: 31, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.32, |Param|: 467.04, |GParam|: 7.50, Training: 4484/885/3598 total/source/target tokens/sec	
+Epoch: 31, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.28, |Param|: 467.04, |GParam|: 7.85, Training: 4511/878/3632 total/source/target tokens/sec	
+Epoch: 31, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.30, |Param|: 467.04, |GParam|: 4.10, Training: 4537/886/3650 total/source/target tokens/sec	
+Train	2.2711907257236	
+Valid	4.3113885781412	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+}
+saving checkpoint to django-model_epoch31.00_4.31.t7	
+Epoch: 32, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.42, |Param|: 467.04, |GParam|: 3.63, Training: 4204/866/3337 total/source/target tokens/sec	
+Epoch: 32, Batch: 100/268, Batch size: 14, LR: 0.0000, PPL: 2.25, |Param|: 467.04, |GParam|: 24.78, Training: 4238/824/3414 total/source/target tokens/sec	
+Epoch: 32, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.26, |Param|: 467.04, |GParam|: 3.27, Training: 4501/855/3646 total/source/target tokens/sec	
+Epoch: 32, Batch: 200/268, Batch size: 9, LR: 0.0000, PPL: 2.23, |Param|: 467.04, |GParam|: 20.69, Training: 4450/851/3598 total/source/target tokens/sec	
+Epoch: 32, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.28, |Param|: 467.04, |GParam|: 7.49, Training: 4522/877/3644 total/source/target tokens/sec	
+Train	2.2708798775187	
+Valid	4.3113885284154	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+}
+saving checkpoint to django-model_epoch32.00_4.31.t7	
+Epoch: 33, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.54, |Param|: 467.04, |GParam|: 3.99, Training: 4767/993/3774 total/source/target tokens/sec	
+Epoch: 33, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.30, |Param|: 467.04, |GParam|: 3.94, Training: 4677/898/3778 total/source/target tokens/sec	
+Epoch: 33, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.33, |Param|: 467.04, |GParam|: 9.27, Training: 4642/909/3733 total/source/target tokens/sec	
+Epoch: 33, Batch: 200/268, Batch size: 63, LR: 0.0000, PPL: 2.28, |Param|: 467.04, |GParam|: 11.79, Training: 4584/896/3688 total/source/target tokens/sec	
+Epoch: 33, Batch: 250/268, Batch size: 4, LR: 0.0000, PPL: 2.26, |Param|: 467.04, |GParam|: 17.47, Training: 4546/885/3661 total/source/target tokens/sec	
+Train	2.2714865339096	
+Valid	4.3113884940192	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+}
+saving checkpoint to django-model_epoch33.00_4.31.t7	
+Epoch: 34, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.23, |Param|: 467.04, |GParam|: 3.30, Training: 4754/914/3840 total/source/target tokens/sec	
+Epoch: 34, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.22, |Param|: 467.04, |GParam|: 5.95, Training: 4754/911/3843 total/source/target tokens/sec	
+Epoch: 34, Batch: 150/268, Batch size: 6, LR: 0.0000, PPL: 2.23, |Param|: 467.04, |GParam|: 21.91, Training: 4490/871/3619 total/source/target tokens/sec	
+Epoch: 34, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.23, |Param|: 467.04, |GParam|: 1.98, Training: 4478/855/3622 total/source/target tokens/sec	
+Epoch: 34, Batch: 250/268, Batch size: 37, LR: 0.0000, PPL: 2.28, |Param|: 467.04, |GParam|: 14.99, Training: 4487/865/3621 total/source/target tokens/sec	
+Train	2.2734395149563	
+Valid	4.3113885675251	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+}
+saving checkpoint to django-model_epoch34.00_4.31.t7	
+Epoch: 35, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.31, |Param|: 467.04, |GParam|: 2.79, Training: 4722/891/3830 total/source/target tokens/sec	
+Epoch: 35, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.24, |Param|: 467.04, |GParam|: 6.71, Training: 4811/900/3910 total/source/target tokens/sec	
+Epoch: 35, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.30, |Param|: 467.04, |GParam|: 3.38, Training: 4731/905/3825 total/source/target tokens/sec	
+Epoch: 35, Batch: 200/268, Batch size: 6, LR: 0.0000, PPL: 2.30, |Param|: 467.04, |GParam|: 25.51, Training: 4621/891/3730 total/source/target tokens/sec	
+Epoch: 35, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.27, |Param|: 467.04, |GParam|: 4.23, Training: 4552/880/3671 total/source/target tokens/sec	
+Train	2.2728276984302	
+Valid	4.3113885010683	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+}
+saving checkpoint to django-model_epoch35.00_4.31.t7	
+Epoch: 36, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.45, |Param|: 467.04, |GParam|: 3.70, Training: 4727/928/3799 total/source/target tokens/sec	
+Epoch: 36, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.34, |Param|: 467.04, |GParam|: 7.04, Training: 4518/853/3665 total/source/target tokens/sec	
+Epoch: 36, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.29, |Param|: 467.04, |GParam|: 5.49, Training: 4431/833/3597 total/source/target tokens/sec	
+Epoch: 36, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.26, |Param|: 467.04, |GParam|: 6.06, Training: 4489/853/3635 total/source/target tokens/sec	
+Epoch: 36, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.29, |Param|: 467.04, |GParam|: 4.02, Training: 4518/864/3653 total/source/target tokens/sec	
+Train	2.2715126680455	
+Valid	4.3113885454436	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+}
+saving checkpoint to django-model_epoch36.00_4.31.t7	
+Epoch: 37, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 1.99, |Param|: 467.04, |GParam|: 4.39, Training: 4529/814/3715 total/source/target tokens/sec	
+Epoch: 37, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.20, |Param|: 467.04, |GParam|: 3.04, Training: 4483/880/3602 total/source/target tokens/sec	
+Epoch: 37, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.27, |Param|: 467.04, |GParam|: 6.26, Training: 4494/889/3605 total/source/target tokens/sec	
+Epoch: 37, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.26, |Param|: 467.04, |GParam|: 7.01, Training: 4536/890/3646 total/source/target tokens/sec	
+Epoch: 37, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.30, |Param|: 467.04, |GParam|: 12.74, Training: 4545/881/3664 total/source/target tokens/sec	
+Train	2.2696071071211	
+Valid	4.3113885539365	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+}
+saving checkpoint to django-model_epoch37.00_4.31.t7	
+Epoch: 38, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.05, |Param|: 467.04, |GParam|: 1.86, Training: 4513/808/3705 total/source/target tokens/sec	
+Epoch: 38, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 1.98, |Param|: 467.04, |GParam|: 6.94, Training: 4459/839/3619 total/source/target tokens/sec	
+Epoch: 38, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.21, |Param|: 467.04, |GParam|: 3.47, Training: 4527/885/3641 total/source/target tokens/sec	
+Epoch: 38, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.24, |Param|: 467.04, |GParam|: 4.95, Training: 4527/869/3657 total/source/target tokens/sec	
+Epoch: 38, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.29, |Param|: 467.04, |GParam|: 4.25, Training: 4510/881/3628 total/source/target tokens/sec	
+Train	2.2752876302293	
+Valid	4.3113885622171	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+}
+saving checkpoint to django-model_epoch38.00_4.31.t7	
+Epoch: 39, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.28, |Param|: 467.04, |GParam|: 4.59, Training: 4817/975/3842 total/source/target tokens/sec	
+Epoch: 39, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.22, |Param|: 467.04, |GParam|: 11.63, Training: 4663/882/3781 total/source/target tokens/sec	
+Epoch: 39, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.32, |Param|: 467.04, |GParam|: 3.45, Training: 4688/918/3770 total/source/target tokens/sec	
+Epoch: 39, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.29, |Param|: 467.04, |GParam|: 9.41, Training: 4647/895/3752 total/source/target tokens/sec	
+Epoch: 39, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.28, |Param|: 467.04, |GParam|: 3.19, Training: 4541/878/3662 total/source/target tokens/sec	
+Train	2.2685865506857	
+Valid	4.3113885473121	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+  39 : 4.3113885473121
+}
+saving checkpoint to django-model_epoch39.00_4.31.t7	
+Epoch: 40, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.27, |Param|: 467.04, |GParam|: 7.34, Training: 5017/932/4085 total/source/target tokens/sec	
+Epoch: 40, Batch: 100/268, Batch size: 4, LR: 0.0000, PPL: 2.31, |Param|: 467.04, |GParam|: 32.88, Training: 4661/895/3766 total/source/target tokens/sec	
+Epoch: 40, Batch: 150/268, Batch size: 6, LR: 0.0000, PPL: 2.34, |Param|: 467.04, |GParam|: 20.41, Training: 4560/906/3653 total/source/target tokens/sec	
+Epoch: 40, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.23, |Param|: 467.04, |GParam|: 5.47, Training: 4535/884/3651 total/source/target tokens/sec	
+Epoch: 40, Batch: 250/268, Batch size: 7, LR: 0.0000, PPL: 2.26, |Param|: 467.04, |GParam|: 32.55, Training: 4546/883/3662 total/source/target tokens/sec	
+Train	2.2682813249838	
+Valid	4.3113885476093	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+  39 : 4.3113885473121
+  40 : 4.3113885476093
+}
+saving checkpoint to django-model_epoch40.00_4.31.t7	
+Epoch: 41, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.30, |Param|: 467.04, |GParam|: 8.14, Training: 4366/807/3559 total/source/target tokens/sec	
+Epoch: 41, Batch: 100/268, Batch size: 27, LR: 0.0000, PPL: 2.28, |Param|: 467.04, |GParam|: 12.67, Training: 4645/904/3740 total/source/target tokens/sec	
+Epoch: 41, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.33, |Param|: 467.04, |GParam|: 6.12, Training: 4673/922/3751 total/source/target tokens/sec	
+Epoch: 41, Batch: 200/268, Batch size: 14, LR: 0.0000, PPL: 2.32, |Param|: 467.04, |GParam|: 22.84, Training: 4607/904/3702 total/source/target tokens/sec	
+Epoch: 41, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.29, |Param|: 467.04, |GParam|: 2.49, Training: 4534/876/3658 total/source/target tokens/sec	
+Train	2.2729867231279	
+Valid	4.3113885491805	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+  39 : 4.3113885473121
+  40 : 4.3113885476093
+  41 : 4.3113885491805
+}
+saving checkpoint to django-model_epoch41.00_4.31.t7	
+Epoch: 42, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.15, |Param|: 467.04, |GParam|: 6.28, Training: 4237/829/3407 total/source/target tokens/sec	
+Epoch: 42, Batch: 100/268, Batch size: 1, LR: 0.0000, PPL: 2.23, |Param|: 467.04, |GParam|: 2.61, Training: 4480/868/3611 total/source/target tokens/sec	
+Epoch: 42, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.26, |Param|: 467.04, |GParam|: 7.78, Training: 4525/886/3639 total/source/target tokens/sec	
+Epoch: 42, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.24, |Param|: 467.04, |GParam|: 4.70, Training: 4498/879/3618 total/source/target tokens/sec	
+Epoch: 42, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.23, |Param|: 467.04, |GParam|: 3.49, Training: 4551/876/3675 total/source/target tokens/sec	
+Train	2.2674593393887	
+Valid	4.3113885528749	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+  39 : 4.3113885473121
+  40 : 4.3113885476093
+  41 : 4.3113885491805
+  42 : 4.3113885528749
+}
+saving checkpoint to django-model_epoch42.00_4.31.t7	
+Epoch: 43, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.32, |Param|: 467.04, |GParam|: 4.15, Training: 4451/839/3612 total/source/target tokens/sec	
+Epoch: 43, Batch: 100/268, Batch size: 32, LR: 0.0000, PPL: 2.45, |Param|: 467.04, |GParam|: 15.39, Training: 4475/921/3554 total/source/target tokens/sec	
+Epoch: 43, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.45, |Param|: 467.04, |GParam|: 4.05, Training: 4424/911/3512 total/source/target tokens/sec	
+Epoch: 43, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.33, |Param|: 467.04, |GParam|: 4.30, Training: 4473/880/3593 total/source/target tokens/sec	
+Epoch: 43, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.29, |Param|: 467.04, |GParam|: 5.30, Training: 4500/877/3623 total/source/target tokens/sec	
+Train	2.2691835155717	
+Valid	4.3113885507941	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+  39 : 4.3113885473121
+  40 : 4.3113885476093
+  41 : 4.3113885491805
+  42 : 4.3113885528749
+  43 : 4.3113885507941
+}
+saving checkpoint to django-model_epoch43.00_4.31.t7	
+Epoch: 44, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.52, |Param|: 467.04, |GParam|: 8.49, Training: 4407/974/3432 total/source/target tokens/sec	
+Epoch: 44, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.38, |Param|: 467.04, |GParam|: 5.31, Training: 4293/855/3438 total/source/target tokens/sec	
+Epoch: 44, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.33, |Param|: 467.04, |GParam|: 6.56, Training: 4360/840/3520 total/source/target tokens/sec	
+Epoch: 44, Batch: 200/268, Batch size: 4, LR: 0.0000, PPL: 2.34, |Param|: 467.04, |GParam|: 16.98, Training: 4460/866/3593 total/source/target tokens/sec	
+Epoch: 44, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.32, |Param|: 467.04, |GParam|: 2.27, Training: 4514/870/3643 total/source/target tokens/sec	
+Train	2.2734842575136	
+Valid	4.3113885507941	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+  39 : 4.3113885473121
+  40 : 4.3113885476093
+  41 : 4.3113885491805
+  42 : 4.3113885528749
+  43 : 4.3113885507941
+  44 : 4.3113885507941
+}
+saving checkpoint to django-model_epoch44.00_4.31.t7	
+Epoch: 45, Batch: 50/268, Batch size: 15, LR: 0.0000, PPL: 2.57, |Param|: 467.04, |GParam|: 23.21, Training: 4718/959/3759 total/source/target tokens/sec	
+Epoch: 45, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.25, |Param|: 467.04, |GParam|: 4.08, Training: 4607/894/3712 total/source/target tokens/sec	
+Epoch: 45, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.23, |Param|: 467.04, |GParam|: 5.33, Training: 4622/895/3726 total/source/target tokens/sec	
+Epoch: 45, Batch: 200/268, Batch size: 18, LR: 0.0000, PPL: 2.27, |Param|: 467.04, |GParam|: 21.16, Training: 4612/884/3727 total/source/target tokens/sec	
+Epoch: 45, Batch: 250/268, Batch size: 19, LR: 0.0000, PPL: 2.27, |Param|: 467.04, |GParam|: 5.65, Training: 4554/873/3681 total/source/target tokens/sec	
+Train	2.2733038034306	
+Valid	4.3113885511339	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+  39 : 4.3113885473121
+  40 : 4.3113885476093
+  41 : 4.3113885491805
+  42 : 4.3113885528749
+  43 : 4.3113885507941
+  44 : 4.3113885507941
+  45 : 4.3113885511339
+}
+saving checkpoint to django-model_epoch45.00_4.31.t7	
+Epoch: 46, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.15, |Param|: 467.04, |GParam|: 5.27, Training: 4586/888/3698 total/source/target tokens/sec	
+Epoch: 46, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.16, |Param|: 467.04, |GParam|: 3.95, Training: 4586/906/3679 total/source/target tokens/sec	
+Epoch: 46, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.24, |Param|: 467.04, |GParam|: 3.62, Training: 4604/906/3697 total/source/target tokens/sec	
+Epoch: 46, Batch: 200/268, Batch size: 4, LR: 0.0000, PPL: 2.21, |Param|: 467.04, |GParam|: 34.10, Training: 4548/880/3667 total/source/target tokens/sec	
+Epoch: 46, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.26, |Param|: 467.04, |GParam|: 9.27, Training: 4573/876/3697 total/source/target tokens/sec	
+Train	2.270217980909	
+Valid	4.3113885511339	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+  39 : 4.3113885473121
+  40 : 4.3113885476093
+  41 : 4.3113885491805
+  42 : 4.3113885528749
+  43 : 4.3113885507941
+  44 : 4.3113885507941
+  45 : 4.3113885511339
+  46 : 4.3113885511339
+}
+saving checkpoint to django-model_epoch46.00_4.31.t7	
+Epoch: 47, Batch: 50/268, Batch size: 18, LR: 0.0000, PPL: 2.51, |Param|: 467.04, |GParam|: 21.67, Training: 4522/835/3687 total/source/target tokens/sec	
+Epoch: 47, Batch: 100/268, Batch size: 64, LR: 0.0000, PPL: 2.35, |Param|: 467.04, |GParam|: 4.19, Training: 4484/850/3633 total/source/target tokens/sec	
+Epoch: 47, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.30, |Param|: 467.04, |GParam|: 2.91, Training: 4484/848/3636 total/source/target tokens/sec	
+Epoch: 47, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.26, |Param|: 467.04, |GParam|: 3.81, Training: 4475/857/3618 total/source/target tokens/sec	
+Epoch: 47, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.27, |Param|: 467.04, |GParam|: 3.82, Training: 4508/872/3636 total/source/target tokens/sec	
+Train	2.2686646628772	
+Valid	4.3113885511339	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+  39 : 4.3113885473121
+  40 : 4.3113885476093
+  41 : 4.3113885491805
+  42 : 4.3113885528749
+  43 : 4.3113885507941
+  44 : 4.3113885507941
+  45 : 4.3113885511339
+  46 : 4.3113885511339
+  47 : 4.3113885511339
+}
+saving checkpoint to django-model_epoch47.00_4.31.t7	
+Epoch: 48, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.14, |Param|: 467.04, |GParam|: 3.64, Training: 4441/788/3653 total/source/target tokens/sec	
+Epoch: 48, Batch: 100/268, Batch size: 63, LR: 0.0000, PPL: 2.39, |Param|: 467.04, |GParam|: 11.80, Training: 4499/872/3627 total/source/target tokens/sec	
+Epoch: 48, Batch: 150/268, Batch size: 64, LR: 0.0000, PPL: 2.37, |Param|: 467.04, |GParam|: 5.61, Training: 4462/904/3558 total/source/target tokens/sec	
+Epoch: 48, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.33, |Param|: 467.04, |GParam|: 5.74, Training: 4427/860/3566 total/source/target tokens/sec	
+Epoch: 48, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.30, |Param|: 467.04, |GParam|: 4.20, Training: 4500/873/3626 total/source/target tokens/sec	
+Train	2.2734371592262	
+Valid	4.3113885511339	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+  39 : 4.3113885473121
+  40 : 4.3113885476093
+  41 : 4.3113885491805
+  42 : 4.3113885528749
+  43 : 4.3113885507941
+  44 : 4.3113885507941
+  45 : 4.3113885511339
+  46 : 4.3113885511339
+  47 : 4.3113885511339
+  48 : 4.3113885511339
+}
+saving checkpoint to django-model_epoch48.00_4.31.t7	
+Epoch: 49, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.23, |Param|: 467.04, |GParam|: 4.44, Training: 4484/904/3580 total/source/target tokens/sec	
+Epoch: 49, Batch: 100/268, Batch size: 17, LR: 0.0000, PPL: 2.10, |Param|: 467.04, |GParam|: 18.54, Training: 4431/836/3594 total/source/target tokens/sec	
+Epoch: 49, Batch: 150/268, Batch size: 3, LR: 0.0000, PPL: 2.27, |Param|: 467.04, |GParam|: 36.86, Training: 4386/877/3509 total/source/target tokens/sec	
+Epoch: 49, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.23, |Param|: 467.04, |GParam|: 5.56, Training: 4439/854/3585 total/source/target tokens/sec	
+Epoch: 49, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.26, |Param|: 467.04, |GParam|: 8.72, Training: 4498/867/3631 total/source/target tokens/sec	
+Train	2.2634586839552	
+Valid	4.3113885511339	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+  39 : 4.3113885473121
+  40 : 4.3113885476093
+  41 : 4.3113885491805
+  42 : 4.3113885528749
+  43 : 4.3113885507941
+  44 : 4.3113885507941
+  45 : 4.3113885511339
+  46 : 4.3113885511339
+  47 : 4.3113885511339
+  48 : 4.3113885511339
+  49 : 4.3113885511339
+}
+saving checkpoint to django-model_epoch49.00_4.31.t7	
+Epoch: 50, Batch: 50/268, Batch size: 64, LR: 0.0000, PPL: 2.32, |Param|: 467.04, |GParam|: 7.18, Training: 4729/936/3793 total/source/target tokens/sec	
+Epoch: 50, Batch: 100/268, Batch size: 27, LR: 0.0000, PPL: 2.30, |Param|: 467.04, |GParam|: 14.79, Training: 4530/889/3640 total/source/target tokens/sec	
+Epoch: 50, Batch: 150/268, Batch size: 35, LR: 0.0000, PPL: 2.28, |Param|: 467.04, |GParam|: 15.77, Training: 4582/874/3707 total/source/target tokens/sec	
+Epoch: 50, Batch: 200/268, Batch size: 64, LR: 0.0000, PPL: 2.28, |Param|: 467.04, |GParam|: 1.79, Training: 4580/876/3704 total/source/target tokens/sec	
+Epoch: 50, Batch: 250/268, Batch size: 64, LR: 0.0000, PPL: 2.29, |Param|: 467.04, |GParam|: 4.33, Training: 4544/881/3662 total/source/target tokens/sec	
+Train	2.2714384096725	
+Valid	4.3113885511339	
+{
+  1 : 101.29699930727
+  2 : 25.533780378179
+  3 : 17.476125462336
+  4 : 12.531617849854
+  5 : 9.9562305512033
+  6 : 7.7876216840945
+  7 : 6.4357218095858
+  8 : 5.7359894125869
+  9 : 5.1313659396623
+  10 : 4.655496754039
+  11 : 4.3918434968236
+  12 : 4.3447656809408
+  13 : 4.3326656199056
+  14 : 4.3147939214123
+  15 : 4.3117150839793
+  16 : 4.3119532829435
+  17 : 4.3112766338544
+  18 : 4.312201432373
+  19 : 4.3119932715535
+  20 : 4.3116308639504
+  21 : 4.311487970844
+  22 : 4.3114295186289
+  23 : 4.3114043824106
+  24 : 4.3114027321098
+  25 : 4.311398626765
+  26 : 4.3113925964244
+  27 : 4.3113910468114
+  28 : 4.3113895160107
+  29 : 4.3113889561596
+  30 : 4.3113886237905
+  31 : 4.3113885781412
+  32 : 4.3113885284154
+  33 : 4.3113884940192
+  34 : 4.3113885675251
+  35 : 4.3113885010683
+  36 : 4.3113885454436
+  37 : 4.3113885539365
+  38 : 4.3113885622171
+  39 : 4.3113885473121
+  40 : 4.3113885476093
+  41 : 4.3113885491805
+  42 : 4.3113885528749
+  43 : 4.3113885507941
+  44 : 4.3113885507941
+  45 : 4.3113885511339
+  46 : 4.3113885511339
+  47 : 4.3113885511339
+  48 : 4.3113885511339
+  49 : 4.3113885511339
+  50 : 4.3113885511339
+} 
