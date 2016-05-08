@@ -14,7 +14,7 @@ def run_seq2seq_attn(ftrain, fvalid, fmodel, ftest, fpredict, dsrc, dtar):
 	os.system('th train.lua -data_file ' +\
 	 "../" + ftrain + ' -val_data_file ' + \
 	 "../" + fvalid + ' -savefile ' + fmodel +\
-	  " -epochs 50 -num_layers 3 -word_vec_size 500 -rnn_size 500 -dropout 0.5")
+	  " -epochs 40 -num_layers 2 -word_vec_size 700 -rnn_size 700 -dropout 0.5")
 	
 	
 	os.system('th beam.lua -model django-model_final.t7 -src_file ../data/en-django/src-val.txt -output_file pred.txt -src_dict ../data/en-django/django.src.dict -targ_dict ../data/en-django/django.targ.dict -max_sent_l 500')
