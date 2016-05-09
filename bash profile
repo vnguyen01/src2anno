@@ -1,0 +1,70 @@
+# .bashrc
+
+# Source global definitions
+if [ -f /etc/bashrc ]; then
+        . /etc/bashrc
+fi
+
+# User specific aliases and functions
+export PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/bin:$PATH"
+export PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/x86_64-unknown-linux-gnu/bin:$PATH"
+export PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/sbin:$PATH"
+export LD_LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/x86_64-unknown-linux-gnu/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib64:$LD_LIBRARY_PATH"
+export LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib:$LIBRARY_PATH"
+export LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/x86_64-unknown-linux-gnu/lib:$LIBRARY_PATH"
+export LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib64:$LIBRARY_PATH"
+export PKG_CONFIG_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib/pkgconfig:$PKG_CONFIG_PATH"
+export PKG_CONFIG_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/share/pkgconfig:$PKG_CONFIG_PATH"
+export CPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/include:$CPATH"
+export FPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/include:$FPATH"
+export INFOPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/share/info:$INFOPATH"
+export MANPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/share/man:$MANPATH"
+export PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/bin:$PATH"
+export PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/sbin:$PATH"
+export LD_LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib64:$LD_LIBRARY_PATH"
+export LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib:$LIBRARY_PATH"
+export LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib64:$LIBRARY_PATH"
+export CPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/include:$CPATH"
+export FPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/include:$FPATH"
+export PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/bin:$PATH"
+export PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/x86_64-unknown-linux-gnu/bin:$PATH"
+export PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/sbin:$PATH"
+export LD_LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/x86_64-unknown-linux-gnu/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib64:$LD_LIBRARY_PATH"
+export LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib:$LIBRARY_PATH"
+export LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/x86_64-unknown-linux-gnu/lib:$LIBRARY_PATH"
+export LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib64:$LIBRARY_PATH"
+export PKG_CONFIG_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib/pkgconfig:$PKG_CONFIG_PATH"
+export PKG_CONFIG_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/share/pkgconfig:$PKG_CONFIG_PATH"
+export CPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/include:$CPATH"
+export FPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/include:$FPATH"
+export INFOPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/share/info:$INFOPATH"
+export MANPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/share/man:$MANPATH"
+export PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/bin:$PATH"
+export PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/x86_64-unknown-linux-gnu/bin:$PATH"
+export PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/sbin:$PATH"
+export LD_LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/x86_64-unknown-linux-gnu/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib64:$LD_LIBRARY_PATH"
+export LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib:$LIBRARY_PATH"
+export LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/x86_64-unknown-linux-gnu/lib:$LIBRARY_PATH"
+export LIBRARY_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib64:$LIBRARY_PATH"
+export PKG_CONFIG_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/lib/pkgconfig:$PKG_CONFIG_PATH"
+export PKG_CONFIG_PATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/share/pkgconfig:$PKG_CONFIG_PATH"
+export CPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/include:$CPATH"
+export FPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/include:$FPATH"
+export INFOPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/share/info:$INFOPATH"
+export MANPATH="/net/rcstorenfs02/ifs/rc_labs/rush_lab/sw/share/man:$MANPATH"
+
+export LUA_PATH='/n/home05/vnguyen01/.luarocks/share/lua/5.1/?.lua;/n/home07/vnguyen01/.luarocks/share/lua/5.1/?/init.lua;/n/home07/vnguyen01/torch/install/share/lua/5.1/?.lua;/n/home07/vnguyen01/torch/install/share/lua/5.1/?/init.lua;./?.lua;/n/home07/vnguyen01$
+export LUA_CPATH='/usr/lib64/lua/5.1/?.so;/n/home05/vnguyen01/.luarocks/lib/lua/5.1/?.so;/n/home07/vnguyen01/torch/install/lib/lua/5.1/?.so;/usr/lib64/lua/5.1/?.so;./?.so;/usr/local/lib/lua/5.1/?.so;/usr/local/lib/lua/5.1/loadall.so'
+export PATH=/n/home05/vnguyen01/torch/install/bin:$PATH # Added automatically by torch-dist
+export LD_LIBRARY_PATH=/n/home05/vnguyen01/torch/install/lib:$LD_LIBRARY_PATH # Added automatically by torch-dist
+export DYLD_LIBRARY_PATH=/n/home05/vnguyen01/torch/install/lib:$DYLD_LIBRARY_PATH # Added automatically by torch-dist
+
+
+. /n/home05/vnguyen01/torch/install/bin/torch-activate
