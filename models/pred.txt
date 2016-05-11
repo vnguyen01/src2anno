@@ -1,0 +1,80 @@
+if e . connection_reset is false,
+append filename to the self . attachments list .
+decorator function register . filter with an argument is_safe set to boolean True .
+substitute value under the 'forloop' key of the d dictionary for d .
+call the function func with 2 arguments: unpacked list resolved_args and unpacked dictionary kw .
+if self . _leftover is true,
+get the value under the db key of the self . _caches dictionary, return the result .
+do nothing .
+substitute the result for message_context . call the method context_match . group with an argument integer 1, substitute the result for message_context .
+from django . conf import settings into default name space .
+help is a string "Prints the results in a string help a a list containing a string " . " .
+call the method gettext_module . get_app_configs with an argument migration . name, for every migration in migration .
+define the method render with an argument self .
+if length of words is greater than length,
+if not,
+if self . required is false,
+call the method self . open()
+call the method password . copy with 2 arguments: result of the function,
+define the function trim_url with 2 arguments: text and ignore_failures .
+if app_config . models_module is None,
+return _cached_filenames .
+substitute file_size for value under the language_code key of the self . _namespace_dict dictionary .
+from django . utils . http import MultiValueDict into default name space .
+do nothing .
+derive the class Loader from the BaseLoader base class .
+if not,
+pending_references is a tuple with 2 elements: a tuple with 2 elements: '<' and string '1' .
+define the method display with an argument self .
+define the function convert_old_style_list with an argument list_ .
+try,
+dirs is an empty list .
+define the method __init__ with 4 arguments: self, max_value set to None, min_value set to None, min_value set to None,
+if result is not None,
+call the os . path . dirname with an argument filename, substitute the result for dirname .
+get the value under the 'verbosity' key of the options dictionary, substitute it for self . domain .
+if self . instance . pk is not None,
+join style into a string, separated by newlines, return it .
+for every k and v in return value of the method self . _iteritems
+call the method self . unclosed_block_tag with an argument contents .
+substitute cls . media for base .
+from django . utils import formats into default name space .
+filesize_number_format with bytes, substitute the result for value . otherwise
+call the function bytes with 2 arguments: i, and return value of the function bytes with an argument i,
+attrs is a string '<a formated with 10 elements: attrs,
+excluded_apps is an empty set .
+raise an exception .
+for every node in the result,
+define the method __repr__ with an argument self .
+call the method sys . stderr . write with an argument string 'field' .
+join dirpath, filename and f .
+call the function settings . is_overridden with argument 'MANAGERS', if it evaluates to true,
+if key is contained in dict_,
+call the function getargspec with an argument func, assign the result to args and defaults .
+if UnicodeDecodeError exception is caught,
+call the function force_text with an argument value, substitute the result for obj .
+from django . utils . encoding import force_str into default name space .
+sum '=' and dec_part, return the result .
+do nothing .
+define the function slugify with an argument s .
+call the method initial_form_count from the base class of the class BaseModelFormSet, return the result .
+substitute v for self . k .
+append filename to the power of filename .
+call the function match . find with an argument path, substitute the result for filename .
+otherwise if first element of g equals "'",
+return boolean True .
+if ext and content_type are both true,
+call the method zfile . close .
+call the function include_is_allowed with an argument argv .
+substitute compressed for self . _content_length .
+define the method __init__ with 3 arguments: self, unpacked list args and unpacked dictionary kwargs .
+if not,
+define the method id_for_label with 2 arguments: self and id_ .
+docsring
+call the function re . compile with an argument string "([\u0080-\uffff])", substitute the result for default_settings .
+define the method auto_id with an argument self .
+call the method self . unclosed_block_tag with argument f, return the result .
+from django . forms . models import everything into default name space .
+return new_value .
+if self . _errors is None,
+substitute safe for value under the 'SERVER_NAME' key of kwargs dictionary .
